@@ -528,13 +528,11 @@ export default function CameraScreen() {
         <Text style={styles.statusText}>
           {trackingState.status === 'no_face'
             ? 'Position your face in the frame'
-            : !trackingState.lightingOk && !trackingState.lightingUnavailable
-              ? 'Find better lighting'
-              : trackingState.status === 'misaligned'
-                ? trackingState.issues[0] || 'Adjust position'
-                : autoCountdown > 0
-                  ? `Hold steady · ${autoCountdown}`
-                  : 'Ready to capture'}
+            : trackingState.status === 'misaligned'
+              ? trackingState.issues[0] || 'Adjust position'
+              : autoCountdown > 0
+                ? `Hold steady · ${autoCountdown}`
+                : 'Ready to capture'}
         </Text>
       </View>
 

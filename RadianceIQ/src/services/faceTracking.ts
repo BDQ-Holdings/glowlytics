@@ -92,10 +92,13 @@ export function analyzeAlignment(
     issues.push('Turn toward camera');
   }
 
-  // Lighting heuristic
-  const lightingOk = faces.length > 0
-    && fillPercent >= LIGHTING_MIN_FILL
-    && issues.length <= LIGHTING_MAX_ISSUES;
+  // Lighting proxy: without native lux sensor access, we use face detection
+  // confidence as a proxy — MLKit detects faces more reliably in good light.
+  // A face that fills > 12% AND is detected (which requires adequate contrast)
+  // is a reasonable proxy for "not too dark."
+  // This is NOT true lighting measurement — it's the best we can do without
+  // native module access to the camera's exposure metadata.
+  const lightingOk = fillPercent >= LIGHTING_MIN_FILL;
 
   const isAligned = issues.length === 0;
 
