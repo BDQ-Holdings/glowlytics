@@ -300,3 +300,91 @@ export interface GeneratedInsights {
   product_guidance: ProductGuidance;
   action_plan: string[];
 }
+
+// ─── Pattern Engine types ───────────────────────────────────────────────
+// Correlation-based insight feature. See docs/superpowers/specs/2026-04-07-pattern-engine-design.md
+
+export interface HealthDailyRecord {
+  health_daily_id: string;
+  user_id: string;
+  date: string;                          // YYYY-MM-DD, via localDateStr()
+  source: 'apple_health' | 'health_connect' | 'manual';
+  // Sleep
+  sleep_total_minutes: number | null;
+  sleep_deep_minutes: number | null;
+  sleep_rem_minutes: number | null;
+  // Cardiovascular
+  hrv_sdnn_ms: number | null;
+  resting_hr_bpm: number | null;
+  // Activity
+  steps: number | null;
+  mindful_minutes: number | null;
+  // Sync metadata
+  synced_at: string;
+  partial: boolean;
+}
+
+export interface HealthSyncStatus {
+  last_sync_at: string | null;
+  last_success_at: string | null;
+  last_error: string | null;
+  in_progress: boolean;
+}
+
+export type PatternConfidence = 'strong' | 'moderate' | 'emerging' | 'watching';
+
+export type PatternSignal =
+  | 'overall'
+  | 'acne'
+  | 'inflammation'
+  | 'hydration'
+  | 'sunDamage'
+  | 'elasticity';
+
+export type PatternType =
+  | 'cycle_signal_phase'
+  | 'health_signal_lag'
+  | 'lifestyle_signal_corr'
+  | 'product_trajectory'
+  | 'outlier_day';
+
+export interface PatternChartPoint {
+  date: string;
+  signalValue: number;                   // 0-100
+  driverValue: number | null;
+  driverLabel: string;
+}
+
+export interface Pattern {
+  id: string;
+  type: PatternType;
+  signal: PatternSignal;
+  driver: string;                        // e.g. 'hrv_sdnn_ms', 'cycle_day'
+  driverLabel: string;                   // human label for UI
+  confidence: PatternConfidence;
+  correlationCoefficient: number;        // -1.0 to 1.0; internal
+  sampleSize: number;                    // n of paired data points
+  lagDays: number;                       // 0 = same day; positive = driver leads
+  insightText: string;                   // headline ≤80 chars
+  detailText: string;                    // prose ≤200 chars
+  chartData: PatternChartPoint[];
+  detectedAt: string;                    // ISO
+  firstSeenAt: string;                   // ISO
+  isPredicted: boolean;                  // true for cold-start placeholder
+  requiresHealthKit?: boolean;
+  unlocksAtDay?: number;                 // for predicted patterns only
+}
+
+export type FirstLookInsightDriver =
+  | 'asymmetry'
+  | 'age_gap'
+  | 'hot_zone'
+  | 'lesion_count'
+  | 'cycle_setup'
+  | 'positive_percentile';
+
+export interface FirstLookInsight {
+  headline: string;                      // ≤80 chars
+  detail: string;                        // ≤200 chars
+  driver: FirstLookInsightDriver;
+}
