@@ -186,16 +186,28 @@ export function canScan(subscription: SubscriptionState): boolean {
 /**
  * Gate an action behind paywall. Presents paywall if needed, refreshes subscription,
  * returns true if the user can proceed (subscribed or trial active).
+ *
+ * Defensive: if the user has no entitlement AND no trial dates at all, auto-start the
+ * trial before showing the paywall. Fix layer 3 of 3 for the paywall gap — guarantees
+ * no path can lock a user out without having ever offered them the trial.
  */
 export async function gateWithPaywall(): Promise<boolean> {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { useStore } = require('../store/useStore');
   if (useStore.getState().canPerformScan()) return true;
+
+  // Defensive: grant trial if the user has never had one
+  const sub = useStore.getState().subscription;
+  if (!sub.is_active && sub.trial_start_date === null && sub.trial_end_date === null) {
+    useStore.getState().startTrial();
+    if (useStore.getState().canPerformScan()) return true;
+  }
+
   try {
     const purchased = await presentPaywall();
     if (purchased) {
-      const sub = await checkSubscriptionStatus(useStore.getState().subscription);
-      useStore.getState().setSubscription(sub);
+      const refreshed = await checkSubscriptionStatus(useStore.getState().subscription);
+      useStore.getState().setSubscription(refreshed);
     }
   } catch {
     // RevenueCat config error — non-fatal

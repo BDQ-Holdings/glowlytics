@@ -1,3 +1,18 @@
+// Mock AsyncStorage (needed when tests transitively import useStore)
+jest.mock('@react-native-async-storage/async-storage', () => ({
+  getItem: jest.fn(() => Promise.resolve(null)),
+  setItem: jest.fn(() => Promise.resolve()),
+  removeItem: jest.fn(() => Promise.resolve()),
+}));
+
+// Mock uuid (needed transitively via useStore)
+jest.mock('uuid', () => ({
+  v4: () => `test-id-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+}));
+
+// Mock react-native-get-random-values
+jest.mock('react-native-get-random-values', () => {});
+
 // Mock react-native-purchases
 jest.mock('react-native-purchases', () => ({
   setLogLevel: jest.fn(),
@@ -194,6 +209,38 @@ describe('subscription', () => {
       expect(sub.free_scans_used).toBe(0);
       expect(sub.trial_start_date).toBeNull();
       expect(sub.trial_end_date).toBeNull();
+    });
+  });
+
+  describe('gateWithPaywall trial fallback (fix layer 3 of 3)', () => {
+    // These tests verify that gateWithPaywall auto-grants a trial when the user
+    // has never had one. This is the defensive layer — even if layers 1 and 2
+    // failed for some reason, no user can be locked out of scanning.
+    it('grants a trial and returns true when user has no trial and no entitlement', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { useStore } = require('../../store/useStore');
+      const { gateWithPaywall } = require('../subscription');
+
+      // Simulate the stuck legacy state: no trial, no entitlement
+      useStore.setState({
+        user: { user_id: 'test-user', age_range: '25-34', onboarding_complete: true } as any,
+        subscription: {
+          tier: 'free',
+          is_active: false,
+          expires_at: null,
+          product_id: null,
+          free_scans_used: 0,
+          trial_start_date: null,
+          trial_end_date: null,
+        },
+      });
+
+      const allowed = await gateWithPaywall();
+
+      expect(allowed).toBe(true);
+      const sub = useStore.getState().subscription;
+      expect(sub.trial_start_date).not.toBeNull();
+      expect(sub.trial_end_date).not.toBeNull();
     });
   });
 });
