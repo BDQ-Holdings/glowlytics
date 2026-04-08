@@ -251,9 +251,15 @@ export default function ProductDetailScreen() {
             const dotColor = row.profile
               ? ratingDotColor[row.profile.rating]
               : Colors.textDim;
-            const displayName = row.profile
-              ? row.profile.canonicalName
-              : row.raw;
+            // ALWAYS show the user-entered name verbatim. The canonical name is shown as a
+            // secondary tag only when it differs from the raw input — this preserves
+            // clinical specificity (e.g. "Tretinoin Cream USP 0.025%" instead of the
+            // generic canonical "Tretinoin"). Fixes TestFlight feedback #1.
+            const rawDisplay = row.raw;
+            const canonical = row.profile?.canonicalName ?? null;
+            const showCanonicalTag =
+              canonical !== null &&
+              canonical.toLowerCase() !== rawDisplay.trim().toLowerCase();
             const desc = row.profile
               ? row.profile.description
               : 'Not in database';
@@ -268,7 +274,16 @@ export default function ProductDetailScreen() {
               >
                 <View style={[styles.dot, { backgroundColor: dotColor }]} />
                 <View style={styles.ingredientInfo}>
-                  <Text style={styles.ingredientName}>{displayName}</Text>
+                  <View style={styles.ingredientNameRow}>
+                    <Text style={styles.ingredientName} numberOfLines={2}>
+                      {rawDisplay}
+                    </Text>
+                    {showCanonicalTag && (
+                      <View style={styles.canonicalTag}>
+                        <Text style={styles.canonicalTagText}>{canonical}</Text>
+                      </View>
+                    )}
+                  </View>
                   <Text style={styles.ingredientDesc} numberOfLines={2}>
                     {desc}
                   </Text>
@@ -499,10 +514,31 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: Spacing.xxs,
   },
+  ingredientNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: Spacing.xs,
+  },
   ingredientName: {
     color: Colors.text,
     fontFamily: FontFamily.sansSemiBold,
     fontSize: FontSize.md,
+    flexShrink: 1,
+  },
+  canonicalTag: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.surfaceOverlay,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  canonicalTagText: {
+    color: Colors.textMuted,
+    fontFamily: FontFamily.sansMedium,
+    fontSize: FontSize.xxs,
+    letterSpacing: 0.3,
   },
   ingredientDesc: {
     color: Colors.textSecondary,
