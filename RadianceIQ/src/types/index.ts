@@ -333,9 +333,11 @@ export interface HealthSyncStatus {
 
 export type PatternConfidence = 'strong' | 'moderate' | 'emerging' | 'watching';
 
+// Pattern signals map to the 5 keys of SignalScores plus 'overall' (derived mean).
+// 'acne' is not a separate signal in this codebase — inflammation is the clinical proxy.
 export type PatternSignal =
   | 'overall'
-  | 'acne'
+  | 'structure'
   | 'inflammation'
   | 'hydration'
   | 'sunDamage'
