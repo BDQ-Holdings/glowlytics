@@ -294,13 +294,21 @@ export const AddProductSheet: React.FC<Props> = ({ visible, onClose }) => {
           >
             {mode === 'menu' && (
               <View style={styles.menuOptions}>
-                <TouchableOpacity style={styles.menuOption} onPress={() => setMode('search')}>
+                {/* Photo is first — TestFlight feedback #3: "wish I could take a
+                    picture of the product instead of the barcode." The feature
+                    exists but was third in the menu and missed by testers. */}
+                <TouchableOpacity
+                  style={styles.menuOption}
+                  onPress={() => requestCameraAndGo('photo')}
+                >
                   <View style={styles.menuIconWrap}>
-                    <Feather name="search" size={20} color={Colors.primary} />
+                    <Feather name="camera" size={20} color={Colors.primary} />
                   </View>
                   <View style={styles.menuTextCol}>
-                    <Text style={styles.menuLabel}>Search by name</Text>
-                    <Text style={styles.menuDesc}>Find from our database</Text>
+                    <Text style={styles.menuLabel}>Take a photo</Text>
+                    <Text style={styles.menuDesc}>
+                      Snap the front of the product — works without a barcode
+                    </Text>
                   </View>
                   <Feather name="chevron-right" size={16} color={Colors.textMuted} />
                 </TouchableOpacity>
@@ -314,21 +322,18 @@ export const AddProductSheet: React.FC<Props> = ({ visible, onClose }) => {
                   </View>
                   <View style={styles.menuTextCol}>
                     <Text style={styles.menuLabel}>Scan barcode</Text>
-                    <Text style={styles.menuDesc}>Use your camera</Text>
+                    <Text style={styles.menuDesc}>Fastest if your product has one</Text>
                   </View>
                   <Feather name="chevron-right" size={16} color={Colors.textMuted} />
                 </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={styles.menuOption}
-                  onPress={() => requestCameraAndGo('photo')}
-                >
+                <TouchableOpacity style={styles.menuOption} onPress={() => setMode('search')}>
                   <View style={styles.menuIconWrap}>
-                    <Feather name="camera" size={20} color={Colors.primary} />
+                    <Feather name="search" size={20} color={Colors.primary} />
                   </View>
                   <View style={styles.menuTextCol}>
-                    <Text style={styles.menuLabel}>Take a photo</Text>
-                    <Text style={styles.menuDesc}>Snap the product packaging</Text>
+                    <Text style={styles.menuLabel}>Search by name</Text>
+                    <Text style={styles.menuDesc}>Find from our database</Text>
                   </View>
                   <Feather name="chevron-right" size={16} color={Colors.textMuted} />
                 </TouchableOpacity>
