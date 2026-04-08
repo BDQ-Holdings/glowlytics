@@ -387,4 +387,29 @@ describe('useStore', () => {
       expect(sub.free_scans_used).toBe(0);
     });
   });
+
+  describe('createUser auto-trial', () => {
+    it('starts a 7-day trial when createUser runs without an existing trial', () => {
+      useStore.getState().createUser({ age_range: '25-34' });
+      const sub = useStore.getState().subscription;
+      expect(sub.trial_start_date).not.toBeNull();
+      expect(sub.trial_end_date).not.toBeNull();
+      const start = new Date(sub.trial_start_date!).getTime();
+      const end = new Date(sub.trial_end_date!).getTime();
+      const days = Math.round((end - start) / (1000 * 60 * 60 * 24));
+      expect(days).toBe(7);
+    });
+
+    it('canPerformScan returns true immediately after createUser', () => {
+      useStore.getState().createUser({ age_range: '25-34' });
+      expect(useStore.getState().canPerformScan()).toBe(true);
+    });
+
+    it('does not overwrite an existing trial when createUser runs again', () => {
+      useStore.getState().createUser({ age_range: '25-34' });
+      const firstStart = useStore.getState().subscription.trial_start_date;
+      useStore.getState().createUser({ age_range: '25-34' });
+      expect(useStore.getState().subscription.trial_start_date).toBe(firstStart);
+    });
+  });
 });

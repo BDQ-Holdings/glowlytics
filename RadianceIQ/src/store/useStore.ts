@@ -200,6 +200,10 @@ export const useStore = create<AppState>((set, get) => ({
       onboarding_complete: false,
     });
     set({ user });
+    // Auto-start the 7-day trial on first user creation. Idempotent — startTrial() is a no-op
+    // if trial_start_date already exists. Closes the gap where users reach the camera before
+    // hitting the onboarding paywall (e.g. upgraded from a pre-paywall build).
+    get().startTrial();
     debouncedPersist(() => get().persistData());
     if (user) syncToBackend(() => api.createUser(user));
   },
