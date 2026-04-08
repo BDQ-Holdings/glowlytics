@@ -81,6 +81,15 @@ export const getHealthConnectionState = async (
   }
 };
 
+/**
+ * Request HealthKit read authorization for sleep, HRV, RHR, steps, and mindful.
+ *
+ * NOTE: HealthKit does not report per-type READ grants for privacy reasons —
+ * Apple explicitly hides this to prevent apps from inferring which data the
+ * user has. `granted_types` therefore stays empty here. Downstream code should
+ * infer actual grants by observing which fields come back non-null from
+ * `pullLastNDays` and update `HealthConnectionState.granted_types` accordingly.
+ */
 export const connectHealthData = async (
   _priorStatus?: PermissionStatus,
 ): Promise<HealthConnectionState> => {
@@ -89,14 +98,23 @@ export const connectHealthData = async (
   }
 
   try {
-    // requestAuthorization resolves `true` on success. The user may still
-    // deny individual types — HealthKit does not report per-type grants.
-    await requestAuthorization({ toRead: READ_IDENTIFIERS });
+    const ok = await requestAuthorization({ toRead: READ_IDENTIFIERS });
+    if (!ok) {
+      return {
+        source: 'apple_health',
+        status: 'denied',
+        requested_types: REQUESTED_TYPES,
+        granted_types: [],
+        sync_skipped: false,
+        last_checked_at: new Date().toISOString(),
+        availability_note: 'HealthKit authorization dialog did not complete.',
+      };
+    }
     return {
       source: 'apple_health',
       status: 'granted',
       requested_types: REQUESTED_TYPES,
-      granted_types: REQUESTED_TYPES,
+      granted_types: [], // See JSDoc — HealthKit does not disclose per-type reads.
       sync_skipped: false,
       last_checked_at: new Date().toISOString(),
     };

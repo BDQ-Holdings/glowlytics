@@ -66,7 +66,7 @@ async function syncOneDay(date: Date, userId: string): Promise<SyncOneDayResult>
   try {
     const samples = await queryQuantitySamples(
       'HKQuantityTypeIdentifierHeartRateVariabilitySDNN',
-      { limit: 0, filter: dateFilter },
+      { limit: 0, filter: dateFilter, unit: 'ms' },
     );
     if (samples.length > 0) {
       hrv = samples.reduce((sum, s) => sum + s.quantity, 0) / samples.length;
@@ -80,7 +80,7 @@ async function syncOneDay(date: Date, userId: string): Promise<SyncOneDayResult>
   try {
     const samples = await queryQuantitySamples(
       'HKQuantityTypeIdentifierRestingHeartRate',
-      { limit: 1, filter: dateFilter, ascending: false },
+      { limit: 1, filter: dateFilter, ascending: false, unit: 'count/min' },
     );
     if (samples.length > 0) rhr = samples[0].quantity;
   } catch (e: any) {
@@ -92,7 +92,7 @@ async function syncOneDay(date: Date, userId: string): Promise<SyncOneDayResult>
   try {
     const samples = await queryQuantitySamples(
       'HKQuantityTypeIdentifierStepCount',
-      { limit: 0, filter: dateFilter },
+      { limit: 0, filter: dateFilter, unit: 'count' },
     );
     if (samples.length > 0) {
       steps = Math.round(samples.reduce((sum, s) => sum + s.quantity, 0));
@@ -136,11 +136,7 @@ async function syncOneDay(date: Date, userId: string): Promise<SyncOneDayResult>
     mindful_minutes: mindful,
     synced_at: new Date().toISOString(),
     partial:
-      sleepTotal === null ||
-      hrv === null ||
-      rhr === null ||
-      steps === null ||
-      mindful === null,
+      sleepTotal === null && hrv === null && rhr === null,
   };
 
   return { record, errors };
