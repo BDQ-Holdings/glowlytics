@@ -24,7 +24,8 @@ Glowlytics is a skin health tracking app that enables users to gain insights int
 - **Vision LLM API** — Fine-tuned GPT-4o for skin image analysis with condition detection (9 types × 8 facial zones), personalized feedback, local fallback
 - **3-layer parallel vision pipeline** — Layer 1: deterministic features (CIELAB, ITA, GLCM, LBP, Gabor, Frangi) + Layer 2: ONNX CV models (structure MobileNetV3, hydration/elasticity EfficientNet-B0, YOLOv8 lesion detector) + Layer 3: fine-tuned GPT-4o. Score merging: L2 overrides > L1+L3 blend.
 - **On-device lesion detection** — YOLOv8 ONNX model via onnxruntime-react-native, CoreML on iOS. Downloads from HuggingFace on first use, cached locally. Real-time inference during camera scan.
-- **RAG pipeline** — Pinecone vector DB + OpenAI text-embedding-3-small, 19 curated AAD/ACOG guideline chunks, auto-queried on each scan for evidence-based recommendations
+- **RAG pipeline** — Pinecone vector DB + OpenAI text-embedding-3-small, 77 curated guideline chunks (AAD, ACOG, EADV, BAD, NICE, Cochrane, WHO, AFP), signal-filtered queries with evidence level badges and source citations
+- **Routine builder** — Smart product ordering (cleanser→SPF), ingredient conflict detection (4 rules with resolutions), signal-driven adjustment tips referencing user's actual products
 - **Real-time face tracking** — react-native-vision-camera with MLKit face detection frame processor (GPU-accelerated, zero disk I/O, ~15-30ms per frame). Replaced expo-face-detector (deprecated).
 - **On-device photo quality** — MLKit face detection for fill %, centering, angle validation (via react-native-vision-camera frame processor)
 - Scanner data: **deterministic simulation** with seeded PRNG for reproducible readings

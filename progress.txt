@@ -1,6 +1,6 @@
 Glowlytics - Build Progress
 ===========================
-Last Updated: 2026-03-31
+Last Updated: 2026-04-02
 
 MILESTONES (chronological):
  1. Foundation: Expo SDK 54, TypeScript, Expo Router, Zustand
@@ -27,10 +27,14 @@ MILESTONES (chronological):
 22. Profile: colored sections, tier badges, personal bests grid
 23. Bug fixing: paywall bypass, baseline trend, IDOR, progress ring, cycle day TZ
 24. DB schema: user_profiles columns + whitelist fields for PATCH
+25. Routine builder: smart product ordering, conflict detection, signal-driven tips
+26. Lesion labels: clinical name + subtitle, evidence badges, post-capture summary
+27. RAG expansion: 77 guideline chunks (was 60), signal-filtered queries, source citations
+28. Scan pipeline: backend failure fallback, detection leak fix, coordinate mapping fix
 
 CURRENT STATUS:
-- 0 TS errors, 48 screens, 24 components, 21 services, 7 backend modules
-- 448 tests passing across 26 test suites
+- 0 TS errors, 48 screens, 24 components, 21 services, 7 backend modules, 2 new constants files
+- 448 tests passing across 26 test suites (22 routineBuilder tests added)
 - Scan flow: Camera → Analyzing (infinity loop) → Results (story pages)
 - Backend live on Railway with PostgreSQL, ONNX models, RAG pipeline
 - Latest build submitted to App Store Connect (ASC App ID: 6760600635)
@@ -93,6 +97,42 @@ COMPLETED (grouped by area):
 - DB schema: added missing user_profiles columns + whitelist PATCH fields
 - Model downloads: pinned to commit hash, auto-download at startup
 
+[Routine Builder & Clinical Overhaul (2026-04-01)]
+- Smart product ordering: cleanser→serum→moisturizer→SPF within AM/PM sections
+- Ingredient conflict detection: 4 rules (retinoid+AHA, vitC+BP, etc.) with resolution actions
+- Signal-driven adjustment tips: reference user's actual product names, product-aware
+- Timing labels on ProductCard ("first step", "on damp skin", "last step")
+- Conflict banners with amber left border + resolution text
+- routineBuilder.ts: categorize, sort, detect conflicts, generate adjustments (22 tests)
+- ingredients.ts: 7 category defs, 5 ingredient classes, 4 conflict rules
+
+[Lesion Labels & Clinical Guidelines (2026-04-01)]
+- LesionOverlay: clinical name (Papule) + subtitle (inflammatory bump) on labels
+- Label pill flips below bounding box when near top of screen
+- Lesion summary pill on results signals page ("3 lesions detected")
+- Subtitles added to all 7 lesion types + fallback
+- RAG expansion: 60 → 77 guideline chunks (men's health, barrier repair, hyperpigmentation, nutrition, lesion red flags)
+- Signal-filtered RAG queries with Pinecone metadata filter
+- Evidence level badges (Grade A/B/C) on signal detail guidelines
+- Source citations on clinical guidelines
+- GPT-4o insight prompt: cite guidelines by number, prefer Grade A evidence
+
+[Scan Pipeline Fixes (2026-04-02)]
+- detectingRef leak: early return from takePhoto() now resets ref (was permanently stopping detection)
+- Backend failure fallback: Vision API errors now fall back to local heuristics (confidence: low)
+- Coordinate mismatch: LesionOverlay uses actual photo dimensions, not frame processor resolution
+- Server detect: resize to 640px before upload (~100KB vs 4MB), timeout 5s→15s
+- Scanner indices: removed fake fallback values (40/30/35) → honest 0
+
+[Edge Case Hardening (2026-04-02)]
+- routineBuilder: null guards on ingredients_list spreads (3 sites)
+- LesionOverlay: bbox null/length guard before destructuring
+- FacialMesh: confidence NaN guard (?? 0.5)
+- cycleDay: malformed date string guard (Number.isFinite)
+- useFaceTracking: issue content comparison not just count (fixes stale coaching text)
+- download-models.sh: mkdir -p, 2-attempt retry, file size validation, atomic .tmp rename
+- Products tab: numberOfLines on conflict/adjustment text, Set-based conflict filter, Map lookup
+
 REMAINING (Launch checklist):
 [ ] !! Clerk PRODUCTION keys (replace pk_test_ → pk_live_) !!
     → eas.json production profile + Railway sk_live_ + CLERK_ISSUER_URL
@@ -102,7 +142,7 @@ REMAINING (Launch checklist):
 [ ] Content rating questionnaire (12+, medical info: yes)
 [ ] Seed Pinecone on production: POST /api/rag/seed
 [ ] TestFlight smoke test: 3 journeys + subscription + paywall
-[ ] Deploy ONNX models to Railway (115MB, needs LFS or external hosting)
+[x] Deploy ONNX models to Railway (auto-downloaded via postinstall hook)
 [ ] Run ML evaluation notebook (target: MAE < 10, Pearson r > 0.7)
 [ ] Submit for App Review
 

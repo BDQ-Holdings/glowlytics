@@ -166,7 +166,6 @@
       width: 32px;
       height: 32px;
       object-fit: contain;
-      filter: drop-shadow(0 0 8px rgba(125, 231, 225, 0.3));
     }
 
     .nav-logo-text {
@@ -210,7 +209,6 @@
     .nav-links .nav-cta:hover {
       background: rgba(125, 231, 225, 0.18);
       border-color: rgba(125, 231, 225, 0.35);
-      box-shadow: 0 0 20px rgba(125, 231, 225, 0.1);
       color: var(--teal);
     }
 
@@ -289,56 +287,7 @@
       -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, black 20%, transparent 70%);
     }
 
-    /* Floating orbs — GPU composited */
-    .hero-orb {
-      position: absolute;
-      border-radius: 50%;
-      filter: blur(60px);
-      opacity: 0;
-      animation: orbFloat 8s ease-in-out infinite;
-      will-change: transform;
-      contain: layout style;
-    }
-
-    .hero-orb-1 {
-      width: 300px;
-      height: 300px;
-      background: var(--teal);
-      top: 15%;
-      left: 10%;
-      opacity: 0.06;
-      animation-delay: 0s;
-      animation-duration: 10s;
-    }
-
-    .hero-orb-2 {
-      width: 200px;
-      height: 200px;
-      background: var(--purple);
-      top: 60%;
-      right: 15%;
-      opacity: 0.08;
-      animation-delay: -3s;
-      animation-duration: 8s;
-    }
-
-    .hero-orb-3 {
-      width: 250px;
-      height: 250px;
-      background: var(--teal);
-      bottom: 10%;
-      left: 40%;
-      opacity: 0.05;
-      animation-delay: -6s;
-      animation-duration: 12s;
-    }
-
-    @keyframes orbFloat {
-      0%, 100% { transform: translate(0, 0) scale(1); }
-      25% { transform: translate(20px, -30px) scale(1.05); }
-      50% { transform: translate(-10px, 20px) scale(0.95); }
-      75% { transform: translate(15px, 10px) scale(1.02); }
-    }
+    /* Orbs removed — decorative, not purposeful */
 
     .hero-content {
       position: relative;
@@ -368,13 +317,6 @@
       height: 7px;
       border-radius: 50%;
       background: var(--teal);
-      box-shadow: 0 0 8px var(--teal);
-      animation: pulseDot 2.5s ease-in-out infinite;
-    }
-
-    @keyframes pulseDot {
-      0%, 100% { opacity: 1; box-shadow: 0 0 8px var(--teal); }
-      50% { opacity: 0.5; box-shadow: 0 0 16px var(--teal); }
     }
 
     .hero h1 {
@@ -393,26 +335,6 @@
       -webkit-text-fill-color: transparent;
       background-clip: text;
       position: relative;
-    }
-
-    /* Animated underline glow */
-    .hero h1 .accent::after {
-      content: '';
-      position: absolute;
-      bottom: 2px;
-      left: 0;
-      right: 0;
-      height: 3px;
-      background: linear-gradient(90deg, var(--teal), var(--purple));
-      border-radius: 2px;
-      opacity: 0.4;
-      filter: blur(4px);
-      animation: glowPulse 3s ease-in-out infinite;
-    }
-
-    @keyframes glowPulse {
-      0%, 100% { opacity: 0.3; }
-      50% { opacity: 0.7; }
     }
 
     .hero-sub {
@@ -448,27 +370,15 @@
       cursor: pointer;
       letter-spacing: -0.2px;
       transition: all 0.3s var(--ease-out);
-      box-shadow: 0 0 30px rgba(125, 231, 225, 0.2), 0 4px 16px rgba(125, 231, 225, 0.15);
+      box-shadow: 0 2px 8px rgba(125, 231, 225, 0.12);
       position: relative;
       overflow: hidden;
     }
 
-    .btn-primary::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.25) 50%, transparent 100%);
-      transform: translateX(-100%);
-      transition: transform 0.6s ease;
-    }
-
-    .btn-primary:hover::before {
-      transform: translateX(100%);
-    }
 
     .btn-primary:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 0 40px rgba(125, 231, 225, 0.35), 0 8px 24px rgba(125, 231, 225, 0.2);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 16px rgba(125, 231, 225, 0.18);
     }
 
     .btn-primary svg { transition: transform 0.25s ease; }
@@ -515,9 +425,9 @@
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      width: 120%;
-      height: 120%;
-      background: radial-gradient(ellipse, rgba(125,231,225,0.1) 0%, rgba(138,111,232,0.06) 40%, transparent 70%);
+      width: 110%;
+      height: 110%;
+      background: radial-gradient(ellipse, rgba(255,255,255,0.03) 0%, transparent 70%);
       filter: blur(40px);
       z-index: 1;
       pointer-events: none;
@@ -530,8 +440,7 @@
       border: 4px solid rgba(255,255,255,0.08);
       box-shadow:
         0 0 0 1px rgba(255,255,255,0.04),
-        0 20px 60px rgba(0,0,0,0.5),
-        0 0 100px rgba(125, 231, 225, 0.08);
+        0 20px 60px rgba(0,0,0,0.5);
       position: relative;
       z-index: 3;
       background: var(--bg-deep);
@@ -552,11 +461,10 @@
     }
 
     .phone:hover {
-      transform: translateY(-8px) scale(1.01);
+      transform: translateY(-4px);
       box-shadow:
         0 0 0 1px rgba(255,255,255,0.06),
-        0 30px 80px rgba(0,0,0,0.6),
-        0 0 120px rgba(125, 231, 225, 0.12);
+        0 24px 64px rgba(0,0,0,0.5);
     }
 
     .phone img {
@@ -612,7 +520,7 @@
     .score-track { fill: none; stroke: rgba(255,255,255,0.06); stroke-width: 5; }
     .score-fill {
       fill: none;
-      stroke: url(#scoreGrad);
+      stroke: var(--teal);
       stroke-width: 5;
       stroke-linecap: round;
       stroke-dasharray: 0 188;
@@ -877,9 +785,8 @@
       top: 56px;
       left: calc(16.66% + 16px);
       right: calc(16.66% + 16px);
-      height: 2px;
-      background: linear-gradient(90deg, var(--purple), var(--teal));
-      opacity: 0.2;
+      height: 1px;
+      background: rgba(0,0,0,0.1);
       border-radius: 1px;
     }
 
@@ -913,9 +820,9 @@
       z-index: 2;
     }
 
-    .step-1 .step-num { background: linear-gradient(135deg, var(--purple), #6B8AFF); color: #fff; }
-    .step-2 .step-num { background: linear-gradient(135deg, var(--teal), #39B5BF); color: var(--bg-deep); }
-    .step-3 .step-num { background: linear-gradient(135deg, var(--amber), var(--coral)); color: #fff; }
+    .step-1 .step-num { background: var(--purple); color: #fff; }
+    .step-2 .step-num { background: var(--teal); color: var(--bg-deep); }
+    .step-3 .step-num { background: var(--coral); color: #fff; }
 
     .step-icon {
       font-size: 36px;
@@ -1203,10 +1110,9 @@
     }
 
     .layer-card:hover {
-      border-color: rgba(125,231,225,0.2);
-      background: rgba(255,255,255,0.08);
-      transform: translateY(-4px);
-      box-shadow: 0 12px 32px rgba(0,0,0,0.3);
+      border-color: rgba(255,255,255,0.15);
+      background: rgba(255,255,255,0.07);
+      transform: translateY(-2px);
     }
 
     .layer-num {
@@ -1268,8 +1174,7 @@
     }
 
     .testimonial-card:hover {
-      border-color: rgba(125, 231, 225, 0.15);
-      box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+      border-color: rgba(255,255,255,0.12);
     }
 
     .t-stars {
@@ -1312,13 +1217,13 @@
       width: 44px;
       height: 44px;
       border-radius: 50%;
-      background: linear-gradient(135deg, var(--purple), var(--teal));
+      background: rgba(125, 231, 225, 0.12);
       display: flex;
       align-items: center;
       justify-content: center;
       font-weight: 700;
       font-size: 16px;
-      color: #fff;
+      color: var(--teal);
     }
 
     .testimonial-meta .t-name {
@@ -1557,16 +1462,7 @@
       content-visibility: visible;
     }
 
-    .cta-glow {
-      position: absolute;
-      top: 0;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 600px;
-      height: 400px;
-      background: radial-gradient(ellipse, rgba(125,231,225,0.08) 0%, transparent 70%);
-      pointer-events: none;
-    }
+    .cta-glow { display: none; }
 
     .cta-inner {
       max-width: 560px;
@@ -1614,8 +1510,7 @@
     }
 
     .email-form:focus-within {
-      border-color: rgba(125,231,225,0.3);
-      box-shadow: 0 0 0 4px rgba(125,231,225,0.06), 0 0 30px rgba(125,231,225,0.05);
+      border-color: rgba(125,231,225,0.25);
       background: rgba(255,255,255,0.08);
     }
 
@@ -1651,7 +1546,7 @@
 
     .email-form button:hover {
       transform: translateY(-1px);
-      box-shadow: 0 4px 16px rgba(125,231,225,0.25);
+      opacity: 0.9;
     }
 
     .form-note {
@@ -1680,12 +1575,11 @@
       width: 48px;
       height: 48px;
       border-radius: 50%;
-      background: linear-gradient(135deg, var(--teal) 0%, var(--purple) 100%);
+      background: var(--teal);
       display: flex;
       align-items: center;
       justify-content: center;
       margin: 0 auto 14px;
-      box-shadow: 0 4px 16px rgba(125,231,225,0.3);
     }
 
     .form-ok-icon svg {
@@ -1696,6 +1590,19 @@
     @keyframes checkDraw {
       from { opacity: 0; transform: scale(0.5); }
       to { opacity: 1; transform: scale(1); }
+    }
+
+    .form-error {
+      display: none;
+      max-width: 460px;
+      margin: 12px auto 0;
+      padding: 12px 16px;
+      background: rgba(255, 122, 120, 0.08);
+      border: 1px solid rgba(255, 122, 120, 0.2);
+      border-radius: 12px;
+      font-size: 13px;
+      color: var(--coral);
+      text-align: center;
     }
 
     .form-ok-title {
@@ -1968,7 +1875,6 @@
       font-weight: 700;
       font-family: var(--font-body);
       letter-spacing: -0.2px;
-      box-shadow: 0 0 20px rgba(125, 231, 225, 0.2);
     }
 
     .sticky-cta-sub {
@@ -1993,6 +1899,7 @@
       overflow: hidden;
       vertical-align: bottom;
       height: 1.05em;
+      text-align: left;
     }
 
     /* Disable the underline glow on rotator accent spans */
@@ -2073,9 +1980,9 @@
     }
 
     .back-top:hover {
-      background: rgba(125, 231, 225, 0.15);
-      border-color: rgba(125, 231, 225, 0.2);
-      color: var(--teal);
+      background: rgba(255,255,255,0.08);
+      border-color: rgba(255,255,255,0.15);
+      color: rgba(255,255,255,0.8);
     }
 
     @media (max-width: 600px) {
@@ -2129,16 +2036,13 @@
 <section class="hero">
   <div class="hero-mesh"></div>
   <div class="hero-grid"></div>
-  <div class="hero-orb hero-orb-1"></div>
-  <div class="hero-orb hero-orb-2"></div>
-  <div class="hero-orb hero-orb-3"></div>
 
   <div class="hero-content" id="hero-content">
     <div class="hero-badge an an1">
       <span class="hero-badge-dot" aria-hidden="true"></span>
       Built by doctors. Backed by research.
     </div>
-    <h1 class="an an2">See real results<br>in <span class="hero-rotate"><span class="hero-rotate-inner"><span class="accent">7 days.</span><span class="accent">Your skin.</span><span class="accent">The data.</span></span></span></h1>
+    <h1 class="an an2">See real results<br>in <span class="hero-rotate" aria-live="polite" aria-atomic="true"><span class="hero-rotate-inner"><span class="accent">7 days.</span><span class="accent">your skin.</span><span class="accent">the data.</span></span></span></h1>
     <p class="hero-sub an an3">The first skin tracker that actually explains what it sees. Scan your face in seconds and get clinical-grade scores for acne, hydration, sun damage, and more.</p>
     <div class="hero-actions an an4">
       <a href="#access" class="btn-primary">
@@ -2322,14 +2226,6 @@
   </div>
 </section>
 
-<!-- MID-PAGE CTA -->
-<div class="mid-cta mid-cta-light reveal rd1">
-  <p>Ready to understand your skin? Start your free 7-day trial.</p>
-  <a href="#access" class="btn-primary" style="background:var(--teal-dark);box-shadow:none;">
-    Start Free Trial
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M1 7h12M8 2l5 5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-  </a>
-</div>
 
 <!-- WHY GLOWLYTICS — comparison section -->
 <section class="why" style="background:var(--cream);padding:0 clamp(20px,5vw,48px) 120px;">
@@ -2406,14 +2302,6 @@
   </div>
 </section>
 
-<!-- MID-PAGE CTA 2 -->
-<div class="mid-cta mid-cta-dark">
-  <p class="reveal rd1">Three engines. One scan. Zero guesswork.</p>
-  <a href="#access" class="btn-primary reveal rd2" style="font-size:14px;padding:14px 28px;">
-    Get Early Access
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M1 7h12M8 2l5 5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-  </a>
-</div>
 
 <!-- TRUST LOGOS -->
 <div class="trust-strip">
@@ -2438,6 +2326,11 @@
     <div class="trust-logo reveal rd5" title="ACOG Clinical Guidelines">
       <span class="trust-wordmark">ACOG</span>
       <span>Guidelines</span>
+    </div>
+    <div class="trust-logo reveal rd6" title="Featured on BetaList">
+      <a target="_blank" rel="noopener noreferrer" href="https://betalist.com/startups/glowlytics?utm_campaign=badge-glowlytics&utm_medium=badge&utm_source=badge-featured" style="display:flex;align-items:center;">
+        <img alt="Glowlytics on BetaList" width="156" height="54" style="width:156px;height:54px;opacity:0.5;transition:opacity 0.3s ease;" onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='0.5'" src="https://betalist.com/badges/featured?id=153472&theme=color" loading="lazy">
+      </a>
     </div>
   </div>
 </div>
@@ -2555,6 +2448,7 @@
       </form>
       <p class="form-note" id="form-note">No spam, ever. Unsubscribe in one click.</p>
 
+      <div class="form-error" id="form-error" role="alert">Something went wrong. Please try again in a moment.</div>
       <div class="form-ok" id="form-ok">
         <div class="form-ok-icon">
           <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
@@ -2666,6 +2560,10 @@
     const email = input.value.trim();
     if (!email) return;
 
+    // Clear previous error state
+    const errorEl = document.getElementById('form-error');
+    if (errorEl) errorEl.style.display = 'none';
+
     btn.textContent = 'Joining...';
     btn.disabled = true;
     btn.style.opacity = '0.7';
@@ -2687,16 +2585,28 @@
       ok.style.display = 'block';
     })
     .catch(() => {
-      // API failed — store locally for recovery, show softer confirmation
+      // API failed — try localStorage, show honest state
+      let saved = false;
       try {
         const list = JSON.parse(localStorage.getItem('gl_wl') || '[]');
         list.push({ email, t: new Date().toISOString() });
         localStorage.setItem('gl_wl', JSON.stringify(list));
-      } catch (err) { /* storage full */ }
-      form.style.display = 'none';
-      note.style.display = 'none';
-      ok.style.display = 'block';
-      // Update copy to reflect offline save
+        saved = true;
+      } catch (err) { /* storage full or unavailable */ }
+
+      if (saved) {
+        form.style.display = 'none';
+        note.style.display = 'none';
+        ok.style.display = 'block';
+      } else {
+        // Both API and localStorage failed — show error, let user retry
+        const errorEl = document.getElementById('form-error');
+        if (errorEl) errorEl.style.display = 'block';
+        btn.textContent = 'Join Waitlist';
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        return;
+      }
       const title = ok.querySelector('.form-ok-title');
       const sub = ok.querySelector('.form-ok-sub');
       if (title) title.textContent = 'Almost there!';

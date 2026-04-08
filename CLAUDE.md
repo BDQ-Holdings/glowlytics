@@ -14,8 +14,8 @@ cornell-hackathon/
       signal/, skin-metric/, product/, report/, paywall.tsx
     src/
       components/   # 24 files (see §Components below)
-      constants/    # theme.ts, signals.ts, lesions.ts
-      services/     # 21 services (see §Services below)
+      constants/    # theme.ts, signals.ts, lesions.ts, ingredients.ts
+      services/     # 21 services + routineBuilder.ts (see §Services below)
       store/        # Zustand (useStore.ts)
       utils/        # localDate.ts, cycleDay.ts, animations.ts
       hooks/, types/, config/
@@ -37,7 +37,7 @@ cornell-hackathon/
 | Vision | 3-layer: deterministic + ONNX CV + GPT-4o (`ft:gpt-4o-2024-08-06:personal:radianceiq-skin:DHBaOo20`) |
 | Camera | react-native-vision-camera + MLKit face detection frame processor |
 | Backend | Express + PostgreSQL + sharp + onnxruntime-node |
-| RAG | Pinecone + OpenAI embeddings (AAD/ACOG guidelines) |
+| RAG | Pinecone + OpenAI embeddings (77 guideline chunks, signal-filtered) |
 
 ## Commands
 
