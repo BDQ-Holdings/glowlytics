@@ -374,6 +374,11 @@ export const useStore = create<AppState>((set, get) => ({
   syncHealthData: async () => {
     const user = get().user;
     if (!user) return { added: 0, errors: ['no_user'] };
+    // Reentrancy guard: foreground listener + post-scan can fire close together.
+    // The in_progress flag becomes a real mutex by reading it here.
+    if (get().healthSyncStatus.in_progress) {
+      return { added: 0, errors: ['already_in_progress'] };
+    }
     set((s) => ({ healthSyncStatus: { ...s.healthSyncStatus, in_progress: true } }));
     try {
       // Dynamic require keeps the native HealthKit binding out of the Jest module graph.
