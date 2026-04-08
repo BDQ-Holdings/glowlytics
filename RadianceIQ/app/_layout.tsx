@@ -2,7 +2,7 @@ import 'react-native-get-random-values';
 import React, { useEffect, useRef, useState } from 'react';
 import { Stack, Redirect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { AppState, Image, StyleSheet, Text, View } from 'react-native';
 import { useFonts } from 'expo-font';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ClerkProvider, ClerkLoaded, useAuth } from '@clerk/clerk-expo';
@@ -204,6 +204,27 @@ function ClerkGatedApp() {
     return () => {
       listenerCleanup.current();
     };
+  }, []);
+
+  // Health sync on app foreground:
+  // Re-sync at most once every 6 hours, only during reasonable hours (7am-11pm local).
+  // The store's syncHealthData has its own reentrancy guard, but we still bound
+  // the trigger here to avoid unnecessary HealthKit roundtrips on every app resume.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next !== 'active') return;
+      const state = useStore.getState();
+      if (!state.user) return;
+      const lastSync = state.healthSyncStatus.last_sync_at;
+      const hoursSince = lastSync
+        ? (Date.now() - new Date(lastSync).getTime()) / (1000 * 60 * 60)
+        : Infinity;
+      const hour = new Date().getHours();
+      if (hoursSince > 6 && hour >= 7 && hour <= 23) {
+        state.syncHealthData().catch(() => {});
+      }
+    });
+    return () => sub.remove();
   }, []);
 
   // Show splash while initializing

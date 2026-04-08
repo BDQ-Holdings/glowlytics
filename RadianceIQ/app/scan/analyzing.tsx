@@ -409,6 +409,13 @@ export default function AnalyzingScreen() {
         zone_severity: analysis.zone_severity,
       });
 
+      // Pattern engine post-scan trigger: opportunistic health sync + pattern recompute.
+      // syncHealthData has its own reentrancy guard and will short-circuit if a sync
+      // is already in progress; runPatternDetection is also safe to call directly
+      // because the engine is pure and the store action wraps it in try/catch.
+      useStore.getState().syncHealthData().catch(() => {});
+      useStore.getState().runPatternDetection();
+
       const currentState = useStore.getState();
       const xpGained = currentState.gamification.xp - xpBefore;
       const newBadges = currentState.gamification.badges.slice(badgesBefore);
