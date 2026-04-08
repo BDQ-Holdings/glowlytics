@@ -23,7 +23,7 @@
       "infoPlist": {
         "NSCameraUsageDescription": "Glowlytics uses the camera to capture guided skin scans and compare trends over time.",
         "NSPhotoLibraryUsageDescription": "Glowlytics needs photo library access to save scan photos.",
-        "NSHealthShareUsageDescription": "Glowlytics reads sleep and heart data to add context to your skin trends. It never writes health data.",
+        "NSHealthShareUsageDescription": "Glowlytics reads sleep, heart rate, HRV, steps, and mindful minutes from Apple Health to find patterns in your skin. This data stays on your device.",
         "NSFaceIDUsageDescription": "Glowlytics uses Face ID to securely unlock your account.",
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -72,7 +72,14 @@
           }
         }
       ],
-      ["expo-asset", { "assets": ["./assets/models"] }],
+      [
+        "expo-asset",
+        {
+          "assets": [
+            "./assets/models"
+          ]
+        }
+      ],
       "expo-font",
       "expo-notifications",
       "expo-web-browser",
@@ -82,6 +89,12 @@
         {
           "cameraPermissionText": "Glowlytics uses the camera to capture guided skin scans and compare trends over time.",
           "enableFrameProcessors": true
+        }
+      ],
+      [
+        "@kingstinct/react-native-healthkit",
+        {
+          "NSHealthShareUsageDescription": "Glowlytics reads sleep, heart rate, HRV, steps, and mindful minutes from Apple Health to find patterns in your skin. This data stays on your device."
         }
       ]
     ],
