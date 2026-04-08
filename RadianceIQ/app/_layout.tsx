@@ -207,7 +207,8 @@ function ClerkGatedApp() {
   }, []);
 
   // Health sync on app foreground:
-  // Re-sync at most once every 6 hours, only during reasonable hours (7am-11pm local).
+  // Re-sync at most once every 6 hours, only during waking hours (7am-midnight local) —
+  // skip overnight resumes when no new HealthKit data is likely to be present.
   // The store's syncHealthData has its own reentrancy guard, but we still bound
   // the trigger here to avoid unnecessary HealthKit roundtrips on every app resume.
   useEffect(() => {
