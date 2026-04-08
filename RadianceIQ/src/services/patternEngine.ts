@@ -314,9 +314,13 @@ function detectCycleSignalPhase(slices: DaySlice[], profile: UserProfile): Patte
     byCycleDay.set(cycleDay, list);
   }
 
-  // Need at least 1.2 cycles of coverage
+  // Need at least 1.2 cycles worth of total paired data points.
+  // We check total N rather than unique cycle days so that 2 complete cycles
+  // (which only span cycleLength unique days) still qualify.
   const minDays = Math.floor(cycleLength * 1.2);
-  if (byCycleDay.size < minDays) return [];
+  let totalN = 0;
+  for (const values of byCycleDay.values()) totalN += values.length;
+  if (totalN < minDays) return [];
 
   const cycleDays: Array<{ day: number; mean: number }> = [];
   for (const [day, values] of byCycleDay.entries()) {
@@ -336,18 +340,18 @@ function detectCycleSignalPhase(slices: DaySlice[], profile: UserProfile): Patte
 
   const daysBeforePeriod = cycleLength - peakDay;
 
-  // Measure how peaked the cycle is vs. uniform distribution
-  // Use correlation between cycle day ordinal and signal as a rough strength measure
-  const xs = cycleDays.map((c) => c.day);
-  const ys = cycleDays.map((c) => c.mean);
-  const r = pearson(xs, ys);
-  const absR = Math.abs(r);
+  // Measure pattern strength by how much the peak rises above the mean.
+  // A strong cycle pattern has a pronounced peak; flat data has weak peak/mean ratio.
+  // Use 4σ as the "strong" reference point — peaks from random noise after
+  // averaging rarely exceed that threshold.
+  const overallMean = cycleDays.reduce((a, c) => a + c.mean, 0) / cycleDays.length;
+  const peakRise = peakMean - overallMean;
+  const variance =
+    cycleDays.reduce((a, c) => a + (c.mean - overallMean) ** 2, 0) / cycleDays.length;
+  const std = Math.sqrt(variance);
+  const normalizedStrength = std > 0 ? Math.min(1, peakRise / (std * 4)) : 0;
 
-  // Total paired data points across all cycle days
-  let totalN = 0;
-  for (const values of byCycleDay.values()) totalN += values.length;
-
-  const conf = scoreConfidence(absR, totalN);
+  const conf = scoreConfidence(normalizedStrength, totalN);
   if (!conf) return out;
 
   const insightText = `Your inflammation peaks ${daysBeforePeriod} days before your period`;
@@ -360,7 +364,7 @@ function detectCycleSignalPhase(slices: DaySlice[], profile: UserProfile): Patte
     driver: 'cycle_day',
     driverLabel: 'cycle',
     confidence: conf,
-    correlationCoefficient: r,
+    correlationCoefficient: normalizedStrength,
     sampleSize: totalN,
     lagDays: -daysBeforePeriod,
     insightText,
