@@ -6,12 +6,17 @@ import type {
   ModelOutput, PrimaryGoal, ScanRegion, HealthConnectionState,
   GamificationState, Badge, WeeklyChallenge, LevelName,
   OnboardingScreenName, SubscriptionState, NotificationSettings,
-  DetectedLesion,
+  DetectedLesion, HealthDailyRecord, HealthSyncStatus, Pattern, FirstLookInsight,
 } from '../types';
 import { defaultSubscription, canScan as canScanPure, startTrial as computeTrial } from '../services/subscription';
 import * as api from '../services/api';
 import { buildOnboardingFlow } from '../services/onboardingFlow';
 import { localDateStr } from '../utils/localDate';
+import { detectPatterns } from '../services/patternEngine';
+// healthSync imports the native @kingstinct/react-native-healthkit module at the top level,
+// which throws when loaded under Jest (no TurboModule registry). Defer to a dynamic require
+// inside syncHealthData so the test environment never triggers the native binding.
+import type { pullLastNDays as PullLastNDays } from '../services/healthSync';
 import {
   getLevelForXP,
   getXPForScan,
@@ -48,6 +53,12 @@ interface AppState {
   // Notifications
   notificationSettings: NotificationSettings;
 
+  // Health data + patterns
+  healthDailyRecords: HealthDailyRecord[];
+  healthSyncStatus: HealthSyncStatus;
+  patterns: Pattern[];
+  firstLookInsight: FirstLookInsight | null;
+
   // Actions
   setOnboardingStep: (step: number) => void;
   setOnboardingFlow: (flow: OnboardingScreenName[]) => void;
@@ -81,6 +92,12 @@ interface AppState {
   startTrial: () => void;
   setNotificationTime: (time: string | null) => void;
   setNotificationsEnabled: (enabled: boolean) => void;
+  addHealthDailyRecord: (record: HealthDailyRecord) => void;
+  upsertHealthDailyRecord: (date: string, record: HealthDailyRecord) => void;
+  syncHealthData: () => Promise<{ added: number; errors: string[] }>;
+  setPatterns: (patterns: Pattern[]) => void;
+  setFirstLookInsight: (insight: FirstLookInsight | null) => void;
+  runPatternDetection: () => void;
 }
 
 const generateId = () => {
@@ -178,6 +195,15 @@ export const useStore = create<AppState>((set, get) => ({
   gamification: defaultGamification(),
   subscription: defaultSubscription(),
   notificationSettings: { notifications_enabled: false, notification_time: null },
+  healthDailyRecords: [],
+  healthSyncStatus: {
+    last_sync_at: null,
+    last_success_at: null,
+    last_error: null,
+    in_progress: false,
+  },
+  patterns: [],
+  firstLookInsight: null,
 
   setOnboardingStep: (step) => set({ onboardingStep: step }),
   setOnboardingFlow: (flow) => set({ onboardingFlow: flow }),
@@ -325,6 +351,88 @@ export const useStore = create<AppState>((set, get) => ({
     debouncedPersist(() => get().persistData());
     syncToBackend(() => api.addModelOutput(entry));
     get().updatePersonalBests();
+  },
+
+  addHealthDailyRecord: (record) => {
+    set((s) => ({ healthDailyRecords: [...s.healthDailyRecords, record] }));
+    debouncedPersist(() => get().persistData());
+  },
+
+  upsertHealthDailyRecord: (date, record) => {
+    set((s) => {
+      const existing = s.healthDailyRecords.findIndex((r) => r.date === date);
+      if (existing >= 0) {
+        const next = [...s.healthDailyRecords];
+        next[existing] = record;
+        return { healthDailyRecords: next };
+      }
+      return { healthDailyRecords: [...s.healthDailyRecords, record] };
+    });
+    debouncedPersist(() => get().persistData());
+  },
+
+  syncHealthData: async () => {
+    const user = get().user;
+    if (!user) return { added: 0, errors: ['no_user'] };
+    set((s) => ({ healthSyncStatus: { ...s.healthSyncStatus, in_progress: true } }));
+    try {
+      // Dynamic require keeps the native HealthKit binding out of the Jest module graph.
+      const pullLastNDays: typeof PullLastNDays = require('../services/healthSync').pullLastNDays;
+      const { records, errors } = await pullLastNDays(2, user.user_id);
+      for (const r of records) {
+        get().upsertHealthDailyRecord(r.date, r);
+      }
+      set((s) => ({
+        healthSyncStatus: {
+          ...s.healthSyncStatus,
+          in_progress: false,
+          last_sync_at: new Date().toISOString(),
+          last_success_at:
+            records.length > 0 ? new Date().toISOString() : s.healthSyncStatus.last_success_at,
+          last_error: errors.length > 0 ? errors[0] : null,
+        },
+      }));
+      // Trigger pattern re-detection after a successful sync
+      get().runPatternDetection();
+      return { added: records.length, errors };
+    } catch (e: any) {
+      set((s) => ({
+        healthSyncStatus: {
+          ...s.healthSyncStatus,
+          in_progress: false,
+          last_sync_at: new Date().toISOString(),
+          last_error: e?.message ?? String(e),
+        },
+      }));
+      return { added: 0, errors: [e?.message ?? String(e)] };
+    }
+  },
+
+  setPatterns: (patterns) => {
+    set({ patterns });
+    debouncedPersist(() => get().persistData());
+  },
+
+  setFirstLookInsight: (insight) => {
+    set({ firstLookInsight: insight });
+    debouncedPersist(() => get().persistData());
+  },
+
+  runPatternDetection: () => {
+    const state = get();
+    if (!state.user) return;
+    try {
+      const patterns = detectPatterns({
+        modelOutputs: state.modelOutputs,
+        dailyRecords: state.dailyRecords,
+        healthDailyRecords: state.healthDailyRecords,
+        userProfile: state.user,
+      });
+      set({ patterns });
+      debouncedPersist(() => get().persistData());
+    } catch (e: any) {
+      console.warn('[patternEngine] detection failed:', e?.message ?? e);
+    }
   },
 
   setPendingScanResult: (result) => set({ pendingScanResult: result }),
@@ -535,6 +643,15 @@ export const useStore = create<AppState>((set, get) => ({
           notificationSettings: parsed.notificationSettings || { notifications_enabled: false, notification_time: null },
           onboardingFlow: restoredFlow,
           onboardingFlowIndex: restoredIndex,
+          healthDailyRecords: parsed.healthDailyRecords || [],
+          healthSyncStatus: parsed.healthSyncStatus || {
+            last_sync_at: null,
+            last_success_at: null,
+            last_error: null,
+            in_progress: false,
+          },
+          patterns: parsed.patterns || [],
+          firstLookInsight: parsed.firstLookInsight || null,
         });
 
         // Backfill: upgraded users from pre-paywall builds may have no trial dates.
@@ -559,7 +676,11 @@ export const useStore = create<AppState>((set, get) => ({
 
   persistData: async () => {
     try {
-      const { user, protocol, products, dailyRecords, modelOutputs, gamification, subscription, notificationSettings, onboardingFlow, onboardingFlowIndex } = get();
+      const {
+        user, protocol, products, dailyRecords, modelOutputs, gamification,
+        subscription, notificationSettings, onboardingFlow, onboardingFlowIndex,
+        healthDailyRecords, healthSyncStatus, patterns, firstLookInsight,
+      } = get();
       // Cap stored records to last 365 days to prevent AsyncStorage bloat
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - 365);
@@ -567,8 +688,15 @@ export const useStore = create<AppState>((set, get) => ({
       const cappedDailyRecords = dailyRecords.filter((r) => r.date >= cutoffStr);
       const cappedDailyIds = new Set(cappedDailyRecords.map((r) => r.daily_id));
       const cappedModelOutputs = modelOutputs.filter((o) => cappedDailyIds.has(o.daily_id));
+      const cappedHealthRecords = healthDailyRecords.filter((r) => r.date >= cutoffStr);
       await AsyncStorage.setItem('glowlytics_data', JSON.stringify({
-        user, protocol, products, dailyRecords: cappedDailyRecords, modelOutputs: cappedModelOutputs, gamification, subscription, notificationSettings, onboardingFlow, onboardingFlowIndex,
+        user, protocol, products,
+        dailyRecords: cappedDailyRecords,
+        modelOutputs: cappedModelOutputs,
+        gamification, subscription, notificationSettings,
+        onboardingFlow, onboardingFlowIndex,
+        healthDailyRecords: cappedHealthRecords,
+        healthSyncStatus, patterns, firstLookInsight,
       }));
     } catch (e) {
       console.log('Failed to persist data', e);
@@ -593,6 +721,15 @@ export const useStore = create<AppState>((set, get) => ({
       gamification: defaultGamification(),
       subscription: defaultSubscription(),
       notificationSettings: { notifications_enabled: false, notification_time: null },
+      healthDailyRecords: [],
+      healthSyncStatus: {
+        last_sync_at: null,
+        last_success_at: null,
+        last_error: null,
+        in_progress: false,
+      },
+      patterns: [],
+      firstLookInsight: null,
     });
     try {
       await AsyncStorage.removeItem('glowlytics_data');
