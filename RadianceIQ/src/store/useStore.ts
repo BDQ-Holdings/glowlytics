@@ -536,6 +536,18 @@ export const useStore = create<AppState>((set, get) => ({
           onboardingFlow: restoredFlow,
           onboardingFlowIndex: restoredIndex,
         });
+
+        // Backfill: upgraded users from pre-paywall builds may have no trial dates.
+        // If they're not paid AND have never had a trial, grant one now (one-time only).
+        // Fix layer 2 of 3 for the paywall gap.
+        const restoredSub = get().subscription;
+        if (
+          !restoredSub.is_active &&
+          restoredSub.trial_start_date === null &&
+          restoredSub.trial_end_date === null
+        ) {
+          get().startTrial();
+        }
         return;
       }
 

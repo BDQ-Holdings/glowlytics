@@ -412,4 +412,76 @@ describe('useStore', () => {
       expect(useStore.getState().subscription.trial_start_date).toBe(firstStart);
     });
   });
+
+  describe('loadPersistedData trial backfill', () => {
+    const mockGetItem = AsyncStorage.getItem as jest.Mock;
+
+    afterEach(() => {
+      mockGetItem.mockReset();
+      mockGetItem.mockResolvedValue(null);
+    });
+
+    it('backfills trial for an upgraded user with no trial dates', async () => {
+      mockGetItem.mockResolvedValueOnce(
+        JSON.stringify({
+          user: { user_id: 'u1', age_range: '25-34', onboarding_complete: true },
+          subscription: {
+            tier: 'free',
+            is_active: false,
+            expires_at: null,
+            product_id: null,
+            free_scans_used: 0,
+            trial_start_date: null,
+            trial_end_date: null,
+          },
+        }),
+      );
+      await useStore.getState().loadPersistedData();
+      const sub = useStore.getState().subscription;
+      expect(sub.trial_start_date).not.toBeNull();
+      expect(sub.trial_end_date).not.toBeNull();
+      expect(useStore.getState().canPerformScan()).toBe(true);
+    });
+
+    it('does NOT touch a paid user', async () => {
+      mockGetItem.mockResolvedValueOnce(
+        JSON.stringify({
+          user: { user_id: 'u2', age_range: '25-34', onboarding_complete: true },
+          subscription: {
+            tier: 'premium',
+            is_active: true,
+            expires_at: '2099-01-01T00:00:00.000Z',
+            product_id: 'glow_pro_monthly',
+            free_scans_used: 0,
+            trial_start_date: null,
+            trial_end_date: null,
+          },
+        }),
+      );
+      await useStore.getState().loadPersistedData();
+      const sub = useStore.getState().subscription;
+      expect(sub.trial_start_date).toBeNull();
+      expect(sub.is_active).toBe(true);
+    });
+
+    it('does NOT touch a user whose trial has already expired', async () => {
+      mockGetItem.mockResolvedValueOnce(
+        JSON.stringify({
+          user: { user_id: 'u3', age_range: '25-34', onboarding_complete: true },
+          subscription: {
+            tier: 'free',
+            is_active: false,
+            expires_at: null,
+            product_id: null,
+            free_scans_used: 0,
+            trial_start_date: '2020-01-01T00:00:00.000Z',
+            trial_end_date: '2020-01-08T00:00:00.000Z',
+          },
+        }),
+      );
+      await useStore.getState().loadPersistedData();
+      expect(useStore.getState().subscription.trial_end_date).toBe('2020-01-08T00:00:00.000Z');
+      expect(useStore.getState().subscription.trial_start_date).toBe('2020-01-01T00:00:00.000Z');
+    });
+  });
 });
