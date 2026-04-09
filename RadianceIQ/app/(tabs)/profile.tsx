@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Alert, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Linking, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
@@ -24,6 +24,7 @@ import {
 import { scheduleDailyReminder, cancelDailyReminder } from '../../src/services/notifications';
 import { trackEvent, resetAnalytics } from '../../src/services/analytics';
 import { createDemoSeed } from '../../src/services/demoData';
+import { formatRelativeTime } from '../../src/utils/formatRelativeTime';
 import { GamificationCard } from '../../src/components/GamificationCard';
 import { LevelProgressBar } from '../../src/components/LevelProgressBar';
 import { BadgeShowcase } from '../../src/components/BadgeShowcase';
@@ -57,8 +58,12 @@ export default function ProfileTab() {
   const notificationSettings = useStore((s) => s.notificationSettings);
   const setNotificationTime = useStore((s) => s.setNotificationTime);
   const resetAll = useStore((s) => s.resetAll);
+  const healthConnection = useStore((s) => s.user?.health_connection);
+  const healthSyncStatus = useStore((s) => s.healthSyncStatus);
+  const updateHealthConnection = useStore((s) => s.updateHealthConnection);
 
   const [showTimePicker, setShowTimePicker] = useState(false);
+  const [healthConnecting, setHealthConnecting] = useState(false);
   const getStreak = useStore((s) => s.getStreak);
   const streak = getStreak();
 
@@ -133,6 +138,21 @@ export default function ProfileTab() {
         },
       ],
     );
+  };
+
+  const handleHealthConnect = async () => {
+    setHealthConnecting(true);
+    try {
+      const { connectHealthData } = require('../../src/services/healthPermissions');
+      const conn = await connectHealthData();
+      updateHealthConnection(conn);
+      if (conn.status === 'granted') {
+        useStore.getState().syncHealthData().catch(() => {});
+      }
+    } catch {
+      // Non-fatal
+    }
+    setHealthConnecting(false);
   };
 
   return (
@@ -318,6 +338,49 @@ export default function ProfileTab() {
           </>
         )}
       </View>
+
+      {/* Health Data */}
+      {Platform.OS === 'ios' && healthConnection?.status !== 'unavailable' && (
+        <View style={styles.card}>
+          <View style={styles.cardTitleRow}>
+            <Feather name="heart" size={15} color="#FF7A78" />
+            <Text style={styles.cardTitle}>Health Data</Text>
+          </View>
+          {healthConnection?.status === 'granted' ? (
+            <>
+              <InfoRow label="Apple Health" value="Connected" />
+              <InfoRow
+                label="Last synced"
+                value={formatRelativeTime(healthSyncStatus.last_sync_at) ?? 'Never'}
+              />
+              <TouchableOpacity
+                style={styles.modeButton}
+                onPress={() => {
+                  Linking.openURL('x-apple-health://').catch(() => {
+                    Linking.openURL('app-settings:').catch(() => {});
+                  });
+                }}
+                activeOpacity={0.7}
+              >
+                <Feather name="settings" size={16} color={Colors.primaryLight} />
+                <Text style={styles.modeButtonText}>Manage in iOS Settings</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <TouchableOpacity
+              style={styles.modeButton}
+              onPress={handleHealthConnect}
+              disabled={healthConnecting}
+              activeOpacity={0.7}
+            >
+              <Feather name="activity" size={16} color={Colors.primary} />
+              <Text style={[styles.modeButtonText, { color: Colors.primary }]}>
+                {healthConnecting ? 'Connecting...' : 'Connect Apple Health'}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
 
       {/* Notifications */}
       <View style={styles.card}>
