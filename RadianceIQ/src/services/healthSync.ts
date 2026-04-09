@@ -118,7 +118,11 @@ interface SyncOneDayResult {
   errors: string[];
 }
 
-async function syncOneDay(date: Date, userId: string): Promise<SyncOneDayResult> {
+async function syncOneDay(
+  date: Date,
+  userId: string,
+  menstrualSamples90d?: { startDate: Date; endDate: Date; value: number }[],
+): Promise<SyncOneDayResult> {
   const errors: string[] = [];
   const dateStr = localDateStr(date);
   const startOfDay = new Date(date);
@@ -226,6 +230,25 @@ async function syncOneDay(date: Date, userId: string): Promise<SyncOneDayResult>
     errors.push(`mindful: ${e?.message ?? e}`);
   }
 
+  // Menstrual flow (classify by most-severe sample for this day).
+  let menstrualFlow: HealthDailyRecord['menstrual_flow'] = null;
+  try {
+    const samples = await queryCategorySamples(
+      'HKCategoryTypeIdentifierMenstrualFlow',
+      { limit: 0, filter: dateFilter },
+    );
+    if (samples.length > 0) {
+      menstrualFlow = pickMaxSeverity(samples);
+    }
+  } catch (e: any) {
+    errors.push(`menstrual: ${e?.message ?? e}`);
+  }
+
+  // Cycle day: derive from pre-fetched 90-day menstrual samples.
+  const cycleDay = menstrualSamples90d
+    ? deriveCycleDay(menstrualSamples90d, date)
+    : null;
+
   const record: HealthDailyRecord = {
     health_daily_id: generateId(),
     user_id: userId,
@@ -238,6 +261,8 @@ async function syncOneDay(date: Date, userId: string): Promise<SyncOneDayResult>
     resting_hr_bpm: rhr,
     steps,
     mindful_minutes: mindful,
+    menstrual_flow: menstrualFlow,
+    cycle_day_estimated: cycleDay,
     synced_at: new Date().toISOString(),
     partial:
       sleepTotal === null && hrv === null && rhr === null,
@@ -253,14 +278,86 @@ export async function pullLastNDays(
   if (Platform.OS !== 'ios') {
     return { records: [], errors: ['platform_not_ios'] };
   }
+
+  // Pre-fetch 90-day menstrual window once (for cycle day derivation).
+  let menstrualSamples90d: { startDate: Date; endDate: Date; value: number }[] = [];
+  try {
+    const now = new Date();
+    const ninetyDaysAgo = new Date(now);
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+    const samples = await queryCategorySamples(
+      'HKCategoryTypeIdentifierMenstrualFlow',
+      { limit: 0, filter: { date: { startDate: ninetyDaysAgo, endDate: now } } },
+    );
+    menstrualSamples90d = samples.map((s) => ({
+      startDate: new Date(s.startDate),
+      endDate: new Date(s.endDate),
+      value: s.value as number,
+    }));
+  } catch {
+    // Non-fatal: cycle_day_estimated will be null for all days.
+  }
+
   const records: HealthDailyRecord[] = [];
   const errors: string[] = [];
   for (let daysAgo = 0; daysAgo < n; daysAgo++) {
     const date = new Date();
     date.setDate(date.getDate() - daysAgo);
-    const result = await syncOneDay(date, userId);
+    const result = await syncOneDay(date, userId, menstrualSamples90d);
     records.push(result.record);
     errors.push(...result.errors);
   }
   return { records, errors };
+}
+
+export async function detectCycleFromHealthKit(): Promise<{
+  detected: boolean;
+  lastPeriodStart: Date | null;
+  cycleLengthDays: number | null;
+  menstrualStatus: 'regular' | 'irregular' | null;
+}> {
+  if (Platform.OS !== 'ios') {
+    return { detected: false, lastPeriodStart: null, cycleLengthDays: null, menstrualStatus: null };
+  }
+  try {
+    const now = new Date();
+    const ninetyDaysAgo = new Date(now);
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+    const samples = await queryCategorySamples(
+      'HKCategoryTypeIdentifierMenstrualFlow',
+      { limit: 0, filter: { date: { startDate: ninetyDaysAgo, endDate: now } } },
+    );
+    const typedSamples = samples.map((s) => ({
+      startDate: new Date(s.startDate),
+      endDate: new Date(s.endDate),
+      value: s.value as number,
+    }));
+    const episodes = groupEpisodes(typedSamples);
+    if (episodes.length === 0) {
+      return { detected: false, lastPeriodStart: null, cycleLengthDays: null, menstrualStatus: null };
+    }
+
+    const lastPeriodStart = episodes[episodes.length - 1].startDate;
+
+    let cycleLengthDays: number | null = null;
+    let menstrualStatus: 'regular' | 'irregular' | null = null;
+    if (episodes.length >= 2) {
+      const gaps: number[] = [];
+      for (let i = 1; i < episodes.length; i++) {
+        const gap = Math.round(
+          (episodes[i].startDate.getTime() - episodes[i - 1].startDate.getTime()) /
+            (1000 * 60 * 60 * 24),
+        );
+        gaps.push(gap);
+      }
+      const sorted = [...gaps].sort((a, b) => a - b);
+      cycleLengthDays = sorted[Math.floor(sorted.length / 2)];
+      const maxDeviation = Math.max(...gaps.map((g) => Math.abs(g - cycleLengthDays!)));
+      menstrualStatus = maxDeviation <= 3 ? 'regular' : 'irregular';
+    }
+
+    return { detected: true, lastPeriodStart, cycleLengthDays, menstrualStatus };
+  } catch {
+    return { detected: false, lastPeriodStart: null, cycleLengthDays: null, menstrualStatus: null };
+  }
 }

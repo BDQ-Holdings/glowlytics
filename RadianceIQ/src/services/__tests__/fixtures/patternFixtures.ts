@@ -253,6 +253,8 @@ export function buildSyntheticHealthData(opts: HealthLagFixtureOptions): Pattern
       resting_hr_bpm: opts.driver === 'resting_hr_bpm' ? scaledDriver : null,
       steps: null,
       mindful_minutes: null,
+      menstrual_flow: null,
+      cycle_day_estimated: null,
       synced_at: new Date().toISOString(),
       partial: true,
     });
@@ -311,6 +313,8 @@ export function appendNoise(input: PatternFixture, days: number, seed = 99): Pat
       resting_hr_bpm: null,
       steps: null,
       mindful_minutes: null,
+      menstrual_flow: null,
+      cycle_day_estimated: null,
       synced_at: new Date().toISOString(),
       partial: true,
     });

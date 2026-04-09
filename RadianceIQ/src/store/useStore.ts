@@ -95,6 +95,7 @@ interface AppState {
   addHealthDailyRecord: (record: HealthDailyRecord) => void;
   upsertHealthDailyRecord: (date: string, record: HealthDailyRecord) => void;
   syncHealthData: () => Promise<{ added: number; errors: string[] }>;
+  syncHealthDataInitial: () => Promise<{ added: number; errors: string[] }>;
   setPatterns: (patterns: Pattern[]) => void;
   setFirstLookInsight: (insight: FirstLookInsight | null) => void;
   runPatternDetection: () => void;
@@ -398,6 +399,41 @@ export const useStore = create<AppState>((set, get) => ({
         },
       }));
       // Trigger pattern re-detection after a successful sync
+      get().runPatternDetection();
+      return { added: records.length, errors };
+    } catch (e: any) {
+      set((s) => ({
+        healthSyncStatus: {
+          ...s.healthSyncStatus,
+          in_progress: false,
+          last_sync_at: new Date().toISOString(),
+          last_error: e?.message ?? String(e),
+        },
+      }));
+      return { added: 0, errors: [e?.message ?? String(e)] };
+    }
+  },
+
+  syncHealthDataInitial: async () => {
+    const user = get().user;
+    if (!user) return { added: 0, errors: ['no_user'] };
+    set((s) => ({ healthSyncStatus: { ...s.healthSyncStatus, in_progress: true } }));
+    try {
+      const pullLastNDays: typeof PullLastNDays = require('../services/healthSync').pullLastNDays;
+      const { records, errors } = await pullLastNDays(14, user.user_id);
+      for (const r of records) {
+        get().upsertHealthDailyRecord(r.date, r);
+      }
+      set((s) => ({
+        healthSyncStatus: {
+          ...s.healthSyncStatus,
+          in_progress: false,
+          last_sync_at: new Date().toISOString(),
+          last_success_at:
+            records.length > 0 ? new Date().toISOString() : s.healthSyncStatus.last_success_at,
+          last_error: errors.length > 0 ? errors[0] : null,
+        },
+      }));
       get().runPatternDetection();
       return { added: records.length, errors };
     } catch (e: any) {
