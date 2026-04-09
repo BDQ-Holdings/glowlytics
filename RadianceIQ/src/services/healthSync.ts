@@ -9,6 +9,110 @@ import { localDateStr } from '../utils/localDate';
 
 const generateId = () => `hdr_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 
+// ─── Menstrual flow severity mapping ─────────────────────────────
+// CategoryValueMenstrualFlow enum: unspecified=1, light=2, medium=3, heavy=4, none=5.
+// Note: none=5 is weirdly out of order — common HealthKit footgun.
+type MenstrualFlowLevel = 'none' | 'light' | 'medium' | 'heavy' | 'unspecified';
+const FLOW_SEVERITY: Record<number, { label: MenstrualFlowLevel; rank: number }> = {
+  1: { label: 'unspecified', rank: 1 },
+  2: { label: 'light', rank: 2 },
+  3: { label: 'medium', rank: 3 },
+  4: { label: 'heavy', rank: 4 },
+  5: { label: 'none', rank: 0 },
+};
+
+export function pickMaxSeverity(
+  samples: { value: number }[],
+): MenstrualFlowLevel | null {
+  if (samples.length === 0) return null;
+  let maxRank = -1;
+  let maxLabel: MenstrualFlowLevel = 'none';
+  for (const s of samples) {
+    const entry = FLOW_SEVERITY[s.value];
+    if (entry && entry.rank > maxRank) {
+      maxRank = entry.rank;
+      maxLabel = entry.label;
+    }
+  }
+  return maxLabel;
+}
+
+// ─── Cycle episode grouping ──────────────────────────────────────
+
+interface Episode {
+  startDate: Date;
+  endDate: Date;
+  days: number;
+}
+
+export function groupEpisodes(
+  samples: { startDate: Date; endDate: Date; value: number }[],
+): Episode[] {
+  if (samples.length === 0) return [];
+
+  const sorted = [...samples].sort(
+    (a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime(),
+  );
+
+  const episodes: Episode[] = [];
+  let episodeStart = new Date(sorted[0].startDate);
+  let episodeEnd = new Date(sorted[0].startDate);
+  let sampleCount = 1;
+
+  for (let i = 1; i < sorted.length; i++) {
+    const current = new Date(sorted[i].startDate);
+    const gapDays =
+      (current.getTime() - new Date(episodeEnd).getTime()) / (1000 * 60 * 60 * 24);
+
+    if (gapDays <= 2) {
+      episodeEnd = current;
+      sampleCount++;
+    } else {
+      if (sampleCount >= 2) {
+        const days =
+          Math.round(
+            (new Date(episodeEnd).getTime() - new Date(episodeStart).getTime()) /
+              (1000 * 60 * 60 * 24),
+          ) + 1;
+        episodes.push({ startDate: new Date(episodeStart), endDate: new Date(episodeEnd), days });
+      }
+      episodeStart = current;
+      episodeEnd = current;
+      sampleCount = 1;
+    }
+  }
+
+  if (sampleCount >= 2) {
+    const days =
+      Math.round(
+        (new Date(episodeEnd).getTime() - new Date(episodeStart).getTime()) /
+          (1000 * 60 * 60 * 24),
+      ) + 1;
+    episodes.push({ startDate: new Date(episodeStart), endDate: new Date(episodeEnd), days });
+  }
+
+  return episodes;
+}
+
+// ─── Cycle day derivation ────────────────────────────────────────
+
+const SIXTY_DAYS_MS = 60 * 24 * 60 * 60 * 1000;
+
+export function deriveCycleDay(
+  samples: { startDate: Date; endDate: Date; value: number }[],
+  today: Date,
+): number | null {
+  const episodes = groupEpisodes(samples);
+  if (episodes.length === 0) return null;
+
+  const lastEpisode = episodes[episodes.length - 1];
+  const elapsed = today.getTime() - lastEpisode.startDate.getTime();
+
+  if (elapsed > SIXTY_DAYS_MS) return null;
+
+  return Math.floor(elapsed / (1000 * 60 * 60 * 24)) + 1;
+}
+
 interface SyncOneDayResult {
   record: HealthDailyRecord;
   errors: string[];
