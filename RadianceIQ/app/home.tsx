@@ -358,6 +358,7 @@ const styles = StyleSheet.create({
     color: Colors.text,
     fontFamily: FontFamily.sansBold,
     fontSize: FontSize.xxl,
+    lineHeight: 34,
   },
 
   // ── Empty hero ──
@@ -425,8 +426,8 @@ const styles = StyleSheet.create({
   statValue: {
     color: Colors.text,
     fontFamily: FontFamily.sansBold,
-    fontSize: FontSize.xxl,
-    lineHeight: 30,
+    fontSize: FontSize.xl,
+    lineHeight: 26,
   },
   signalLabel: {
     color: Colors.textSecondary,
@@ -447,6 +448,7 @@ const styles = StyleSheet.create({
   streakValue: {
     fontFamily: FontFamily.sansBold,
     fontSize: FontSize.xxl,
+    lineHeight: 34,
   },
 
   // ── Signal movers ──
@@ -464,7 +466,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surfaceOverlay,
     padding: Spacing.md,
     alignItems: 'center',
-    gap: 4,
+    gap: Spacing.xs,
   },
   moverDot: {
     width: 6,
@@ -506,8 +508,8 @@ const styles = StyleSheet.create({
   insightText: {
     color: Colors.text,
     fontFamily: FontFamily.sans,
-    fontSize: FontSize.sm,
-    lineHeight: 20,
+    fontSize: FontSize.md,
+    lineHeight: 23,
   },
   insightActionRow: {
     flexDirection: 'row',
