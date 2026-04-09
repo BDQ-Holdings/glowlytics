@@ -7,6 +7,7 @@ import type {
   GamificationState, Badge, WeeklyChallenge, LevelName,
   OnboardingScreenName, SubscriptionState, NotificationSettings,
   DetectedLesion, HealthDailyRecord, HealthSyncStatus, Pattern, FirstLookInsight,
+  PatternNotificationsState,
 } from '../types';
 import { defaultSubscription, canScan as canScanPure, startTrial as computeTrial } from '../services/subscription';
 import * as api from '../services/api';
@@ -59,6 +60,9 @@ interface AppState {
   patterns: Pattern[];
   firstLookInsight: FirstLookInsight | null;
 
+  // Pattern notification tracking
+  patternNotifications: PatternNotificationsState;
+
   // Actions
   setOnboardingStep: (step: number) => void;
   setOnboardingFlow: (flow: OnboardingScreenName[]) => void;
@@ -99,6 +103,7 @@ interface AppState {
   setPatterns: (patterns: Pattern[]) => void;
   setFirstLookInsight: (insight: FirstLookInsight | null) => void;
   runPatternDetection: () => void;
+  setFirstUnlockNotifSent: (sent: boolean) => void;
 }
 
 const generateId = () => {
@@ -205,6 +210,7 @@ export const useStore = create<AppState>((set, get) => ({
   },
   patterns: [],
   firstLookInsight: null,
+  patternNotifications: { first_pattern_unlock_sent: false },
 
   setOnboardingStep: (step) => set({ onboardingStep: step }),
   setOnboardingFlow: (flow) => set({ onboardingFlow: flow }),
@@ -459,18 +465,39 @@ export const useStore = create<AppState>((set, get) => ({
     debouncedPersist(() => get().persistData());
   },
 
+  setFirstUnlockNotifSent: (sent) => {
+    set((s) => ({ patternNotifications: { ...s.patternNotifications, first_pattern_unlock_sent: sent } }));
+    debouncedPersist(() => get().persistData());
+  },
+
   runPatternDetection: () => {
     const state = get();
     if (!state.user) return;
     try {
-      const patterns = detectPatterns({
+      const previous = state.patterns;
+      const next = detectPatterns({
         modelOutputs: state.modelOutputs,
         dailyRecords: state.dailyRecords,
         healthDailyRecords: state.healthDailyRecords,
         userProfile: state.user,
       });
-      set({ patterns });
+      set({ patterns: next });
       debouncedPersist(() => get().persistData());
+      // Fire one-time unlock notification if appropriate.
+      // Dynamic require to keep expo-notifications out of Jest.
+      try {
+        const { maybeSendFirstPatternUnlockNotification } =
+          require('../services/patternNotifications');
+        maybeSendFirstPatternUnlockNotification(
+          previous,
+          next,
+          state.patternNotifications.first_pattern_unlock_sent,
+        ).then((sent: boolean) => {
+          if (sent) get().setFirstUnlockNotifSent(true);
+        });
+      } catch {
+        // patternNotifications module failed to load — non-fatal
+      }
     } catch (e: any) {
       console.warn('[patternEngine] detection failed:', e?.message ?? e);
     }
@@ -693,6 +720,7 @@ export const useStore = create<AppState>((set, get) => ({
           },
           patterns: parsed.patterns || [],
           firstLookInsight: parsed.firstLookInsight || null,
+          patternNotifications: parsed.patternNotifications || { first_pattern_unlock_sent: false },
         });
 
         // Backfill: upgraded users from pre-paywall builds may have no trial dates.
@@ -721,6 +749,7 @@ export const useStore = create<AppState>((set, get) => ({
         user, protocol, products, dailyRecords, modelOutputs, gamification,
         subscription, notificationSettings, onboardingFlow, onboardingFlowIndex,
         healthDailyRecords, healthSyncStatus, patterns, firstLookInsight,
+        patternNotifications,
       } = get();
       // Cap stored records to last 365 days to prevent AsyncStorage bloat
       const cutoff = new Date();
@@ -737,7 +766,7 @@ export const useStore = create<AppState>((set, get) => ({
         gamification, subscription, notificationSettings,
         onboardingFlow, onboardingFlowIndex,
         healthDailyRecords: cappedHealthRecords,
-        healthSyncStatus, patterns, firstLookInsight,
+        healthSyncStatus, patterns, firstLookInsight, patternNotifications,
       }));
     } catch (e) {
       console.log('Failed to persist data', e);
@@ -771,6 +800,7 @@ export const useStore = create<AppState>((set, get) => ({
       },
       patterns: [],
       firstLookInsight: null,
+      patternNotifications: { first_pattern_unlock_sent: false },
     });
     try {
       await AsyncStorage.removeItem('glowlytics_data');
