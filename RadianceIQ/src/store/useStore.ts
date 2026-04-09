@@ -14,6 +14,7 @@ import * as api from '../services/api';
 import { buildOnboardingFlow } from '../services/onboardingFlow';
 import { localDateStr } from '../utils/localDate';
 import { detectPatterns } from '../services/patternEngine';
+import { trackEvent } from '../services/analytics';
 // healthSync imports the native @kingstinct/react-native-healthkit module at the top level,
 // which throws when loaded under Jest (no TurboModule registry). Defer to a dynamic require
 // inside syncHealthData so the test environment never triggers the native binding.
@@ -483,6 +484,17 @@ export const useStore = create<AppState>((set, get) => ({
       });
       set({ patterns: next });
       debouncedPersist(() => get().persistData());
+      // Fire pattern_first_seen for newly detected real patterns
+      const prevIds = new Set(previous.filter((p) => !p.isPredicted).map((p) => p.id));
+      for (const p of next) {
+        if (!p.isPredicted && !prevIds.has(p.id)) {
+          trackEvent('pattern_first_seen', {
+            pattern_type: p.type,
+            confidence: p.confidence,
+            data_days_at_detection: state.dailyRecords.length,
+          });
+        }
+      }
       // Fire one-time unlock notification if appropriate.
       // Dynamic require to keep expo-notifications out of Jest.
       try {
