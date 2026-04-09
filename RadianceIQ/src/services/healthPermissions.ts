@@ -14,6 +14,9 @@ const REQUESTED_TYPES: HealthDataType[] = [
   'sleep',
   'resting_heart_rate',
   'heart_rate_variability',
+  'steps',
+  'mindful_minutes',
+  'menstrual_flow',
 ];
 
 // HealthKit identifiers we ask to read. String literals per
@@ -21,6 +24,7 @@ const REQUESTED_TYPES: HealthDataType[] = [
 const READ_IDENTIFIERS = [
   'HKCategoryTypeIdentifierSleepAnalysis',
   'HKCategoryTypeIdentifierMindfulSession',
+  'HKCategoryTypeIdentifierMenstrualFlow',
   'HKQuantityTypeIdentifierHeartRateVariabilitySDNN',
   'HKQuantityTypeIdentifierRestingHeartRate',
   'HKQuantityTypeIdentifierStepCount',

@@ -9,7 +9,13 @@ export type UsageSchedule = 'AM' | 'PM' | 'both';
 export type CaptureMethod = 'barcode' | 'photo' | 'search';
 export type PermissionStatus = 'not_requested' | 'granted' | 'denied' | 'blocked' | 'unavailable';
 export type HealthSource = 'apple_health' | 'health_connect';
-export type HealthDataType = 'sleep' | 'resting_heart_rate' | 'heart_rate_variability';
+export type HealthDataType =
+  | 'sleep'
+  | 'resting_heart_rate'
+  | 'heart_rate_variability'
+  | 'steps'
+  | 'mindful_minutes'
+  | 'menstrual_flow';
 
 // Onboarding profile types
 export type BiologicalSex = 'male' | 'female' | 'other' | 'prefer_not';
@@ -23,7 +29,7 @@ export type OnboardingScreenName =
   | 'welcome' | 'age-range' | 'sex' | 'location' | 'skin-goal'
   | 'products' | 'menstrual' | 'cycle-details' | 'supplements' | 'exercise'
   | 'shower-frequency' | 'hand-washing' | 'scan-reminder'
-  | 'camera-permission' | 'ready' | 'preview' | 'paywall';
+  | 'camera-permission' | 'health-permission' | 'ready' | 'preview' | 'paywall';
 
 export interface HealthConnectionState {
   status: PermissionStatus;
@@ -34,6 +40,7 @@ export interface HealthConnectionState {
   last_checked_at?: string;
   last_synced_at?: string;
   availability_note?: string;
+  cycle_detected?: boolean;
 }
 
 export interface UserProfile {
@@ -319,6 +326,10 @@ export interface HealthDailyRecord {
   // Activity
   steps: number | null;
   mindful_minutes: number | null;
+  // Menstrual (HKCategoryTypeIdentifierMenstrualFlow)
+  menstrual_flow: 'none' | 'light' | 'medium' | 'heavy' | 'unspecified' | null;
+  // Derived cycle day (1-based, from detected period starts within last 90 days)
+  cycle_day_estimated: number | null;
   // Sync metadata
   synced_at: string;
   partial: boolean;
