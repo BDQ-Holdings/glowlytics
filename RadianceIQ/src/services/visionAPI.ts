@@ -12,6 +12,28 @@ import type {
   ZoneSeverity,
 } from '../types';
 
+/**
+ * Validate signal scores from the backend — reject NaN/undefined/non-finite.
+ * Returns undefined if ALL values are invalid (client falls through to
+ * deriveCompositeSignals). Replaces individual invalid values with 50 (neutral).
+ */
+function sanitizeSignalScores(scores: any): SignalScores | undefined {
+  if (!scores || typeof scores !== 'object') return undefined;
+  const keys: (keyof SignalScores)[] = ['structure', 'hydration', 'inflammation', 'sunDamage', 'elasticity'];
+  let validCount = 0;
+  const result = {} as SignalScores;
+  for (const k of keys) {
+    const v = scores[k];
+    if (Number.isFinite(v)) {
+      result[k] = Math.max(0, Math.min(100, Math.round(v)));
+      validCount++;
+    } else {
+      result[k] = 50; // neutral fallback
+    }
+  }
+  return validCount > 0 ? result : undefined;
+}
+
 export interface VisionAnalysisResult {
   acne_score: number;
   sun_damage_score: number;
@@ -97,7 +119,7 @@ export async function analyzeWithVisionAPI(
     conditions: result.conditions,
     rag_recommendations: result.rag_recommendations,
     personalized_feedback: result.personalized_feedback,
-    signal_scores: result.signal_scores,
+    signal_scores: sanitizeSignalScores(result.signal_scores),
     signal_features: result.signal_features,
     lesions: result.lesions,
     signal_confidence: result.signal_confidence,

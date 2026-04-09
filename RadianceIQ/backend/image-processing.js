@@ -785,38 +785,42 @@ function estimateFeaturesFromBase64(base64Image) {
  */
 function featuresToSignalScores(features) {
   const clamp = (v) => Math.max(0, Math.min(100, Math.round(v)));
+  // Safe accessor: returns fallback (0) for undefined/NaN feature values.
+  // This prevents NaN from propagating through the signal merge pipeline
+  // when extractFeatures partially fails or the image can't be fully processed.
+  const safe = (v, fallback = 0) => (Number.isFinite(v) ? v : fallback);
 
   // INFLAMMATION: a* > 10 is clinical erythema threshold (Stamatas 2004)
-  // Map a* range [-5, 25] to [0, 100] where higher a* = more inflammation = lower health score
-  const inflammationRaw = ((features.inflammation.a_star_mean + 5) / 30) * 100;
+  const aStar = safe(features.inflammation?.a_star_mean, 5);
+  const inflammationRaw = ((aStar + 5) / 30) * 100;
   const inflammation = clamp(100 - inflammationRaw);
 
   // SUN DAMAGE: ITA CV > 0.3 indicates uneven pigmentation (Flament 2013)
-  // Higher CV + more spots = more sun damage = lower health score
-  const sunDamageRaw =
-    (features.sunDamage.ita_cv / 0.5) * 50 +
-    Math.min(features.sunDamage.spot_count, 20) * 2.5;
+  const itaCv = safe(features.sunDamage?.ita_cv, 0.1);
+  const spotCount = safe(features.sunDamage?.spot_count, 0);
+  const sunDamageRaw = (itaCv / 0.5) * 50 + Math.min(spotCount, 20) * 2.5;
   const sunDamage = clamp(100 - sunDamageRaw);
 
   // HYDRATION: higher specular ratio + uniformity + lower LBP entropy = better hydrated
-  // LBP entropy > 7 indicates rough, dehydrated skin (Batisse 2002)
+  const specRatio = safe(features.hydration?.specular_ratio, 0.05);
+  const lbpEntropy = safe(features.hydration?.lbp_entropy, 5);
+  const specUniformity = safe(features.hydration?.specular_uniformity, 0.5);
   const hydrationRaw =
-    (1 - features.hydration.specular_ratio * 10) * 30 +
-    (features.hydration.lbp_entropy / 8) * 40 +
-    (1 - features.hydration.specular_uniformity) * 30;
+    (1 - specRatio * 10) * 30 + (lbpEntropy / 8) * 40 + (1 - specUniformity) * 30;
   const hydration = clamp(100 - hydrationRaw);
 
-  // STRUCTURE: lower GLCM contrast + homogeneity = smoother texture = better structure
+  // STRUCTURE: lower GLCM contrast + homogeneity = smoother texture
+  const glcmContrast = safe(features.structure?.glcm_contrast, 2);
+  const glcmHomogeneity = safe(features.structure?.glcm_homogeneity, 0.7);
+  const poreProxy = safe(features.structure?.pore_proxy, 2);
   const structureRaw =
-    (features.structure.glcm_contrast / 10) * 40 +
-    (1 - features.structure.glcm_homogeneity) * 30 +
-    Math.min(features.structure.pore_proxy, 10) * 3;
+    (glcmContrast / 10) * 40 + (1 - glcmHomogeneity) * 30 + Math.min(poreProxy, 10) * 3;
   const structure = clamp(100 - structureRaw);
 
   // ELASTICITY: lower wrinkle index = fewer wrinkles = better elasticity
-  const elasticityRaw =
-    Math.min(features.elasticity.wrinkle_index, 30) * 2 +
-    (features.elasticity.forehead_glcm.contrast / 8) * 40;
+  const wrinkleIndex = safe(features.elasticity?.wrinkle_index, 5);
+  const foreheadContrast = safe(features.elasticity?.forehead_glcm?.contrast, 2);
+  const elasticityRaw = Math.min(wrinkleIndex, 30) * 2 + (foreheadContrast / 8) * 40;
   const elasticity = clamp(100 - elasticityRaw);
 
   return { structure, hydration, inflammation, sunDamage, elasticity };

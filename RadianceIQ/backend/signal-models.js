@@ -499,9 +499,11 @@ function mergeSignalScores(layer1Scores, layer2Results, layer3Scores) {
   const merged = {};
 
   for (const signal of signals) {
-    const l1 = layer1Scores[signal] ?? 50;
-    const l2 = overrides[signal];
-    const l3 = layer3Scores?.[signal] ?? l1;
+    const rawL1 = layer1Scores[signal];
+    const l1 = Number.isFinite(rawL1) ? rawL1 : 50;
+    const l2 = overrides?.[signal];
+    const rawL3 = layer3Scores?.[signal];
+    const l3 = Number.isFinite(rawL3) ? rawL3 : l1;
 
     const betaL1 = BETA_L1[signal];
     const betaL2 = l2 != null ? BETA_L2_LOADED[signal] : 0;

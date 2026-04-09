@@ -43,7 +43,7 @@ const ringSize = 72;
 const ringStroke = 4.5;
 
 const TopStatRing: React.FC<{ value: number | null; color: string; icon: string; signalKey?: string; delta?: number }> = ({ value, color, icon, signalKey, delta = 0 }) => {
-  const hasData = value !== null;
+  const hasData = value !== null && Number.isFinite(value);
   const displayValue = hasData ? clampScore(value) : 0;
   const radius = (ringSize - ringStroke) / 2;
   const circumference = 2 * Math.PI * radius;

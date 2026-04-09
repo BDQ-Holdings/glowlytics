@@ -238,7 +238,7 @@ export const buildOverallSkinInsight = ({
   // otherwise fall back to existing derivation from 3 proxy scores
   let signals: CompositeSignals;
 
-  if (serverSignalScores && typeof serverSignalScores.structure === 'number') {
+  if (serverSignalScores && Number.isFinite(serverSignalScores.structure)) {
     signals = {
       structure: clamp(serverSignalScores.structure),
       hydration: clamp(serverSignalScores.hydration),

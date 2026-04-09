@@ -69,9 +69,10 @@ export const SkinScoreHero: React.FC<Props> = ({
   const accent = scoreColor(safeScore);
   const displayScore = Number.isFinite(animatedScore) ? Math.round(animatedScore) : 0;
 
-  const trendColor = trendDelta >= 0 ? Colors.success : Colors.error;
-  const trendIcon: React.ComponentProps<typeof Feather>['name'] = trendDelta >= 0 ? 'trending-up' : 'trending-down';
-  const trendText = trendDelta === 0 ? 'Stable' : `${trendDelta > 0 ? '+' : ''}${trendDelta}`;
+  const safeDelta = Number.isFinite(trendDelta) ? trendDelta : 0;
+  const trendColor = safeDelta >= 0 ? Colors.success : Colors.error;
+  const trendIcon: React.ComponentProps<typeof Feather>['name'] = safeDelta >= 0 ? 'trending-up' : 'trending-down';
+  const trendText = safeDelta === 0 ? 'Stable' : `${safeDelta > 0 ? '+' : ''}${safeDelta}`;
 
   const barInterp = barWidth.interpolate({
     inputRange: [0, 100],
