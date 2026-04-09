@@ -7,13 +7,14 @@ import {
 
 describe('onboardingFlow', () => {
   describe('buildOnboardingFlow', () => {
-    it('builds base flow with essential screens', () => {
+    it('builds base flow with essential screens including health-permission', () => {
       const flow = buildOnboardingFlow();
       expect(flow).toContain('welcome');
       expect(flow).toContain('age-range');
       expect(flow).toContain('sex');
       expect(flow).toContain('skin-goal');
       expect(flow).toContain('camera-permission');
+      expect(flow).toContain('health-permission');
       expect(flow).toContain('preview');
       expect(flow).toContain('paywall');
       expect(flow).not.toContain('menstrual');
@@ -32,6 +33,13 @@ describe('onboardingFlow', () => {
       expect(flow).not.toContain('ready');
     });
 
+    it('places health-permission immediately after camera-permission', () => {
+      const flow = buildOnboardingFlow();
+      const cameraIndex = flow.indexOf('camera-permission');
+      const healthIndex = flow.indexOf('health-permission');
+      expect(healthIndex).toBe(cameraIndex + 1);
+    });
+
     it('places camera-permission after skin-goal for base flow', () => {
       const flow = buildOnboardingFlow();
       const goalIndex = flow.indexOf('skin-goal');
@@ -43,16 +51,15 @@ describe('onboardingFlow', () => {
       const flow = buildOnboardingFlow('male');
       expect(flow).not.toContain('menstrual');
       expect(flow).not.toContain('cycle-details');
-      expect(flow.length).toBe(7);
     });
 
-    it('inserts menstrual screen for female users', () => {
+    it('inserts menstrual screen for female users after health-permission', () => {
       const flow = buildOnboardingFlow('female');
       expect(flow).toContain('menstrual');
       expect(flow).not.toContain('cycle-details');
+      const healthIndex = flow.indexOf('health-permission');
       const menstrualIndex = flow.indexOf('menstrual');
-      const skinGoalIndex = flow.indexOf('skin-goal');
-      expect(menstrualIndex).toBeGreaterThan(skinGoalIndex);
+      expect(menstrualIndex).toBe(healthIndex + 1);
     });
 
     it('inserts cycle-details for female with regular cycle', () => {
@@ -93,6 +100,7 @@ describe('onboardingFlow', () => {
         buildOnboardingFlow('male'),
         buildOnboardingFlow('female'),
         buildOnboardingFlow('female', 'regular'),
+        buildOnboardingFlow('female', 'regular', true),
       ];
       for (const flow of flows) {
         expect(flow[0]).toBe('welcome');
@@ -101,12 +109,49 @@ describe('onboardingFlow', () => {
     });
 
     it('has correct length for each path', () => {
-      expect(buildOnboardingFlow().length).toBe(7);              // base
-      expect(buildOnboardingFlow('male').length).toBe(7);        // same as base
-      expect(buildOnboardingFlow('female').length).toBe(8);      // +menstrual
-      expect(buildOnboardingFlow('female', 'regular').length).toBe(9);   // +menstrual +cycle-details
-      expect(buildOnboardingFlow('female', 'irregular').length).toBe(9);
-      expect(buildOnboardingFlow('female', 'no').length).toBe(8);       // +menstrual only
+      expect(buildOnboardingFlow().length).toBe(8);
+      expect(buildOnboardingFlow('male').length).toBe(8);
+      expect(buildOnboardingFlow('female').length).toBe(9);
+      expect(buildOnboardingFlow('female', 'regular').length).toBe(10);
+      expect(buildOnboardingFlow('female', 'irregular').length).toBe(10);
+      expect(buildOnboardingFlow('female', 'no').length).toBe(9);
+    });
+
+    it('skips menstrual + cycle-details for female when HealthKit cycle detected', () => {
+      const flow = buildOnboardingFlow('female', 'regular', true);
+      expect(flow).not.toContain('menstrual');
+      expect(flow).not.toContain('cycle-details');
+      expect(flow).toContain('health-permission');
+    });
+
+    it('skips menstrual for female with no menstrualStatus when HealthKit cycle detected', () => {
+      const flow = buildOnboardingFlow('female', undefined, true);
+      expect(flow).not.toContain('menstrual');
+      expect(flow).not.toContain('cycle-details');
+    });
+
+    it('keeps menstrual for female when healthSyncedCycleDetected is false', () => {
+      const flow = buildOnboardingFlow('female', 'regular', false);
+      expect(flow).toContain('menstrual');
+      expect(flow).toContain('cycle-details');
+    });
+
+    it('keeps menstrual for female when healthSyncedCycleDetected is undefined (default)', () => {
+      const flow = buildOnboardingFlow('female', 'regular', undefined);
+      expect(flow).toContain('menstrual');
+      expect(flow).toContain('cycle-details');
+    });
+
+    it('ignores healthSyncedCycleDetected for male users', () => {
+      const flow = buildOnboardingFlow('male', undefined, true);
+      expect(flow).not.toContain('menstrual');
+      expect(flow).not.toContain('cycle-details');
+      expect(flow.length).toBe(8);
+    });
+
+    it('has correct length when HealthKit skips menstrual', () => {
+      expect(buildOnboardingFlow('female', 'regular', true).length).toBe(8);
+      expect(buildOnboardingFlow('female', 'irregular', true).length).toBe(8);
     });
   });
 
@@ -115,6 +160,7 @@ describe('onboardingFlow', () => {
       expect(screenToRoute('welcome')).toBe('/onboarding/welcome');
       expect(screenToRoute('age-range')).toBe('/onboarding/age-range');
       expect(screenToRoute('camera-permission')).toBe('/onboarding/camera-permission');
+      expect(screenToRoute('health-permission')).toBe('/onboarding/health-permission');
       expect(screenToRoute('preview')).toBe('/onboarding/preview');
       expect(screenToRoute('paywall')).toBe('/onboarding/paywall');
     });
