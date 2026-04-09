@@ -1,5 +1,5 @@
-import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useState } from 'react';
+import { LayoutChangeEvent, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Svg, { Polyline } from 'react-native-svg';
 import { Feather } from '@expo/vector-icons';
 import type { Pattern, PatternConfidence, PatternSignal } from '../types';
@@ -38,8 +38,13 @@ export const PatternCard: React.FC<PatternCardProps> = ({
   const isPredicted = pattern.isPredicted;
   const daysToUnlock = pattern.unlocksAtDay ?? null;
 
-  // Build sparkline polyline points (normalized to 0-100 of card width/height)
-  const sparkWidth = 240;
+  // Measure the card's inner content width dynamically so the sparkline fills it.
+  const [contentWidth, setContentWidth] = useState(0);
+  const onLayout = (e: LayoutChangeEvent) => {
+    setContentWidth(e.nativeEvent.layout.width);
+  };
+
+  const sparkWidth = contentWidth > 0 ? contentWidth : 240;
   const sparkHeight = 60;
   const points = pattern.chartData.slice(-30);
   const sparkPoints =
@@ -54,7 +59,7 @@ export const PatternCard: React.FC<PatternCardProps> = ({
       : '';
 
   return (
-    <View style={[styles.card, widthHint ? { width: widthHint } : null]}>
+    <View style={[styles.card, widthHint ? { width: widthHint } : null]} onLayout={onLayout}>
       {/* Confidence pill */}
       <View style={[styles.confPill, { backgroundColor: conf.bg }]}>
         <View style={[styles.confDot, { backgroundColor: conf.text }]} />
@@ -150,7 +155,6 @@ const styles = StyleSheet.create({
   sparkline: {
     height: 60,
     justifyContent: 'center',
-    alignItems: 'center',
     marginTop: Spacing.xs,
   },
   sparkPlaceholder: {

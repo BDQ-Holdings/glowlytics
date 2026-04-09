@@ -63,9 +63,8 @@ export const PatternProgressBar: React.FC = () => {
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.sm,
-    gap: 6,
+    gap: Spacing.sm,
   },
   track: {
     height: 4,

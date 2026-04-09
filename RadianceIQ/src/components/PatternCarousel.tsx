@@ -16,7 +16,8 @@ interface Props {
 export const PatternCarousel: React.FC<Props> = ({ patterns, onShare }) => {
   const router = useRouter();
   const { width: screenW } = useWindowDimensions();
-  const cardWidth = Math.min(screenW - Spacing.lg * 2, 340);
+  // Card fills screen width minus horizontal screen margins (Spacing.lg each side)
+  const cardWidth = screenW - Spacing.lg * 2;
   const [activeIndex, setActiveIndex] = useState(0);
 
   const onViewableItemsChanged = useRef((info: { viewableItems: ViewToken[] }) => {
@@ -57,7 +58,6 @@ export const PatternCarousel: React.FC<Props> = ({ patterns, onShare }) => {
       <FlatList
         data={patterns}
         horizontal
-        pagingEnabled
         showsHorizontalScrollIndicator={false}
         snapToInterval={cardWidth + Spacing.sm}
         decelerationRate="fast"
@@ -93,6 +93,9 @@ const styles = StyleSheet.create({
   container: {
     gap: Spacing.sm,
     marginTop: Spacing.lg,
+    // Break out of AtmosphereScreen's paddingHorizontal so the carousel
+    // goes edge-to-edge, same pattern as the signal rings section.
+    marginHorizontal: -Spacing.lg,
   },
   header: {
     flexDirection: 'row',
