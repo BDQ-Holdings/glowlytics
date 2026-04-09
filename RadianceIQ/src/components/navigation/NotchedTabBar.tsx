@@ -99,7 +99,7 @@ function AnimatedTab({ tab, isFocused, accessibilityLabel, testID, onPress, onLo
       accessibilityState={{ selected: isFocused }}
       accessibilityLabel={accessibilityLabel ?? tab.label}
       testID={testID}
-      hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+      hitSlop={{ top: 16, bottom: 24, left: 12, right: 12 }}
       onPress={onPress}
       onLongPress={onLongPress}
       onPressIn={handlePressIn}
@@ -175,7 +175,7 @@ function AnimatedCameraButton({ onPress, pulseCamera, accessibilityLabel, isFocu
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel ?? 'Open camera'}
         accessibilityState={{ selected: isFocused }}
-        hitSlop={{ top: 12, bottom: 16, left: 12, right: 12 }}
+        hitSlop={{ top: 20, bottom: 24, left: 20, right: 20 }}
         onPress={onPress}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
@@ -284,8 +284,8 @@ export function NotchedTabBar({
 
   return (
     <View pointerEvents="box-none" style={styles.root}>
-      <Animated.View style={[styles.dockedWrap, barAnimStyle, { paddingBottom: bottomPad }]}>
-        <View style={styles.tabBarContainer}>
+      <Animated.View pointerEvents="box-none" style={[styles.dockedWrap, barAnimStyle, { paddingBottom: bottomPad }]}>
+        <View pointerEvents="box-none" style={styles.tabBarContainer}>
           {/* Bar background — simple rounded pill */}
           <View style={styles.barBackground} />
 
@@ -314,6 +314,8 @@ const styles = StyleSheet.create({
   root: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'flex-end',
+    zIndex: 999,
+    elevation: 999,
   },
   dockedWrap: {
     paddingHorizontal: Spacing.md,
