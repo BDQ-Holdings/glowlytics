@@ -6,6 +6,8 @@ import Svg, { Circle } from 'react-native-svg';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { AtmosphereScreen } from '../src/components/AtmosphereScreen';
 import { Button } from '../src/components/Button';
+import { PatternCarousel } from '../src/components/PatternCarousel';
+import { PatternProgressBar } from '../src/components/PatternProgressBar';
 import { SkinScoreHero } from '../src/components/SkinScoreHero';
 import {
   BorderRadius,
@@ -83,6 +85,7 @@ export default function Home() {
   const protocol = useStore((s) => s.protocol);
   const dailyRecords = useStore((s) => s.dailyRecords);
   const modelOutputs = useStore((s) => s.modelOutputs);
+  const patterns = useStore((s) => s.patterns);
 
   const handleScanPress = async (path: string) => {
     if (!(await gateWithPaywall())) return;
@@ -223,7 +226,11 @@ export default function Home() {
         </Animated.View>
       )}
 
-      {/* ── 4. Streak ── */}
+      {/* ── 4. Pattern progress + carousel ── */}
+      <PatternProgressBar />
+      <PatternCarousel patterns={patterns} />
+
+      {/* ── 5. Streak ── */}
       {streak > 0 && (
         <View style={styles.streakRow}>
           <Animated.View entering={ZoomIn.duration(400).springify().damping(14)}>
