@@ -10,9 +10,10 @@ import { trackEvent } from '../services/analytics';
 
 interface Props {
   patterns: Pattern[];
+  onShare?: (pattern: Pattern) => void;
 }
 
-export const PatternCarousel: React.FC<Props> = ({ patterns }) => {
+export const PatternCarousel: React.FC<Props> = ({ patterns, onShare }) => {
   const router = useRouter();
   const { width: screenW } = useWindowDimensions();
   const cardWidth = Math.min(screenW - Spacing.lg * 2, 340);
@@ -38,8 +39,12 @@ export const PatternCarousel: React.FC<Props> = ({ patterns }) => {
   );
 
   const handleShare = useCallback(async (pattern: Pattern) => {
-    await exportAndSharePattern(pattern);
-  }, []);
+    if (onShare) {
+      onShare(pattern);
+    } else {
+      await exportAndSharePattern(pattern);
+    }
+  }, [onShare]);
 
   if (patterns.length === 0) return null;
 

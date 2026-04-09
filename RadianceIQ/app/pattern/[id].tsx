@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -20,6 +20,7 @@ import {
 } from '../../src/constants/theme';
 import { SIGNAL_COLORS } from '../../src/constants/signals';
 import { exportAndSharePattern } from '../../src/services/patternExport';
+import { PatternExportCard } from '../../src/components/PatternExportCard';
 
 // Static "what you can try" lookup — keyed on (signal + driver)
 const SUGGESTIONS: Record<string, string[]> = {
@@ -55,6 +56,19 @@ export default function PatternDetail() {
   const router = useRouter();
   const patterns = useStore((s) => s.patterns);
   const pattern = patterns.find((p) => p.id === id);
+
+  const [sharingPattern, setSharingPattern] = useState<typeof pattern | null>(null);
+  const exportRef = useRef<View | null>(null);
+
+  useEffect(() => {
+    if (!sharingPattern) return;
+    const t = setTimeout(() => {
+      exportAndSharePattern(sharingPattern, exportRef).finally(() => {
+        setSharingPattern(null);
+      });
+    }, 100);
+    return () => clearTimeout(t);
+  }, [sharingPattern]);
 
   const suggestions = useMemo(() => {
     if (!pattern) return [];
@@ -160,11 +174,28 @@ export default function PatternDetail() {
         {!pattern.isPredicted && (
           <TouchableOpacity
             style={styles.shareButton}
-            onPress={() => exportAndSharePattern(pattern)}
+            onPress={() => setSharingPattern(pattern)}
           >
             <Feather name="share-2" size={16} color={Colors.background} />
             <Text style={styles.shareButtonText}>Share this pattern</Text>
           </TouchableOpacity>
+        )}
+        {sharingPattern && (
+          <View
+            pointerEvents="none"
+            collapsable={false}
+            style={{
+              position: 'absolute',
+              left: -10000,
+              top: 0,
+              width: 1080,
+              height: 1920,
+            }}
+          >
+            <View ref={exportRef as any} collapsable={false}>
+              <PatternExportCard pattern={sharingPattern} />
+            </View>
+          </View>
         )}
       </ScrollView>
     </SafeAreaView>

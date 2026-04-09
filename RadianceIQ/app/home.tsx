@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { router as globalRouter } from 'expo-router';
 import Animated, { FadeIn, FadeInDown, FadeInUp, ZoomIn } from 'react-native-reanimated';
@@ -24,7 +24,10 @@ import {
 } from '../src/services/skinInsights';
 import { useStore } from '../src/store/useStore';
 import { gateWithPaywall } from '../src/services/subscription';
+import { PatternExportCard } from '../src/components/PatternExportCard';
+import { exportAndSharePattern } from '../src/services/patternExport';
 import type { CompositeSignals } from '../src/services/skinInsights';
+import type { Pattern } from '../src/types';
 
 interface TopStat {
   key: string;
@@ -86,6 +89,19 @@ export default function Home() {
   const dailyRecords = useStore((s) => s.dailyRecords);
   const modelOutputs = useStore((s) => s.modelOutputs);
   const patterns = useStore((s) => s.patterns);
+
+  const [sharingPattern, setSharingPattern] = useState<Pattern | null>(null);
+  const exportRef = useRef<View | null>(null);
+
+  useEffect(() => {
+    if (!sharingPattern) return;
+    const t = setTimeout(() => {
+      exportAndSharePattern(sharingPattern, exportRef).finally(() => {
+        setSharingPattern(null);
+      });
+    }, 100);
+    return () => clearTimeout(t);
+  }, [sharingPattern]);
 
   const handleScanPress = async (path: string) => {
     if (!(await gateWithPaywall())) return;
@@ -228,7 +244,7 @@ export default function Home() {
 
       {/* ── 4. Pattern progress + carousel ── */}
       <PatternProgressBar />
-      <PatternCarousel patterns={patterns} />
+      <PatternCarousel patterns={patterns} onShare={(p) => setSharingPattern(p)} />
 
       {/* ── 5. Streak ── */}
       {streak > 0 && (
@@ -301,6 +317,24 @@ export default function Home() {
           <Text style={styles.emptyCopy}>
             Your first scan will unlock trends and detailed assessments.
           </Text>
+        </View>
+      )}
+
+      {sharingPattern && (
+        <View
+          pointerEvents="none"
+          collapsable={false}
+          style={{
+            position: 'absolute',
+            left: -10000,
+            top: 0,
+            width: 1080,
+            height: 1920,
+          }}
+        >
+          <View ref={exportRef as any} collapsable={false}>
+            <PatternExportCard pattern={sharingPattern} />
+          </View>
         </View>
       )}
     </AtmosphereScreen>
