@@ -33,6 +33,7 @@ import {
   getLatestDailyForOutput,
 } from '../../src/services/skinInsights';
 import { useCalmFadeIn } from '../../src/utils/animations';
+import { safeClamp } from '../../src/utils/safeClamp';
 
 import type { IngredientRating } from '../../src/services/ingredientDB';
 import type { CompositeSignals } from '../../src/services/skinInsights';
@@ -43,7 +44,7 @@ import type { CompositeSignals } from '../../src/services/skinInsights';
 const ringSize = 96;
 const ringStroke = 6;
 
-const clampScore = (value: number) => { const n = Math.round(value); return Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : 0; };
+const clampScore = (value: number) => safeClamp(value);
 
 
 const ratingDotColor: Record<IngredientRating, string> = {

@@ -32,8 +32,11 @@ const average = (values: number[]) => {
     : 0;
 };
 
-const trend = (values: number[]) =>
-  values.length < 2 ? 0 : values[values.length - 1] - values[0];
+const trend = (values: number[]) => {
+  const valid = values.filter(Number.isFinite);
+  if (valid.length < 2) return 0;
+  return valid[valid.length - 1] - valid[0];
+};
 
 export default function GenerateReport() {
   const router = useRouter();

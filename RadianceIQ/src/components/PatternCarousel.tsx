@@ -1,5 +1,5 @@
 import React, { useCallback, useRef, useState } from 'react';
-import { FlatList, StyleSheet, Text, View, ViewToken, useWindowDimensions } from 'react-native';
+import { FlatList, ListRenderItem, StyleSheet, Text, View, ViewToken, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import type { Pattern } from '../types';
@@ -49,6 +49,18 @@ export const PatternCarousel: React.FC<Props> = ({ patterns, onShare }) => {
     }
   }, [onShare]);
 
+  const renderItem: ListRenderItem<Pattern> = useCallback(
+    ({ item }) => (
+      <PatternCard
+        pattern={item}
+        widthHint={cardWidth}
+        onPressDetail={() => handleDetail(item)}
+        onPressShare={() => handleShare(item)}
+      />
+    ),
+    [cardWidth, handleDetail, handleShare],
+  );
+
   if (patterns.length === 0) return null;
 
   return (
@@ -67,14 +79,7 @@ export const PatternCarousel: React.FC<Props> = ({ patterns, onShare }) => {
         ItemSeparatorComponent={CardSeparator}
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={VIEWABILITY_CONFIG}
-        renderItem={({ item }) => (
-          <PatternCard
-            pattern={item}
-            widthHint={cardWidth}
-            onPressDetail={() => handleDetail(item)}
-            onPressShare={() => handleShare(item)}
-          />
-        )}
+        renderItem={renderItem}
         keyExtractor={(p) => p.id}
       />
       {patterns.length > 1 && (

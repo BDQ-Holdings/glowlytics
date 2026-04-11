@@ -46,7 +46,7 @@ export interface MetricDetailInsight {
   continueUsing: string;
 }
 
-const clamp = (value: number, min = 0, max = 100) => Math.max(min, Math.min(max, value));
+const clamp = (value: number) => { const n = Math.round(value); return Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : 50; };
 
 /**
  * Maps a 0-100 composite score to a clinical severity bucket.
@@ -238,13 +238,13 @@ export const buildOverallSkinInsight = ({
   // otherwise fall back to existing derivation from 3 proxy scores
   let signals: CompositeSignals;
 
-  if (serverSignalScores && Number.isFinite(serverSignalScores.structure)) {
+  if (serverSignalScores) {
     signals = {
-      structure: Number.isFinite(serverSignalScores.structure) ? clamp(serverSignalScores.structure) : 50,
-      hydration: Number.isFinite(serverSignalScores.hydration) ? clamp(serverSignalScores.hydration) : 50,
-      inflammation: Number.isFinite(serverSignalScores.inflammation) ? clamp(serverSignalScores.inflammation) : 50,
-      sunDamage: Number.isFinite(serverSignalScores.sunDamage) ? clamp(serverSignalScores.sunDamage) : 50,
-      elasticity: Number.isFinite(serverSignalScores.elasticity) ? clamp(serverSignalScores.elasticity) : 50,
+      structure: clamp(serverSignalScores.structure),
+      hydration: clamp(serverSignalScores.hydration),
+      inflammation: clamp(serverSignalScores.inflammation),
+      sunDamage: clamp(serverSignalScores.sunDamage),
+      elasticity: clamp(serverSignalScores.elasticity),
     };
   } else {
     const inflammationRisk = latestDaily?.scanner_indices.inflammation_index ?? latestOutput.acne_score;

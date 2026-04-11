@@ -47,7 +47,8 @@ export const PatternCard: React.FC<PatternCardProps> = ({
       ? points
           .map((p, i) => {
             const x = (i / (points.length - 1)) * sparkWidth;
-            const y = sparkHeight - (p.signalValue / 100) * sparkHeight;
+            const v = Number.isFinite(p.signalValue) ? Math.max(0, Math.min(100, p.signalValue)) : 50;
+            const y = sparkHeight - (v / 100) * sparkHeight;
             return `${x},${y}`;
           })
           .join(' ')

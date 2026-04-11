@@ -27,6 +27,7 @@ import { gateWithPaywall } from '../src/services/subscription';
 import { PatternExportCard } from '../src/components/PatternExportCard';
 import { exportAndSharePattern } from '../src/services/patternExport';
 import type { CompositeSignals } from '../src/services/skinInsights';
+import { safeClamp } from '../src/utils/safeClamp';
 import type { Pattern } from '../src/types';
 
 interface TopStat {
@@ -37,14 +38,12 @@ interface TopStat {
   icon: string;
 }
 
-const clampScore = (value: number) => Math.max(0, Math.min(100, Math.round(value)));
-
 const ringSize = 72;
 const ringStroke = 4.5;
 
 const TopStatRing: React.FC<{ value: number | null; color: string; icon: string; signalKey?: string; delta?: number }> = ({ value, color, icon, signalKey, delta = 0 }) => {
   const hasData = value !== null && Number.isFinite(value);
-  const displayValue = hasData ? clampScore(value) : 0;
+  const displayValue = hasData ? safeClamp(value) : 0;
   const radius = (ringSize - ringStroke) / 2;
   const circumference = 2 * Math.PI * radius;
   const ringSpan = circumference * 0.84;
