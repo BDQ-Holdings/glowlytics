@@ -730,7 +730,7 @@ Return ONLY valid JSON matching this schema:
       return res.status(502).json({ error: 'Vision model returned malformed JSON' });
     }
 
-    const clamp = (v) => Math.max(0, Math.min(100, Math.round(Number(v) || 0)));
+    const clamp = (v) => { const n = Number(v); return Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : 50; };
     const validConfidence = ['low', 'med', 'high'].includes(parsed.confidence) ? parsed.confidence : 'low';
 
     const VALID_SEVERITIES = ['mild', 'moderate', 'severe'];
@@ -747,7 +747,7 @@ Return ONLY valid JSON matching this schema:
     // ==================== EXTRACT LAYER 3 SIGNAL SCORES ====================
     // GPT-4o now outputs signal_scores directly — no more lossy linear conversion
     let layer3SignalScores;
-    if (parsed.signal_scores && typeof parsed.signal_scores.structure === 'number') {
+    if (parsed.signal_scores && Number.isFinite(parsed.signal_scores.structure)) {
       layer3SignalScores = {
         structure: clamp(parsed.signal_scores.structure),
         hydration: clamp(parsed.signal_scores.hydration),

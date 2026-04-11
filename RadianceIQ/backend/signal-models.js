@@ -501,12 +501,13 @@ function mergeSignalScores(layer1Scores, layer2Results, layer3Scores) {
   for (const signal of signals) {
     const rawL1 = layer1Scores[signal];
     const l1 = Number.isFinite(rawL1) ? rawL1 : 50;
-    const l2 = overrides?.[signal];
+    const rawL2 = overrides?.[signal];
+    const l2 = Number.isFinite(rawL2) ? rawL2 : undefined;
     const rawL3 = layer3Scores?.[signal];
     const l3 = Number.isFinite(rawL3) ? rawL3 : l1;
 
     const betaL1 = BETA_L1[signal];
-    const betaL2 = l2 != null ? BETA_L2_LOADED[signal] : 0;
+    const betaL2 = l2 !== undefined ? BETA_L2_LOADED[signal] : 0;
     const betaL3 = BETA_L3[signal];
 
     const totalBeta = betaL1 + betaL2 + betaL3;
@@ -515,7 +516,7 @@ function mergeSignalScores(layer1Scores, layer2Results, layer3Scores) {
       continue;
     }
 
-    const weightedSum = betaL1 * l1 + betaL2 * (l2 ?? 0) + betaL3 * l3;
+    const weightedSum = betaL1 * l1 + betaL2 * (l2 ?? l1) + betaL3 * l3;
     merged[signal] = clamp(weightedSum / totalBeta);
   }
 

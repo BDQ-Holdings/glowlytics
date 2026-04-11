@@ -241,10 +241,10 @@ export const buildOverallSkinInsight = ({
   if (serverSignalScores && Number.isFinite(serverSignalScores.structure)) {
     signals = {
       structure: clamp(serverSignalScores.structure),
-      hydration: clamp(serverSignalScores.hydration),
-      inflammation: clamp(serverSignalScores.inflammation),
-      sunDamage: clamp(serverSignalScores.sunDamage),
-      elasticity: clamp(serverSignalScores.elasticity),
+      hydration: Number.isFinite(serverSignalScores.hydration) ? clamp(serverSignalScores.hydration) : 50,
+      inflammation: Number.isFinite(serverSignalScores.inflammation) ? clamp(serverSignalScores.inflammation) : 50,
+      sunDamage: Number.isFinite(serverSignalScores.sunDamage) ? clamp(serverSignalScores.sunDamage) : 50,
+      elasticity: Number.isFinite(serverSignalScores.elasticity) ? clamp(serverSignalScores.elasticity) : 50,
     };
   } else {
     const inflammationRisk = latestDaily?.scanner_indices.inflammation_index ?? latestOutput.acne_score;

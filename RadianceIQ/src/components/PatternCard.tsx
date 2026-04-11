@@ -39,7 +39,7 @@ export const PatternCard: React.FC<PatternCardProps> = ({
   const daysToUnlock = pattern.unlocksAtDay ?? null;
 
   // Derive inner content width from the card's outer width hint minus padding + border.
-  const sparkWidth = widthHint ? widthHint - Spacing.md * 2 - 2 : 240;
+  const sparkWidth = Math.max(widthHint ? widthHint - Spacing.md * 2 - 2 : 240, 40);
   const sparkHeight = 60;
   const points = pattern.chartData.slice(-30);
   const sparkPoints =
