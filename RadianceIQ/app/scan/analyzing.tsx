@@ -536,7 +536,7 @@ export default function AnalyzingScreen() {
     timers.current.push(tHardTimeout);
 
     // --- API track: encode photo + fire analysis ---
-    const safeParse = (v: string | undefined) => { const n = parseFloat(v || '0'); return Number.isFinite(n) ? n : 0; };
+    const safeParse = (v: string | string[] | undefined) => { const n = parseFloat(Array.isArray(v) ? v[0] : v || '0'); return Number.isFinite(n) ? n : 0; };
     const scannerData = {
       inflammation_index: safeParse(params.inflammation),
       pigmentation_index: safeParse(params.pigmentation),
