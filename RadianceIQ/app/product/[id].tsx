@@ -43,7 +43,7 @@ import type { CompositeSignals } from '../../src/services/skinInsights';
 const ringSize = 96;
 const ringStroke = 6;
 
-const clampScore = (value: number) => Math.max(0, Math.min(100, Math.round(value)));
+const clampScore = (value: number) => { const n = Math.round(value); return Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : 0; };
 
 
 const ratingDotColor: Record<IngredientRating, string> = {

@@ -199,7 +199,8 @@ export default function SignalDetailScreen() {
   );
 
   const hasData = insight !== null;
-  const signalValue = hasData ? insight.signals[signalProperty(signalKey)] : 0;
+  const rawSignalValue = hasData ? insight.signals[signalProperty(signalKey)] : 0;
+  const signalValue = Number.isFinite(rawSignalValue) ? rawSignalValue : 0;
   const level = levelFromScore(signalValue) as Level;
 
   // Resolve actual measured values for contributing factors

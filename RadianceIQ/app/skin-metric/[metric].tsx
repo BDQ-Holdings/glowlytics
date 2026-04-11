@@ -180,7 +180,7 @@ export default function MetricAssessmentDetail() {
       {/* ── Hero: Score + Severity ── */}
       <Animated.View entering={ZoomIn.duration(500).delay(100)} style={styles.heroScore}>
         <View style={[styles.heroGlow, { backgroundColor: personality.glow }]} />
-        <Text style={[styles.heroScoreValue, { color: personality.color }]}>{detail.score}</Text>
+        <Text style={[styles.heroScoreValue, { color: personality.color }]}>{Number.isFinite(detail.score) ? detail.score : 0}</Text>
         <View style={[styles.severityBadge, { backgroundColor: severityInfo.color + '18' }]}>
           <Feather name={severityInfo.icon} size={13} color={severityInfo.color} />
           <Text style={[styles.severityLabel, { color: severityInfo.color }]}>

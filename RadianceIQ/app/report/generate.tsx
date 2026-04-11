@@ -25,10 +25,12 @@ import { buildReportHtml, type ReportHtmlData } from '../../src/services/reportH
 
 type TimeRange = 7 | 14 | 30;
 
-const average = (values: number[]) =>
-  values.length > 0
-    ? Math.round(values.reduce((sum, value) => sum + value, 0) / values.length)
+const average = (values: number[]) => {
+  const valid = values.filter(Number.isFinite);
+  return valid.length > 0
+    ? Math.round(valid.reduce((sum, value) => sum + value, 0) / valid.length)
     : 0;
+};
 
 const trend = (values: number[]) =>
   values.length < 2 ? 0 : values[values.length - 1] - values[0];
