@@ -6,6 +6,6 @@
  * consolidates the previously scattered NaN-guard + clamp patterns.
  */
 export function safeClamp(value: number, fallback = 0): number {
-  const n = Math.round(value);
-  return Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : fallback;
+  if (!Number.isFinite(value)) return fallback;
+  return Math.max(0, Math.min(100, Math.round(value)));
 }
