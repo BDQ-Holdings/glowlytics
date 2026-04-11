@@ -26,7 +26,8 @@ const TrendRail: React.FC<{
   data: number[];
   color: string;
   compact?: boolean;
-}> = ({ data, color, compact }) => {
+}> = ({ data: raw, color, compact }) => {
+  const data = raw.filter(Number.isFinite);
   const width = compact ? 132 : 208;
   const height = compact ? 28 : 34;
 
