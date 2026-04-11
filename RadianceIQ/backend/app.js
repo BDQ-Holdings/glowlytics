@@ -856,7 +856,7 @@ Return ONLY valid JSON matching this schema:
 
     res.json(result);
   } catch (err) {
-    log.error('Vision API error:', err.message);
+    log.error(`Vision API error: ${err.message || err}`);
     if (err.status === 401 || err.code === 'invalid_api_key') {
       return res.status(502).json({ error: 'OpenAI API key is invalid or missing' });
     }

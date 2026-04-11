@@ -371,7 +371,7 @@ export const analyzeWithFallback = async (input: AnalysisInput): Promise<{
       } catch (err: any) {
         console.warn('[Glowlytics] Vision API failed, falling back to local analysis:', err?.message || err);
         // Fall back to deterministic heuristics instead of crashing the scan
-        const fallbackResult = analyzeSkiN(input);
+        const fallbackResult = await analyzeSkiN(input);
         return {
           ...fallbackResult,
           confidence: 'low' as Confidence,

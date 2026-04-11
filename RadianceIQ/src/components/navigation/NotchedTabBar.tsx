@@ -315,7 +315,6 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'flex-end',
     zIndex: 999,
-    elevation: 999,
   },
   dockedWrap: {
     paddingHorizontal: Spacing.md,

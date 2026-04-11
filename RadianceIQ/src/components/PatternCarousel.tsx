@@ -8,6 +8,9 @@ import { Colors, FontFamily, FontSize, Spacing } from '../constants/theme';
 import { exportAndSharePattern } from '../services/patternExport';
 import { trackEvent } from '../services/analytics';
 
+const VIEWABILITY_CONFIG = { itemVisiblePercentThreshold: 60 };
+const CardSeparator = () => <View style={{ width: Spacing.sm }} />;
+
 interface Props {
   patterns: Pattern[];
   onShare?: (pattern: Pattern) => void;
@@ -16,7 +19,6 @@ interface Props {
 export const PatternCarousel: React.FC<Props> = ({ patterns, onShare }) => {
   const router = useRouter();
   const { width: screenW } = useWindowDimensions();
-  // Card fills screen width minus horizontal screen margins (Spacing.lg each side)
   const cardWidth = screenW - Spacing.lg * 2;
   const [activeIndex, setActiveIndex] = useState(0);
 
@@ -62,9 +64,9 @@ export const PatternCarousel: React.FC<Props> = ({ patterns, onShare }) => {
         snapToInterval={cardWidth + Spacing.sm}
         decelerationRate="fast"
         contentContainerStyle={styles.list}
-        ItemSeparatorComponent={() => <View style={{ width: Spacing.sm }} />}
+        ItemSeparatorComponent={CardSeparator}
         onViewableItemsChanged={onViewableItemsChanged}
-        viewabilityConfig={{ itemVisiblePercentThreshold: 60 }}
+        viewabilityConfig={VIEWABILITY_CONFIG}
         renderItem={({ item }) => (
           <PatternCard
             pattern={item}
