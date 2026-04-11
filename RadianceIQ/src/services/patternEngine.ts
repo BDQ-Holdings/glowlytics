@@ -105,10 +105,10 @@ interface DaySlice {
   health?: HealthDailyRecord;
 }
 
-function computeOverall(scores: SignalScores): number {
+function computeOverall(scores: SignalScores): number | null {
   const vals = [scores.structure, scores.hydration, scores.inflammation, scores.sunDamage, scores.elasticity];
   const valid = vals.filter(Number.isFinite);
-  return valid.length > 0 ? valid.reduce((a, b) => a + b, 0) / valid.length : 50;
+  return valid.length > 0 ? valid.reduce((a, b) => a + b, 0) / valid.length : null;
 }
 
 function buildDaySlices(input: PatternEngineInput): DaySlice[] {

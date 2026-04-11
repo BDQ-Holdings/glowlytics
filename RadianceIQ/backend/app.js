@@ -757,9 +757,10 @@ Return ONLY valid JSON matching this schema:
       };
     } else {
       // Fallback: derive from legacy 3-score format (backward compat with older model)
-      const legacyAcne = Number(parsed.acne_score) || 0;
-      const legacySun = Number(parsed.sun_damage_score) || 0;
-      const legacyAge = Number(parsed.skin_age_score) || 0;
+      const safeNum = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 50; };
+      const legacyAcne = safeNum(parsed.acne_score);
+      const legacySun = safeNum(parsed.sun_damage_score);
+      const legacyAge = safeNum(parsed.skin_age_score);
       layer3SignalScores = {
         structure: clamp(100 - (legacyAge * 0.55 + legacyAcne * 0.15)),
         hydration: clamp(100 - (legacyAge * 0.5 + legacyAcne * 0.2)),
