@@ -536,10 +536,11 @@ export default function AnalyzingScreen() {
     timers.current.push(tHardTimeout);
 
     // --- API track: encode photo + fire analysis ---
+    const safeParse = (v: string | undefined) => { const n = parseFloat(v || '0'); return Number.isFinite(n) ? n : 0; };
     const scannerData = {
-      inflammation_index: parseFloat(params.inflammation || '0'),
-      pigmentation_index: parseFloat(params.pigmentation || '0'),
-      texture_index: parseFloat(params.texture || '0'),
+      inflammation_index: safeParse(params.inflammation),
+      pigmentation_index: safeParse(params.pigmentation),
+      texture_index: safeParse(params.texture),
     };
     scannerDataRef.current = scannerData;
 

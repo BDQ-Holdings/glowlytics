@@ -106,9 +106,9 @@ interface DaySlice {
 }
 
 function computeOverall(scores: SignalScores): number {
-  return (
-    (scores.structure + scores.hydration + scores.inflammation + scores.sunDamage + scores.elasticity) / 5
-  );
+  const vals = [scores.structure, scores.hydration, scores.inflammation, scores.sunDamage, scores.elasticity];
+  const valid = vals.filter(Number.isFinite);
+  return valid.length > 0 ? valid.reduce((a, b) => a + b, 0) / valid.length : 50;
 }
 
 function buildDaySlices(input: PatternEngineInput): DaySlice[] {
@@ -136,11 +136,11 @@ function buildDaySlices(input: PatternEngineInput): DaySlice[] {
       date,
       signals: {
         overall: scores ? computeOverall(scores) : null,
-        structure: scores?.structure ?? null,
-        inflammation: scores?.inflammation ?? null,
-        hydration: scores?.hydration ?? null,
-        sunDamage: scores?.sunDamage ?? null,
-        elasticity: scores?.elasticity ?? null,
+        structure: Number.isFinite(scores?.structure) ? scores!.structure : null,
+        inflammation: Number.isFinite(scores?.inflammation) ? scores!.inflammation : null,
+        hydration: Number.isFinite(scores?.hydration) ? scores!.hydration : null,
+        sunDamage: Number.isFinite(scores?.sunDamage) ? scores!.sunDamage : null,
+        elasticity: Number.isFinite(scores?.elasticity) ? scores!.elasticity : null,
       },
       daily: record,
       health: healthByDate.get(date),

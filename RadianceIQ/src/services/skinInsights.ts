@@ -240,7 +240,7 @@ export const buildOverallSkinInsight = ({
 
   if (serverSignalScores && Number.isFinite(serverSignalScores.structure)) {
     signals = {
-      structure: clamp(serverSignalScores.structure),
+      structure: Number.isFinite(serverSignalScores.structure) ? clamp(serverSignalScores.structure) : 50,
       hydration: Number.isFinite(serverSignalScores.hydration) ? clamp(serverSignalScores.hydration) : 50,
       inflammation: Number.isFinite(serverSignalScores.inflammation) ? clamp(serverSignalScores.inflammation) : 50,
       sunDamage: Number.isFinite(serverSignalScores.sunDamage) ? clamp(serverSignalScores.sunDamage) : 50,

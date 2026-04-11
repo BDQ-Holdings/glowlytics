@@ -516,7 +516,7 @@ function mergeSignalScores(layer1Scores, layer2Results, layer3Scores) {
       continue;
     }
 
-    const weightedSum = betaL1 * l1 + betaL2 * (l2 ?? l1) + betaL3 * l3;
+    const weightedSum = betaL1 * l1 + betaL2 * (l2 ?? 0) + betaL3 * l3;
     merged[signal] = clamp(weightedSum / totalBeta);
   }
 
