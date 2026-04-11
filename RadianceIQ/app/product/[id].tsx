@@ -44,7 +44,7 @@ import type { CompositeSignals } from '../../src/services/skinInsights';
 const ringSize = 96;
 const ringStroke = 6;
 
-const clampScore = (value: number) => safeClamp(value);
+const clampScore = safeClamp;
 
 
 const ratingDotColor: Record<IngredientRating, string> = {

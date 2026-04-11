@@ -1,5 +1,6 @@
 import type { DailyRecord, DetectedLesion, ModelOutput, ProductEntry, SignalConfidence, SignalFeatures, SignalScores } from '../types';
 import { localDateStr } from '../utils/localDate';
+import { safeClamp } from '../utils/safeClamp';
 
 export type SkinMetricKey = 'acne' | 'sun_damage' | 'skin_age';
 export type SeverityLevel = 'low' | 'moderate' | 'high';
@@ -46,7 +47,7 @@ export interface MetricDetailInsight {
   continueUsing: string;
 }
 
-const clamp = (value: number) => { const n = Math.round(value); return Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : 50; };
+const clamp = (value: number) => safeClamp(value, 50);
 
 /**
  * Maps a 0-100 composite score to a clinical severity bucket.

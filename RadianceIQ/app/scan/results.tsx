@@ -324,7 +324,7 @@ export default function Results({ hideBottomAction: hideBottomActionProp }: { hi
               {signalKeys.map((key, i) => {
                 const score = latestOutput.signal_scores?.[key as keyof typeof latestOutput.signal_scores];
                 if (score == null) return null;
-                const clamped = Math.max(0, Math.min(Number.isFinite(score) ? score : 0, 100));
+                const clamped = Number.isFinite(score) ? Math.max(0, Math.min(100, Math.round(score))) : 0;
                 const prevScore = prevScores?.[key as keyof typeof prevScores];
                 const delta = prevScore != null ? Math.round(clamped - prevScore) : null;
                 const isBest = key === bestKey;

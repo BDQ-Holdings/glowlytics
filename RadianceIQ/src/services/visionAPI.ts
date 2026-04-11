@@ -1,5 +1,6 @@
 import { env } from '../config/env';
 import { getAuthHeaders } from './api';
+import { safeClamp } from '../utils/safeClamp';
 import type {
   Confidence,
   DetectedCondition,
@@ -108,7 +109,7 @@ export async function analyzeWithVisionAPI(
   const result = await response.json();
 
   // Validate the response shape
-  const clamp = (v: number) => Math.max(0, Math.min(100, Math.round(v)));
+  const clamp = safeClamp;
   return {
     acne_score: clamp(result.acne_score),
     sun_damage_score: clamp(result.sun_damage_score),
