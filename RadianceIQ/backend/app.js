@@ -585,6 +585,35 @@ app.post('/api/products/identify-photo', photoRateLimit, async (req, res) => {
   }
 });
 
+// ==================== ADMIN ROUTES (admin-secret auth, no JWT) ==============
+
+// Seed guidelines into Pinecone (admin only — requires ADMIN_SECRET)
+app.post('/api/rag/seed', async (req, res) => {
+  try {
+    const adminSecret = process.env.ADMIN_SECRET;
+    const providedSecret = req.headers['x-admin-secret'];
+    if (!adminSecret || !providedSecret ||
+        adminSecret.length !== providedSecret.length ||
+        !timingSafeEqual(Buffer.from(providedSecret), Buffer.from(adminSecret))) {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    if (!process.env.PINECONE_API_KEY) {
+      return res.status(500).json({ error: 'PINECONE_API_KEY not configured' });
+    }
+
+    const result = await seedGuidelines();
+    res.json({
+      success: true,
+      message: `Seeded ${result.seeded} guideline chunks`,
+      categories: result.categories,
+    });
+  } catch (err) {
+    log.error('RAG seed error:', err.message);
+    res.status(500).json({ error: safeErrorMessage(err) });
+  }
+});
+
 // ==================== PROTECTED ROUTES (auth required) ====================
 
 app.use(authMiddleware);
@@ -1380,34 +1409,6 @@ app.get('/api/reports/:userId', async (req, res) => {
 });
 
 // ==================== RAG PIPELINE ====================
-
-// Seed guidelines into Pinecone (admin only — requires ADMIN_SECRET)
-app.post('/api/rag/seed', async (req, res) => {
-  try {
-    // Issue #13: Require ADMIN_SECRET header instead of relying on NODE_ENV
-    const adminSecret = process.env.ADMIN_SECRET;
-    const providedSecret = req.headers['x-admin-secret'];
-    if (!adminSecret || !providedSecret ||
-        adminSecret.length !== providedSecret.length ||
-        !timingSafeEqual(Buffer.from(providedSecret), Buffer.from(adminSecret))) {
-      return res.status(403).json({ error: 'Admin access required' });
-    }
-
-    if (!process.env.PINECONE_API_KEY) {
-      return res.status(500).json({ error: 'PINECONE_API_KEY not configured' });
-    }
-
-    const result = await seedGuidelines();
-    res.json({
-      success: true,
-      message: `Seeded ${result.seeded} guideline chunks`,
-      categories: result.categories,
-    });
-  } catch (err) {
-    log.error('RAG seed error:', err.message);
-    res.status(500).json({ error: safeErrorMessage(err) });
-  }
-});
 
 // Query relevant guideline excerpts
 app.post('/api/rag/query', async (req, res) => {
