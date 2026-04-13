@@ -1,4 +1,6 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useStore } from '../useStore';
+import { localDateStr } from '../../utils/localDate';
 
 // Mock AsyncStorage
 jest.mock('@react-native-async-storage/async-storage', () => ({
@@ -53,6 +55,8 @@ const resetStore = () => {
       expires_at: null,
       product_id: null,
       free_scans_used: 0,
+      trial_start_date: null,
+      trial_end_date: null,
     },
   });
 };
@@ -132,7 +136,7 @@ describe('useStore', () => {
         period_applicable: 'no',
       });
 
-      const today = new Date().toISOString().split('T')[0];
+      const today = localDateStr();
 
       // Add a record for today
       const record1 = useStore.getState().addDailyRecord({
@@ -178,7 +182,7 @@ describe('useStore', () => {
         const d = new Date(today);
         d.setDate(d.getDate() - i);
         useStore.getState().addDailyRecord({
-          date: d.toISOString().split('T')[0],
+          date: localDateStr(d),
           scanner_reading_id: `scan-${i}`,
           scanner_indices: { inflammation_index: 40, pigmentation_index: 30, texture_index: 35 },
           scanner_quality_flag: 'pass',
@@ -241,6 +245,8 @@ describe('useStore', () => {
         expires_at: '2026-04-14T00:00:00Z',
         product_id: 'glowlytics_premium_monthly',
         free_scans_used: 2,
+        trial_start_date: null,
+        trial_end_date: null,
       });
 
       const sub = useStore.getState().subscription;
@@ -257,14 +263,36 @@ describe('useStore', () => {
       expect(useStore.getState().subscription.free_scans_used).toBe(2);
     });
 
-    it('canPerformScan returns true for free user under limit', () => {
+    it('incrementFreeScansUsed persists to AsyncStorage', async () => {
+      const mockSetItem = AsyncStorage.setItem as jest.Mock;
+      mockSetItem.mockClear();
+
+      useStore.getState().incrementFreeScansUsed();
+      useStore.getState().incrementFreeScansUsed();
+
+      // Wait for debounced persist (50ms timer + execution)
+      await new Promise((r) => setTimeout(r, 100));
+
+      expect(mockSetItem).toHaveBeenCalled();
+      const [key, raw] = mockSetItem.mock.calls[mockSetItem.mock.calls.length - 1];
+      expect(key).toBe('glowlytics_data');
+      expect(raw).not.toBeNull();
+      const persisted = JSON.parse(raw);
+      expect(persisted.subscription.free_scans_used).toBe(2);
+    });
+
+    it('canPerformScan returns true for user with active trial', () => {
+      const future = new Date();
+      future.setDate(future.getDate() + 5);
+      useStore.getState().setSubscription({
+        ...useStore.getState().subscription,
+        trial_start_date: new Date().toISOString(),
+        trial_end_date: future.toISOString(),
+      });
       expect(useStore.getState().canPerformScan()).toBe(true);
     });
 
-    it('canPerformScan returns false after 3 free scans', () => {
-      useStore.getState().incrementFreeScansUsed();
-      useStore.getState().incrementFreeScansUsed();
-      useStore.getState().incrementFreeScansUsed();
+    it('canPerformScan returns false for free user without trial', () => {
       expect(useStore.getState().canPerformScan()).toBe(false);
     });
 
@@ -275,11 +303,13 @@ describe('useStore', () => {
         expires_at: '2026-04-14T00:00:00Z',
         product_id: 'glowlytics_premium_monthly',
         free_scans_used: 10,
+        trial_start_date: null,
+        trial_end_date: null,
       });
       expect(useStore.getState().canPerformScan()).toBe(true);
     });
 
-    it('addDailyRecord increments free_scans_used', () => {
+    it('addDailyRecord does not increment free_scans_used (trial model)', () => {
       useStore.getState().createUser({
         age_range: '25-34',
         period_applicable: 'no',
@@ -301,7 +331,8 @@ describe('useStore', () => {
         new_product_added: false,
       });
 
-      expect(useStore.getState().subscription.free_scans_used).toBe(1);
+      // Trial model — no longer incrementing free scans
+      expect(useStore.getState().subscription.free_scans_used).toBe(0);
     });
 
     it('does not increment free_scans_used for premium users', () => {
@@ -316,6 +347,8 @@ describe('useStore', () => {
         expires_at: '2026-04-14T00:00:00Z',
         product_id: 'glowlytics_premium_monthly',
         free_scans_used: 0,
+        trial_start_date: null,
+        trial_end_date: null,
       });
 
       useStore.getState().addDailyRecord({
@@ -342,6 +375,8 @@ describe('useStore', () => {
         expires_at: '2026-04-14T00:00:00Z',
         product_id: 'glowlytics_premium_monthly',
         free_scans_used: 5,
+        trial_start_date: null,
+        trial_end_date: null,
       });
 
       useStore.getState().resetAll();
@@ -350,6 +385,103 @@ describe('useStore', () => {
       expect(sub.tier).toBe('free');
       expect(sub.is_active).toBe(false);
       expect(sub.free_scans_used).toBe(0);
+    });
+  });
+
+  describe('createUser auto-trial', () => {
+    it('starts a 7-day trial when createUser runs without an existing trial', () => {
+      useStore.getState().createUser({ age_range: '25-34' });
+      const sub = useStore.getState().subscription;
+      expect(sub.trial_start_date).not.toBeNull();
+      expect(sub.trial_end_date).not.toBeNull();
+      const start = new Date(sub.trial_start_date!).getTime();
+      const end = new Date(sub.trial_end_date!).getTime();
+      const days = Math.round((end - start) / (1000 * 60 * 60 * 24));
+      expect(days).toBe(7);
+    });
+
+    it('canPerformScan returns true immediately after createUser', () => {
+      useStore.getState().createUser({ age_range: '25-34' });
+      expect(useStore.getState().canPerformScan()).toBe(true);
+    });
+
+    it('does not overwrite an existing trial when createUser runs again', () => {
+      useStore.getState().createUser({ age_range: '25-34' });
+      const firstStart = useStore.getState().subscription.trial_start_date;
+      useStore.getState().createUser({ age_range: '25-34' });
+      expect(useStore.getState().subscription.trial_start_date).toBe(firstStart);
+    });
+  });
+
+  describe('loadPersistedData trial backfill', () => {
+    const mockGetItem = AsyncStorage.getItem as jest.Mock;
+
+    afterEach(() => {
+      mockGetItem.mockReset();
+      mockGetItem.mockResolvedValue(null);
+    });
+
+    it('backfills trial for an upgraded user with no trial dates', async () => {
+      mockGetItem.mockResolvedValueOnce(
+        JSON.stringify({
+          user: { user_id: 'u1', age_range: '25-34', onboarding_complete: true },
+          subscription: {
+            tier: 'free',
+            is_active: false,
+            expires_at: null,
+            product_id: null,
+            free_scans_used: 0,
+            trial_start_date: null,
+            trial_end_date: null,
+          },
+        }),
+      );
+      await useStore.getState().loadPersistedData();
+      const sub = useStore.getState().subscription;
+      expect(sub.trial_start_date).not.toBeNull();
+      expect(sub.trial_end_date).not.toBeNull();
+      expect(useStore.getState().canPerformScan()).toBe(true);
+    });
+
+    it('does NOT touch a paid user', async () => {
+      mockGetItem.mockResolvedValueOnce(
+        JSON.stringify({
+          user: { user_id: 'u2', age_range: '25-34', onboarding_complete: true },
+          subscription: {
+            tier: 'premium',
+            is_active: true,
+            expires_at: '2099-01-01T00:00:00.000Z',
+            product_id: 'glow_pro_monthly',
+            free_scans_used: 0,
+            trial_start_date: null,
+            trial_end_date: null,
+          },
+        }),
+      );
+      await useStore.getState().loadPersistedData();
+      const sub = useStore.getState().subscription;
+      expect(sub.trial_start_date).toBeNull();
+      expect(sub.is_active).toBe(true);
+    });
+
+    it('does NOT touch a user whose trial has already expired', async () => {
+      mockGetItem.mockResolvedValueOnce(
+        JSON.stringify({
+          user: { user_id: 'u3', age_range: '25-34', onboarding_complete: true },
+          subscription: {
+            tier: 'free',
+            is_active: false,
+            expires_at: null,
+            product_id: null,
+            free_scans_used: 0,
+            trial_start_date: '2020-01-01T00:00:00.000Z',
+            trial_end_date: '2020-01-08T00:00:00.000Z',
+          },
+        }),
+      );
+      await useStore.getState().loadPersistedData();
+      expect(useStore.getState().subscription.trial_end_date).toBe('2020-01-08T00:00:00.000Z');
+      expect(useStore.getState().subscription.trial_start_date).toBe('2020-01-01T00:00:00.000Z');
     });
   });
 });

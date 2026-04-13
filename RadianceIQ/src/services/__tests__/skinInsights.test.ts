@@ -174,6 +174,69 @@ describe('buildOverallSkinInsight', () => {
     expect(highRisk!.statusLabel).toBe('Recovery');
   });
 
+  it('uses scanner_indices for baseline when baselineDaily is provided', () => {
+    // Baseline output with proxy scores that differ from scanner_indices
+    const baseline = makeOutput({ acne_score: 30, sun_damage_score: 25, skin_age_score: 20 });
+    // baselineDaily has refined scanner_indices that differ from the proxy scores
+    const baselineDaily = makeDaily({
+      daily_id: 'day-baseline',
+      scanner_indices: { inflammation_index: 60, pigmentation_index: 55, texture_index: 50 },
+    });
+    // Latest scan is identical to baseline (same output)
+    const latest = makeOutput({ acne_score: 30, sun_damage_score: 25, skin_age_score: 20 });
+    const latestDaily = makeDaily({
+      daily_id: 'day-1',
+      scanner_indices: { inflammation_index: 60, pigmentation_index: 55, texture_index: 50 },
+    });
+
+    const result = buildOverallSkinInsight({
+      latestOutput: latest,
+      baselineOutput: baseline,
+      latestDaily,
+      baselineDaily,
+    });
+
+    expect(result).not.toBeNull();
+    // When latest and baseline use identical scanner_indices, trendDelta should be 0
+    expect(result!.trendDelta).toBe(0);
+  });
+
+  it('trendDelta is non-zero when baselineDaily scanner_indices differ from proxy scores', () => {
+    // Baseline output with proxy scores
+    const baseline = makeOutput({ acne_score: 30, sun_damage_score: 25, skin_age_score: 20 });
+    // Without baselineDaily: baseline uses acne_score (30) as inflammationRisk proxy
+    // With baselineDaily: baseline uses inflammation_index (60) — a very different value
+    const baselineDaily = makeDaily({
+      daily_id: 'day-baseline',
+      scanner_indices: { inflammation_index: 60, pigmentation_index: 55, texture_index: 50 },
+    });
+    const latest = makeOutput({ acne_score: 30, sun_damage_score: 25, skin_age_score: 20 });
+    const latestDaily = makeDaily({
+      daily_id: 'day-1',
+      scanner_indices: { inflammation_index: 60, pigmentation_index: 55, texture_index: 50 },
+    });
+
+    const withBaselineDaily = buildOverallSkinInsight({
+      latestOutput: latest,
+      baselineOutput: baseline,
+      latestDaily,
+      baselineDaily,
+    });
+
+    const withoutBaselineDaily = buildOverallSkinInsight({
+      latestOutput: latest,
+      baselineOutput: baseline,
+      latestDaily,
+    });
+
+    expect(withBaselineDaily).not.toBeNull();
+    expect(withoutBaselineDaily).not.toBeNull();
+    // With baselineDaily providing accurate scanner_indices, the apples-to-apples comparison
+    // yields trendDelta = 0. Without it, the proxy mismatch produces a non-zero delta.
+    expect(withBaselineDaily!.trendDelta).toBe(0);
+    expect(withoutBaselineDaily!.trendDelta).not.toBe(0);
+  });
+
   it('weights sum to 1.0 in overall score', () => {
     // All signals at 100 → overall should be 100
     const result = buildOverallSkinInsight({

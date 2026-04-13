@@ -1,113 +1,60 @@
-Glowlytics - Build Progress
-===========================
-Last Updated: 2026-03-16
+Glowlytics — Build Progress
+============================
+Last Updated: 2026-04-12
 
-MILESTONES:
-1. Project setup + foundation (Expo SDK 54, TypeScript, Expo Router)
-2. Auth: Clerk (Apple + Google + Email/Password), JWT backend auth
-3. 3 user journeys: onboarding, daily scan, report
-4. Vision: Fine-tuned GPT-4o via backend proxy
-5. RAG: Pinecone + AAD/ACOG guidelines
-6. Deterministic scoring (GAGS, SCORAD, VISIA)
-7. Gamification: XP, 6 levels, 15 badges, weekly challenges
-8. Photo persistence + on-device quality checks
-9. Renamed RadianceIQ → Glowlytics (glowlytics.ai)
-10. Onboarding redesigned: 13 screens, Headspace-inspired progressive disclosure
-11. Backend deployed to Railway (https://glowlytics-api-production.up.railway.app)
-12. EAS build config with env vars for dev/preview/production profiles
-13. RevenueCat subscription: "Glow Pro" entitlement, 3 free scans, native paywall UI
-14. PostHog analytics: 20 events across auth/onboarding/scan/paywall/engagement
-15. App icon fixed: gradient background with white G logo
-16. Production build v1.0.0 (#3) submitted to App Store Connect
-17. 3-layer signal-specific analysis pipeline (deterministic + ONNX CV + GPT-4o)
-18. ML training pipeline: 9 notebooks (data prep, GPT-4o finetune, MedGemma, eval, structure, hydration, elasticity, lesion detection, signal eval)
-19. DB schema migrated on Railway with signal_scores, signal_features, lesions columns
+STATUS: 0 TS errors | 48 screens | 24 components | 21 services | 448 tests | 7 backend modules
 
-CURRENT STATUS:
-- 286 tests passing (20 suites), 0 TypeScript errors
-- 49 screens, 20+ components, 16 services, 7 backend modules
-- Backend live on Railway with PostgreSQL, health check passing
-- DB schema includes signal-specific columns (signal_scores, signal_features, lesions)
-- EAS project linked (f56f9712-7cc3-48a3-ba5d-710c5e469c3d)
-- Production .ipa uploaded to App Store Connect (ASC App ID: 6760600635)
-- Dev client build available for on-device testing
+MILESTONES (28 shipped):
+ 1. Foundation (Expo SDK 54, TS, Router, Zustand)
+ 2. Auth (Clerk Apple/Google/email, JWT backend)
+ 3. Vision (3-layer: deterministic + ONNX + fine-tuned GPT-4o)
+ 4. RAG (Pinecone, 80 guideline chunks, signal-filtered)
+ 5. Scoring (GAGS/SCORAD/VISIA heuristics)
+ 6. Gamification (XP, 6 levels, 15 badges, weekly challenges)
+ 7. Rename (RadianceIQ → Glowlytics)
+ 8. Onboarding (7-9 screens, Headspace-inspired)
+ 9. Backend (Railway + PostgreSQL)
+10. Subscriptions (RevenueCat 9.15.2, "Glow Pro", 7-day trial)
+11. Analytics (PostHog, 20 events)
+12. ML pipeline (9 notebooks, ONNX export, HuggingFace)
+13. On-device lesion detection (YOLOv8 via onnxruntime-react-native)
+14. Camera (MLKit face detection frame processor)
+15. Security (auth, rate limiting, CORS, cascading deletes)
+16. Design system (WCAG AAA, 3-tier surfaces, Switzer)
+17. Products (AM/PM, routine builder, conflict detection, 22 tests)
+18. Results (story format, paginated swipe-up)
+19. Today (signal movers, AI insight, 104pt score hero)
+20. Metric detail (per-metric personality, SVG face map)
+21. Profile (colored sections, tier badges, personal bests)
+22. Lesion labels (clinical names, evidence badges, RAG citations)
+23. Scan pipeline fixes (fallback, coordinate mapping, detection leak)
+24. Bug fixes (paywall bypass, IDOR, cycle TZ, NaN guards)
+25. Pattern Engine (correlation engine, HealthKit sync, UI carousel)
+26. NaN hardening (safeClamp, sparkline, trend, display layers)
+27. Launch prep — production credentials, auth flows, Pinecone seed
+28. UI polish — patterns, streak, coaching tooltip, demo seeder
 
-COMPLETED:
-[x] RevenueCat SDK (react-native-purchases + react-native-purchases-ui v9.12.0)
-[x] "Glow Pro" entitlement with 3-free-scan trial
-[x] Native paywall UI via RevenueCatUI.presentPaywallIfNeeded
-[x] Customer Center for subscription management (profile screen)
-[x] Scan gating: camera tab, camera screen, home scan buttons → paywall
-[x] Report gating: reports require active subscription
-[x] Subscription state in Zustand (tier, is_active, expires_at, product_id, free_scans_used)
-[x] Premium users' free_scans_used counter frozen during subscription
-[x] PostHog analytics service (src/services/analytics.ts)
-[x] 20 analytics events: auth (start/complete/fail/signout), onboarding (start/skip/complete),
-    scan (started/results_viewed), paywall (shown/purchased/restored/dismissed),
-    subscription (manage_tapped), report (generated)
-[x] PostHog user identification via Clerk userId
-[x] Analytics reset on sign-out
-[x] App icon: gradient purple-to-cyan background + white G (was white-on-white)
-[x] Favicon fixed to match app icon
-[x] .npmrc for legacy-peer-deps in EAS builds
-[x] Dependency alignment: react-native-purchases matched to v9.12.0
-[x] @types/jest downgraded to 29.5.14, jest-expo to ~54.0.17 for SDK 54
-[x] Production EAS build succeeded (v1.0.0, build #3)
-[x] Submitted to App Store Connect via eas submit
-[x] Scan flow refactor: analysis runs after checkin with real user context
-[x] restorePurchases crash guard (missing RevenueCat key)
-[x] Vision API 30s fetch timeout (AbortController)
-[x] Face tracking / photo quality threshold alignment (both 20% min fill)
-[x] Camera: stale dimensions fix, retake auto-capture fix, stale closure fix
-[x] Face tracking memory leak fix (temp photo cleanup)
-[x] Paywall pauses camera + face tracking
-[x] Store: pendingPhotoBase64 for photo handoff, null-user assertion in addDailyRecord
-[x] Backend deployment to Railway
-[x] Railway env vars (Clerk, OpenAI, Pinecone, Vision model)
-[x] EAS project initialized with dev/preview/production profiles
-[x] 3-layer parallel signal analysis pipeline (Layer 1: CIELAB/ITA/GLCM/LBP/specular, Layer 2: ONNX CV, Layer 3: GPT-4o)
-[x] backend/image-processing.js — deterministic feature extraction via sharp
-[x] backend/signal-models.js — ONNX model inference + score merging logic
-[x] Signal scores (structure, hydration, inflammation, sunDamage, elasticity) in API response
-[x] Lesion detection data (bbox, class, confidence, zone) in API response
-[x] Per-signal confidence indicators (low/med/high) based on which layers contributed
-[x] Results screen: Signal Breakdown section with per-signal bars + confidence badges
-[x] FacialMesh: lesion bounding box rendering (dashed rectangles) + lesion count legend
-[x] DB schema: signal_scores, signal_features, lesions JSONB columns on model_outputs
-[x] Railway DB schema manually initialized (tables were missing after Postgres recreate)
-[x] home.tsx refactored to use overallInsight.signals (single source of truth)
-[x] CameraFaceMesh.tsx: shared meshData.ts module, uniform scaling
-[x] ML notebooks 05-09: structure, hydration, elasticity, lesion detection, evaluation
-[x] ml/requirements.txt updated with onnxruntime, ultralytics, opencv-python, albumentations, timm, coremltools
-[x] 53 new tests: image processing unit tests, signal model merging, endpoint integration
-[x] Backend deps: sharp (image processing), onnxruntime-node (optional, CV models)
+ML EVAL (all pass):
+- ONNX: Structure r=0.913, Hydration r=0.889, Sun Damage r=0.882, Elasticity r=0.940
+- GPT-4o: 95% accuracy, loss 0.153
+- YOLOv8: mAP50 0.47 (2.8x over v1)
 
-REMAINING (Launch checklist):
-[ ] !! CRITICAL: Replace Clerk TEST keys with PRODUCTION keys !!
-    - eas.json: swap pk_test_* → pk_live_* in all profiles
-    - Railway: swap sk_test_* → sk_live_* and update CLERK_ISSUER_URL
-    - Create production Clerk instance at dashboard.clerk.com
-[ ] RevenueCat dashboard setup:
-    - Design paywall template (shown via RevenueCatUI)
-    - Create subscription products in App Store Connect (monthly/yearly/lifetime)
-    - Map products to "Glow Pro" entitlement
-    - Configure Customer Center paths (cancel, restore, refund)
-[ ] PostHog dashboard setup:
-    - Build auth→onboarding→scan funnel
-    - Build paywall conversion funnel
-    - Set up retention cohorts
-[ ] App Store Connect: fill metadata from app-store-metadata.json
-[ ] Screenshots: capture 5 screens on iPhone 15 Pro Max (1290x2796)
-[ ] Privacy policy URL: host at https://glowlytics.ai/privacy
-[ ] Content rating questionnaire: complete (12+, medical info: yes)
-[ ] Seed Pinecone on production: POST /api/rag/seed
-[ ] TestFlight: smoke test all 3 journeys + subscription flow + paywall
+LAUNCH PREP (2026-04-12 — all done):
+- Clerk production keys (pk_live_, sk_live_, issuer URL)
+- Railway env vars (ADMIN_SECRET, CORS_ORIGINS)
+- RevenueCat dashboard verified, upgraded to 9.15.2
+- Pinecone seeded (80 chunks, 19 categories)
+- Apple Sign In (native via useSignInWithApple)
+- Google Sign In (web OAuth with transfer handling)
+- Demo user (test@test.com, auto-seeded via DemoSeeder)
+- Privacy policy on landing page
+- App Store metadata ready
+
+REMAINING:
+[ ] Content rating questionnaire in ASC (12+, medical: no)
+[ ] Screenshots (in progress)
+[ ] Rebase feature branch → main
+[ ] Production EAS build
 [ ] Submit for App Review
 
-REMAINING (ML pipeline):
-[ ] Train structure model (notebook 05) on FFHQ + CelebA-HQ → export structure.onnx
-[ ] Train hydration model (notebook 06) on CelebA + Oulu → export hydration.onnx
-[ ] Train elasticity model (notebook 07) on UTKFace + FFHQ → export elasticity.onnx
-[ ] Train lesion detector (notebook 08) on ACNE04 + ISIC + HAM10000 → export lesion_detector.onnx
-[ ] Run evaluation notebook (09) — target: MAE < 10, Pearson r > 0.7 per signal
-[ ] Deploy trained ONNX models to backend/models/ on Railway
+POST-LAUNCH: See POST_LAUNCH_CHECKLIST.md

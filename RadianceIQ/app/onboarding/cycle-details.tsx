@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, ScrollView } from 'react-native';
-import { useRouter } from 'expo-router';
+import { Alert, View, Text, TextInput, StyleSheet, ScrollView } from 'react-native';
 import Svg, { Defs, RadialGradient, Stop, Circle, Path } from 'react-native-svg';
 import { OnboardingTransition } from '../../src/components/OnboardingTransition';
 import { OnboardingGridOption, OnboardingChip, OnboardingOptionCard } from '../../src/components/OnboardingOptionCard';
 import { useStore } from '../../src/store/useStore';
-import { screenToRoute } from '../../src/services/onboardingFlow';
+import { useOnboardingNavigation } from '../../src/hooks/useOnboardingNavigation';
 import { Colors, FontFamily, FontSize, Spacing, BorderRadius } from '../../src/constants/theme';
 import type { BirthControlType } from '../../src/types';
 
@@ -29,23 +28,23 @@ function CycleIllustration() {
     <Svg width={140} height={100} viewBox="0 0 140 100">
       <Defs>
         <RadialGradient id="cycleGlow" cx="50%" cy="50%" r="50%">
-          <Stop offset="0%" stopColor="#F2B56A" stopOpacity={0.3} />
-          <Stop offset="100%" stopColor="#F2B56A" stopOpacity={0} />
+          <Stop offset="0%" stopColor="#C07B2A" stopOpacity={0.3} />
+          <Stop offset="100%" stopColor="#C07B2A" stopOpacity={0} />
         </RadialGradient>
       </Defs>
       <Circle cx={70} cy={50} r={40} fill="url(#cycleGlow)" />
       <Path
         d="M15 50 Q35 30 55 50 Q75 70 95 50 Q115 30 135 50"
         fill="none"
-        stroke="#F2B56A"
+        stroke="#C07B2A"
         strokeWidth={1.2}
         strokeOpacity={0.3}
         strokeLinecap="round"
       />
-      <Circle cx={70} cy={50} r={18} fill="none" stroke="#7DE7E1" strokeWidth={0.8} strokeOpacity={0.2} />
-      <Circle cx={70} cy={50} r={3} fill="#F2B56A" fillOpacity={0.5} />
-      <Circle cx={30} cy={42} r={1.5} fill="#7DE7E1" fillOpacity={0.2} />
-      <Circle cx={110} cy={42} r={1.5} fill="#7DE7E1" fillOpacity={0.2} />
+      <Circle cx={70} cy={50} r={18} fill="none" stroke="#3A9E8F" strokeWidth={0.8} strokeOpacity={0.2} />
+      <Circle cx={70} cy={50} r={3} fill="#C07B2A" fillOpacity={0.5} />
+      <Circle cx={30} cy={42} r={1.5} fill="#3A9E8F" fillOpacity={0.2} />
+      <Circle cx={110} cy={42} r={1.5} fill="#3A9E8F" fillOpacity={0.2} />
     </Svg>
   );
 }
@@ -68,13 +67,8 @@ function birthControlResponseToValue(resp: BirthControlResponse): 'yes' | 'no' |
 }
 
 export default function CycleDetails() {
-  const router = useRouter();
-  const {
-    onboardingFlow,
-    onboardingFlowIndex,
-    setOnboardingFlowIndex,
-    updateUser,
-  } = useStore();
+  const { advance, goBack, onboardingFlow, onboardingFlowIndex } = useOnboardingNavigation();
+  const updateUser = useStore((s) => s.updateUser);
 
   const [lastPeriodDate, setLastPeriodDate] = useState('');
   const [cycleLength, setCycleLength] = useState<CycleLengthOption | null>(null);
@@ -85,6 +79,10 @@ export default function CycleDetails() {
     const updates: Record<string, any> = {};
 
     if (lastPeriodDate.trim()) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(lastPeriodDate.trim())) {
+        Alert.alert('Invalid date', 'Please enter a date in YYYY-MM-DD format.');
+        return;
+      }
       updates.period_last_start_date = lastPeriodDate.trim();
     }
     if (cycleLength) {
@@ -99,37 +97,27 @@ export default function CycleDetails() {
 
     updateUser(updates);
 
-    const nextIndex = onboardingFlowIndex + 1;
-    setOnboardingFlowIndex(nextIndex);
-    router.push(screenToRoute(onboardingFlow[nextIndex]));
+    advance();
   };
 
   const handleSkip = () => {
-    const nextIndex = onboardingFlowIndex + 1;
-    setOnboardingFlowIndex(nextIndex);
-    router.push(screenToRoute(onboardingFlow[nextIndex]));
-  };
-
-  const handleBack = () => {
-    const prevIndex = onboardingFlowIndex - 1;
-    setOnboardingFlowIndex(prevIndex);
-    router.back();
+    advance();
   };
 
   return (
     <OnboardingTransition
       illustration={<CycleIllustration />}
-      heading="A bit more about your cycle."
-      subtext="Rough numbers are fine. We use these to estimate where you are in your cycle, not to log it precisely."
+      heading="A couple more details about your cycle."
+      subtext="Rough numbers are fine. We use this to estimate cycle timing, not to log it precisely."
       primaryLabel="Got it"
       primaryOnPress={handleContinue}
       secondaryLabel="Skip details"
       secondaryOnPress={handleSkip}
-      showProgress={true}
-      totalSteps={5}
-      currentStep={4}
-      showBack={true}
-      onBack={handleBack}
+      showProgress
+      totalSteps={onboardingFlow.length}
+      currentStep={onboardingFlowIndex}
+      showBack
+      onBack={goBack}
     >
       <ScrollView
         style={styles.scroll}
@@ -145,11 +133,12 @@ export default function CycleDetails() {
             value={lastPeriodDate}
             onChangeText={setLastPeriodDate}
             placeholder="YYYY-MM-DD"
-            placeholderTextColor={Colors.textDim}
+            placeholderTextColor={Colors.textMuted}
             keyboardType="numbers-and-punctuation"
             returnKeyType="done"
             autoCorrect={false}
             maxLength={10}
+            accessibilityLabel="Last period start date"
           />
         </View>
 

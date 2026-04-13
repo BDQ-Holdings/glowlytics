@@ -10,6 +10,7 @@ import {
   Spacing,
 } from '../constants/theme';
 import type { DetectedCondition, DetectedLesion, SignalConfidence } from '../types';
+import { LESION_INFO } from '../constants/lesions';
 import { V, edges } from './meshData';
 
 interface HotZone {
@@ -40,16 +41,10 @@ const CONDITION_COLORS: Record<string, string> = {
   enlarged_pores: '#E8A87C',
 };
 
-const LESION_COLORS: Record<string, string> = {
-  comedone: '#FFB347',
-  papule: '#FF7A78',
-  pustule: '#FF4444',
-  nodule: '#E63946',
-  macule: '#F2B56A',
-  patch: '#B68AFF',
-};
+const LESION_COLORS: Record<string, string> = Object.fromEntries(
+  Object.entries(LESION_INFO).map(([k, v]) => [k, v.color]),
+);
 
-// SVG viewBox dimensions for coordinate mapping
 const SVG_WIDTH = 310;
 const SVG_HEIGHT = 320;
 
@@ -58,12 +53,9 @@ const severityColor = (severity: HotZone['severity'], conditionName?: string) =>
     return CONDITION_COLORS[conditionName];
   }
   switch (severity) {
-    case 'elevated':
-      return Colors.error;
-    case 'moderate':
-      return Colors.warning;
-    case 'low':
-      return Colors.success;
+    case 'elevated': return Colors.error;
+    case 'moderate': return Colors.warning;
+    case 'low': return Colors.success;
   }
 };
 
@@ -81,7 +73,9 @@ const regionCenter: Record<HotZone['region'], { cx: number; cy: number }> = {
 };
 
 function deriveHotZones(acne: number, sun: number, age: number, conditions?: DetectedCondition[]): HotZone[] {
-  // When conditions are provided, use them for precise zone mapping
+  // Use real condition data from the backend analysis when available.
+  // Each condition has specific zones with severity — this is the only
+  // source of truth for WHERE on the face issues appear.
   if (conditions && conditions.length > 0) {
     const zones: HotZone[] = [];
     for (const condition of conditions) {
@@ -97,27 +91,13 @@ function deriveHotZones(acne: number, sun: number, age: number, conditions?: Det
         });
       }
     }
-    if (zones.length === 0) {
-      zones.push({ label: 'All clear', severity: 'low', region: 'nose' });
-    }
-    return zones;
+    if (zones.length > 0) return zones;
   }
 
-  // Fallback: threshold-based logic when no conditions data available
-  const zones: HotZone[] = [];
-  if (acne > 40)
-    zones.push({ label: 'Acne activity', severity: acne > 70 ? 'elevated' : 'moderate', region: 'left_cheek' });
-  if (acne > 55)
-    zones.push({ label: 'Breakout zone', severity: acne > 75 ? 'elevated' : 'moderate', region: 'chin' });
-  if (sun > 45)
-    zones.push({ label: 'Sun exposure', severity: sun > 70 ? 'elevated' : 'moderate', region: 'forehead' });
-  if (sun > 55)
-    zones.push({ label: 'Pigmentation', severity: sun > 70 ? 'elevated' : 'moderate', region: 'right_cheek' });
-  if (age > 50)
-    zones.push({ label: 'Fine lines', severity: age > 70 ? 'elevated' : 'moderate', region: 'nose' });
-  if (zones.length === 0)
-    zones.push({ label: 'All clear', severity: 'low', region: 'nose' });
-  return zones;
+  // No condition data from backend — show only score-level summary
+  // without fabricating zone positions. We don't know WHERE on the face
+  // issues are, only that scores indicate concern.
+  return [{ label: 'All clear', severity: 'low', region: 'nose' }];
 }
 
 export const FacialMesh: React.FC<Props> = ({ acneScore, sunDamageScore, skinAgeScore, conditions, lesions, signalConfidence }) => {
@@ -132,96 +112,81 @@ export const FacialMesh: React.FC<Props> = ({ acneScore, sunDamageScore, skinAge
           <Defs>
             {hotZones.map((zone, i) => {
               const c = regionCenter[zone.region];
+              const cx = 150 + (c.cx - 150) * 0.86;
               const color = severityColor(zone.severity, zone.conditionName);
               return (
-                <RadialGradient key={`g${i}`} id={`hz${i}`} cx={c.cx} cy={c.cy} r="50" gradientUnits="userSpaceOnUse">
-                  <Stop offset="0%" stopColor={color} stopOpacity="0.55" />
-                  <Stop offset="55%" stopColor={color} stopOpacity="0.18" />
+                <RadialGradient key={`g${i}`} id={`hz${i}`} cx={cx} cy={c.cy} r="48" gradientUnits="userSpaceOnUse">
+                  <Stop offset="0%" stopColor={color} stopOpacity="0.5" />
+                  <Stop offset="45%" stopColor={color} stopOpacity="0.15" />
                   <Stop offset="100%" stopColor={color} stopOpacity="0" />
                 </RadialGradient>
               );
             })}
           </Defs>
 
-          {/* Wireframe edges */}
-          <G opacity={0.32}>
+          {/* Face mesh — horizontally compressed for realistic proportions */}
+          <G transform="translate(150, 0) scale(0.86, 1) translate(-150, 0)" opacity={0.35}>
             {edges.map(([a, b], i) => (
               <Line key={i} x1={V[a][0]} y1={V[a][1]} x2={V[b][0]} y2={V[b][1]}
-                stroke={Colors.primaryLight} strokeWidth={0.6} />
+                stroke={Colors.primary} strokeWidth={0.6} />
             ))}
           </G>
 
-          {/* Vertices — brighter at key landmarks */}
-          <G>
-            {V.map(([x, y], i) => {
-              // Key landmark vertices get brighter dots
-              const isContour = i <= 23;
-              const isEye = (i >= 50 && i <= 69);
-              const isNose = (i >= 70 && i <= 83);
-              const isLip = (i >= 111 && i <= 127);
-              const bright = isContour || isEye || isNose || isLip;
-              return (
-                <Circle key={i} cx={x} cy={y}
-                  r={bright ? 1.5 : 1.0}
-                  fill={Colors.primaryLight}
-                  opacity={bright ? 0.6 : 0.3}
-                />
-              );
-            })}
-          </G>
-
-          {/* Left pupil */}
-          <Circle cx={V[59][0]} cy={V[59][1]} r={6} fill="none" stroke={Colors.primaryLight} strokeWidth={0.5} opacity={0.2} />
-          <Circle cx={V[59][0]} cy={V[59][1]} r={2.5} fill={Colors.primaryLight} opacity={0.15} />
-          {/* Right pupil */}
-          <Circle cx={V[69][0]} cy={V[69][1]} r={6} fill="none" stroke={Colors.primaryLight} strokeWidth={0.5} opacity={0.2} />
-          <Circle cx={V[69][0]} cy={V[69][1]} r={2.5} fill={Colors.primaryLight} opacity={0.15} />
-
-          {/* Hot zone overlays */}
+          {/* Hot zone overlays — compressed to match narrowed mesh */}
           {hotZones.map((zone, i) => {
             const c = regionCenter[zone.region];
+            const cx = 150 + (c.cx - 150) * 0.86; // match mesh compression
             const color = severityColor(zone.severity, zone.conditionName);
             return (
               <G key={`hz-${i}`}>
-                <Circle cx={c.cx} cy={c.cy} r={50} fill={`url(#hz${i})`} />
-                <Circle cx={c.cx} cy={c.cy} r={5} fill={color} opacity={0.9} />
-                <Circle cx={c.cx} cy={c.cy} r={11} fill="none" stroke={color} strokeWidth={1} opacity={0.5} />
-                <Circle cx={c.cx} cy={c.cy} r={22} fill="none" stroke={color} strokeWidth={0.5} opacity={0.2} strokeDasharray="3 4" />
+                <Circle cx={cx} cy={c.cy} r={48} fill={`url(#hz${i})`} />
+                <Circle cx={cx} cy={c.cy} r={5} fill={color} opacity={0.85} />
+                <Circle cx={cx} cy={c.cy} r={12} fill="none" stroke={color} strokeWidth={1.2} opacity={0.5} />
+                <Circle cx={cx} cy={c.cy} r={24} fill="none" stroke={color} strokeWidth={0.6} opacity={0.25} strokeDasharray="3 5" />
+                {/* Crosshair lines */}
+                <Line x1={cx - 16} y1={c.cy} x2={cx - 8} y2={c.cy} stroke={color} strokeWidth={0.6} opacity={0.4} />
+                <Line x1={cx + 8} y1={c.cy} x2={cx + 16} y2={c.cy} stroke={color} strokeWidth={0.6} opacity={0.4} />
+                <Line x1={cx} y1={c.cy - 16} x2={cx} y2={c.cy - 8} stroke={color} strokeWidth={0.6} opacity={0.4} />
+                <Line x1={cx} y1={c.cy + 8} x2={cx} y2={c.cy + 16} stroke={color} strokeWidth={0.6} opacity={0.4} />
               </G>
             );
           })}
 
-          {/* Lesion bounding boxes from YOLOv8 detector */}
+          {/* Lesion markers — positioned by zone center, compressed to match mesh */}
           {hasLesions && lesions.map((lesion, i) => {
-            const [bx, by, bw, bh] = lesion.bbox;
-            const x = bx * SVG_WIDTH;
-            const y = by * SVG_HEIGHT;
-            const w = bw * SVG_WIDTH;
-            const h = bh * SVG_HEIGHT;
+            const zone = (lesion.zone || 'nose') as HotZone['region'];
+            const center = regionCenter[zone] || regionCenter.nose;
+            // Apply same 0.86 horizontal compression as mesh and hot zones
+            const baseCx = 150 + (center.cx - 150) * 0.86;
+            const baseCy = center.cy;
+            // Spread multiple lesions in the same zone so they don't stack
+            const zoneIndex = lesions.slice(0, i).filter((l) => (l.zone || 'nose') === zone).length;
+            const spreadX = (zoneIndex % 3 - 1) * 14;
+            const spreadY = Math.floor(zoneIndex / 3) * 12;
+            const markerCx = baseCx + spreadX;
+            const markerCy = baseCy + spreadY;
             const color = LESION_COLORS[lesion.class] || Colors.error;
-            const opacity = Math.max(0.3, Math.min(0.8, lesion.confidence));
+            const opacity = Math.max(0.35, Math.min(0.95, lesion.confidence ?? 0.5));
+            const r = 8;
+
             return (
-              <G key={`lesion-${i}`}>
-                <Rect
-                  x={x} y={y} width={w} height={h}
-                  fill="none"
-                  stroke={color}
-                  strokeWidth={1.2}
-                  opacity={opacity}
-                  strokeDasharray="4 2"
-                />
-                <Circle
-                  cx={x + w / 2} cy={y + h / 2}
-                  r={2}
-                  fill={color}
-                  opacity={opacity}
-                />
+              <G key={`lesion-${lesion.trackId || i}`} opacity={opacity}>
+                {/* Outer pulse ring */}
+                <Circle cx={markerCx} cy={markerCy} r={r + 4} fill="none"
+                  stroke={color} strokeWidth={0.6} opacity={0.3} strokeDasharray="2 4" />
+                {/* Solid marker */}
+                <Circle cx={markerCx} cy={markerCy} r={r} fill={color} opacity={0.2} />
+                <Circle cx={markerCx} cy={markerCy} r={r} fill="none"
+                  stroke={color} strokeWidth={1.2} />
+                {/* Center dot */}
+                <Circle cx={markerCx} cy={markerCy} r={2} fill={color} />
               </G>
             );
           })}
         </Svg>
       </View>
 
+      {/* Legend */}
       <View style={styles.legend}>
         {hotZones.map((zone, i) => {
           const color = severityColor(zone.severity, zone.conditionName);
@@ -243,7 +208,7 @@ export const FacialMesh: React.FC<Props> = ({ acneScore, sunDamageScore, skinAge
               {lesions.length} lesion{lesions.length !== 1 ? 's' : ''} detected
             </Text>
             <Text style={[styles.legendSeverity, { color: Colors.error }]}>
-              {lesions.filter(l => l.confidence > 0.7).length} high conf
+              {lesions.filter(l => (l.tier || 'possible') === 'confirmed').length} confirmed
             </Text>
           </View>
         )}

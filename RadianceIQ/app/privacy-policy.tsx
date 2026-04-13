@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { AtmosphereScreen } from '../src/components/AtmosphereScreen';
@@ -11,7 +11,9 @@ import {
   Spacing,
 } from '../src/constants/theme';
 
-const EFFECTIVE_DATE = 'March 10, 2026';
+const EFFECTIVE_DATE = 'March 19, 2026';
+const CONTACT_EMAIL = 'drmustafa@bdqholdings.com';
+const DOMAIN = 'glowlytics.ai';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -39,7 +41,17 @@ function BulletList({ items }: { items: string[] }) {
   );
 }
 
-export default function PrivacyPolicyScreen() {
+function SectionDivider({ label }: { label: string }) {
+  return (
+    <View style={styles.dividerContainer}>
+      <View style={styles.dividerLine} />
+      <Text style={styles.dividerLabel}>{label}</Text>
+      <View style={styles.dividerLine} />
+    </View>
+  );
+}
+
+export default function TermsAndPrivacyScreen() {
   const router = useRouter();
 
   return (
@@ -51,7 +63,7 @@ export default function PrivacyPolicyScreen() {
         </TouchableOpacity>
         <View>
           <Text style={styles.eyebrow}>Legal</Text>
-          <Text style={styles.title}>Privacy Policy</Text>
+          <Text style={styles.title}>Terms & Privacy</Text>
         </View>
       </View>
 
@@ -61,48 +73,227 @@ export default function PrivacyPolicyScreen() {
         </Paragraph>
         <Paragraph>
           BDQ Holdings LLC ("we", "our", or "us") operates the Glowlytics mobile
-          application. This Privacy Policy explains how we collect, use, store,
-          and protect your personal information when you use our app.
-        </Paragraph>
-        <Paragraph>
-          By using Glowlytics, you agree to the collection and use of information
-          in accordance with this policy.
+          application ({DOMAIN}). This document contains both our Terms of Service
+          and Privacy Policy. By downloading, installing, or using Glowlytics,
+          you agree to be bound by these terms and our data practices described below.
         </Paragraph>
       </View>
 
-      {/* 1. Data We Collect */}
+      {/* ============================================================ */}
+      {/* TERMS OF SERVICE                                              */}
+      {/* ============================================================ */}
+
+      <SectionDivider label="Terms of Service" />
+
+      {/* 1. Acceptance */}
       <View style={styles.card}>
-        <Section title="1. Information We Collect">
+        <Section title="1. Acceptance of Terms">
+          <Paragraph>
+            By creating an account or using Glowlytics, you agree to these Terms
+            of Service. If you do not agree, you must not use the app. We reserve
+            the right to update these terms at any time. Continued use after
+            changes constitutes acceptance.
+          </Paragraph>
+        </Section>
+      </View>
+
+      {/* 2. Service Description */}
+      <View style={styles.card}>
+        <Section title="2. Service Description">
+          <Paragraph>
+            Glowlytics is a skin health tracking application that uses artificial
+            intelligence, including fine-tuned GPT-4o models and custom computer
+            vision models, to analyze skin photos and track changes over time.
+          </Paragraph>
+          <Paragraph>
+            Glowlytics is not a medical device and does not provide medical
+            diagnoses. All analysis is for informational and educational purposes
+            only. You should consult a qualified dermatologist or healthcare
+            professional for any medical concerns about your skin.
+          </Paragraph>
+        </Section>
+      </View>
+
+      {/* 3. Accounts */}
+      <View style={styles.card}>
+        <Section title="3. User Accounts">
+          <Paragraph>
+            You must create an account to use Glowlytics. Authentication is
+            provided by Clerk, a third-party identity provider. You are
+            responsible for maintaining the confidentiality of your account
+            credentials and for all activity under your account.
+          </Paragraph>
+          <BulletList
+            items={[
+              'You must provide accurate information when creating your account.',
+              'You must be at least 13 years of age to use Glowlytics.',
+              'You may not share or transfer your account to another person.',
+              'We reserve the right to suspend or terminate accounts that violate these terms.',
+            ]}
+          />
+        </Section>
+      </View>
+
+      {/* 4. Subscriptions */}
+      <View style={styles.card}>
+        <Section title="4. Subscriptions and Billing">
+          <Paragraph>
+            Glowlytics offers a premium subscription ("Glow Pro") managed
+            through RevenueCat and the Apple App Store / Google Play Store.
+          </Paragraph>
+          <BulletList
+            items={[
+              'Free trial: new users receive a 7-day free trial of Glow Pro features.',
+              'After the trial period, a paid subscription is required to access premium features including unlimited scans and detailed reports.',
+              'Subscriptions automatically renew unless cancelled at least 24 hours before the end of the current billing period.',
+              'Cancellation and refunds are handled by the Apple App Store or Google Play Store per their respective policies.',
+              'We do not directly process payments. All billing is handled by Apple or Google through RevenueCat.',
+            ]}
+          />
+        </Section>
+      </View>
+
+      {/* 5. Acceptable Use */}
+      <View style={styles.card}>
+        <Section title="5. Acceptable Use">
+          <Paragraph>
+            You agree not to:
+          </Paragraph>
+          <BulletList
+            items={[
+              'Use Glowlytics for any unlawful purpose or in violation of any applicable law.',
+              'Attempt to reverse engineer, decompile, or disassemble the app or its AI models.',
+              'Upload photos of other individuals without their consent.',
+              'Attempt to circumvent subscription requirements, trial limitations, or security measures.',
+              'Use the app to generate content that is harmful, misleading, or defamatory.',
+              'Interfere with or disrupt the app or its backend services.',
+            ]}
+          />
+        </Section>
+      </View>
+
+      {/* 6. Intellectual Property */}
+      <View style={styles.card}>
+        <Section title="6. Intellectual Property">
+          <Paragraph>
+            All content, features, functionality, AI models, algorithms, and
+            design elements of Glowlytics are owned by BDQ Holdings LLC and are
+            protected by copyright, trademark, and other intellectual property
+            laws.
+          </Paragraph>
+          <Paragraph>
+            You retain ownership of the photos you capture through the app. By
+            using Glowlytics, you grant us a limited license to process your
+            photos solely for the purpose of providing skin analysis services.
+          </Paragraph>
+        </Section>
+      </View>
+
+      {/* 7. Disclaimers */}
+      <View style={styles.card}>
+        <Section title="7. Disclaimers and Limitation of Liability">
+          <Paragraph>
+            Glowlytics is provided "as is" and "as available" without warranties
+            of any kind, whether express or implied.
+          </Paragraph>
+          <BulletList
+            items={[
+              'AI-generated skin analysis is not a substitute for professional medical advice, diagnosis, or treatment.',
+              'We do not guarantee the accuracy, completeness, or reliability of any analysis results.',
+              'We are not liable for any health decisions made based on information provided by the app.',
+              'To the maximum extent permitted by law, BDQ Holdings LLC shall not be liable for any indirect, incidental, special, consequential, or punitive damages.',
+              'Our total liability shall not exceed the amount you have paid for the service in the 12 months preceding the claim.',
+            ]}
+          />
+        </Section>
+      </View>
+
+      {/* 8. Termination */}
+      <View style={styles.card}>
+        <Section title="8. Termination">
+          <Paragraph>
+            You may terminate your account at any time by contacting us at{' '}
+            {CONTACT_EMAIL} or by using the "Reset all data" option in the app.
+            We may terminate or suspend your account if you violate these terms.
+          </Paragraph>
+          <Paragraph>
+            Upon termination, your right to use the app ceases immediately. Data
+            deletion follows the retention policy described in our Privacy Policy
+            below.
+          </Paragraph>
+        </Section>
+      </View>
+
+      {/* 9. Governing Law */}
+      <View style={styles.card}>
+        <Section title="9. Governing Law">
+          <Paragraph>
+            These Terms are governed by the laws of the State of Delaware,
+            United States, without regard to conflict of law principles. Any
+            disputes arising under these terms shall be resolved in the courts
+            of Delaware.
+          </Paragraph>
+        </Section>
+      </View>
+
+      {/* ============================================================ */}
+      {/* PRIVACY POLICY                                                */}
+      {/* ============================================================ */}
+
+      <SectionDivider label="Privacy Policy" />
+
+      {/* 10. Introduction */}
+      <View style={styles.card}>
+        <Section title="10. Privacy Policy Introduction">
+          <Paragraph>
+            BDQ Holdings LLC ("we", "our", or "us") operates the Glowlytics
+            mobile application. This Privacy Policy explains how we collect,
+            use, store, and protect your personal information when you use our
+            app.
+          </Paragraph>
+          <Paragraph>
+            We are committed to GDPR and CCPA compliance. By using Glowlytics,
+            you agree to the collection and use of information in accordance
+            with this policy.
+          </Paragraph>
+        </Section>
+      </View>
+
+      {/* 11. Data We Collect */}
+      <View style={styles.card}>
+        <Section title="11. Information We Collect">
           <Paragraph>
             We collect the following categories of information to provide and
             improve our skin health tracking service:
           </Paragraph>
           <BulletList
             items={[
-              'Account information: email address, name, and authentication credentials managed through our identity provider (Clerk).',
-              'Skin scan photos: images captured via your device camera during baseline and daily scans.',
-              'Health metrics: skin analysis scores, signal data (structure, hydration, inflammation, sun damage, elasticity), and trend history.',
+              'Account information: email address and authentication credentials managed through Clerk.',
+              'Skin scan photos: images captured via your device camera during scans. Photos are processed on-device for real-time lesion detection and via our secure backend for full analysis. Photos are never shared with third parties.',
+              'Health metrics: skin analysis scores, signal data (structure, hydration, inflammation, sun damage, elasticity), lesion detection results, and trend history.',
+              'Daily check-in context: sunscreen use, new products, sleep quality, and stress level -- collected after each scan to personalize analysis.',
               'Product usage data: skincare products you add, ingredient lists, and usage schedules.',
               'Demographic information: age range, location (coarse), period tracking preference, and lifestyle factors you optionally provide during onboarding.',
               'Device information: device type, operating system, and app version for troubleshooting purposes.',
+              'Anonymized usage analytics: collected via PostHog to understand how features are used and improve the app. This data is anonymized and cannot be used to identify you personally.',
             ]}
           />
         </Section>
       </View>
 
-      {/* 2. How We Use Your Data */}
+      {/* 12. How We Use Your Data */}
       <View style={styles.card}>
-        <Section title="2. How We Use Your Data">
+        <Section title="12. How We Use Your Data">
           <Paragraph>
             Your information is used exclusively to deliver and improve the
             Glowlytics experience:
           </Paragraph>
           <BulletList
             items={[
-              'Skin analysis: processing scan photos to generate skin health scores and identify trends over time.',
-              'Trend tracking: comparing daily scans against your baseline to monitor changes in skin health signals.',
-              'Personalized recommendations: tailoring product effectiveness scores and insights based on your skin profile and goals.',
-              'Service improvement: aggregated, anonymized usage patterns help us improve the app experience.',
+              'Skin analysis: processing scan photos through our 3-layer AI pipeline (on-device processing, custom computer vision models, and fine-tuned GPT-4o) to generate skin health scores.',
+              'Trend tracking: comparing daily scans against your baseline to monitor changes in skin health signals over time.',
+              'Personalized recommendations: tailoring product effectiveness scores and skin care insights based on your skin profile, goals, and AAD/ACOG medical guidelines (via our RAG pipeline).',
+              'Service improvement: aggregated, anonymized usage patterns (via PostHog) help us improve the app experience.',
             ]}
           />
           <Paragraph>
@@ -112,9 +303,28 @@ export default function PrivacyPolicyScreen() {
         </Section>
       </View>
 
-      {/* 3. Data Storage */}
+      {/* 13. AI Processing */}
       <View style={styles.card}>
-        <Section title="3. Data Storage and Security">
+        <Section title="13. AI and Automated Processing">
+          <Paragraph>
+            Glowlytics uses artificial intelligence to analyze your skin photos.
+            It is important to understand:
+          </Paragraph>
+          <BulletList
+            items={[
+              'On-device processing: real-time lesion detection runs directly on your device during camera alignment. This data does not leave your phone.',
+              'Backend AI processing: photos are sent to our secure backend where they are analyzed by custom ONNX computer vision models and a fine-tuned GPT-4o model.',
+              'AI analysis is NOT a medical diagnosis. Results are informational only and should never replace professional dermatological advice.',
+              'Photos sent to OpenAI for analysis are processed under our API agreement and are not stored or used for model training by OpenAI.',
+              'All AI-generated scores represent algorithmic assessments, not clinical evaluations.',
+            ]}
+          />
+        </Section>
+      </View>
+
+      {/* 14. Data Storage */}
+      <View style={styles.card}>
+        <Section title="14. Data Storage and Security">
           <Paragraph>
             Your data is stored in two locations:
           </Paragraph>
@@ -125,34 +335,40 @@ export default function PrivacyPolicyScreen() {
             ]}
           />
           <Paragraph>
-            We implement industry-standard security measures to protect your data
-            against unauthorized access, alteration, disclosure, or destruction.
+            We implement industry-standard security measures including CORS
+            restrictions, rate limiting on public endpoints, JWT-based
+            authentication via Clerk, and server-side authorization checks to
+            protect your data against unauthorized access.
           </Paragraph>
         </Section>
       </View>
 
-      {/* 4. Third-Party Services */}
+      {/* 15. Third-Party Services */}
       <View style={styles.card}>
-        <Section title="4. Third-Party Services">
+        <Section title="15. Third-Party Services">
           <Paragraph>
-            Glowlytics integrates with the following third-party services:
+            Glowlytics integrates with the following third-party services, each
+            bound by their own privacy policies:
           </Paragraph>
           <BulletList
             items={[
-              'Clerk (authentication): manages user sign-up, sign-in, and session tokens. Clerk processes your email address and authentication credentials. See Clerk\'s privacy policy at clerk.com/privacy.',
-              'OpenAI (vision analysis): scan photos may be sent to OpenAI\'s API for AI-powered skin analysis. Photos are sent for analysis only and are not stored or used for training by OpenAI, per our API data usage agreement. See OpenAI\'s API data usage policy at openai.com/policies/api-data-usage-policies.',
+              'Clerk (authentication): manages user sign-up, sign-in, and session tokens. Processes your email address and authentication credentials.',
+              'OpenAI (vision analysis): scan photos are sent to OpenAI\'s API for AI-powered skin analysis. Photos are not stored or used for training by OpenAI per our API data usage agreement.',
+              'RevenueCat (subscriptions): manages subscription state, free trial periods, and purchase verification. Processes your subscription status and purchase history. Does not receive your photos or health data.',
+              'PostHog (analytics): collects anonymized, aggregated usage data to help us understand feature adoption and improve the app. PostHog does not receive your photos, health data, or personally identifiable information.',
+              'Pinecone (RAG pipeline): stores anonymized medical guideline embeddings (AAD/ACOG) for generating evidence-based recommendations. Does not store or process your personal data.',
             ]}
           />
           <Paragraph>
-            No other third-party services receive your personal data or scan
-            photos.
+            No third-party service receives your scan photos for marketing,
+            advertising, or model training purposes.
           </Paragraph>
         </Section>
       </View>
 
-      {/* 5. User Rights */}
+      {/* 16. User Rights */}
       <View style={styles.card}>
-        <Section title="5. Your Rights (GDPR / CCPA)">
+        <Section title="16. Your Rights (GDPR / CCPA)">
           <Paragraph>
             Depending on your jurisdiction, you have the following rights
             regarding your personal data:
@@ -169,20 +385,20 @@ export default function PrivacyPolicyScreen() {
             ]}
           />
           <Paragraph>
-            To exercise any of these rights, contact us at drmustafa@bdqholdings.com.
-            We will respond within 30 days.
+            To exercise any of these rights, contact us at {CONTACT_EMAIL}. We
+            will respond within 30 days.
           </Paragraph>
         </Section>
       </View>
 
-      {/* 6. Data Retention */}
+      {/* 17. Data Retention */}
       <View style={styles.card}>
-        <Section title="6. Data Retention">
+        <Section title="17. Data Retention and Deletion">
           <Paragraph>
             We retain your data for as long as your account is active. You can
             delete all of your data at any time through the Profile screen in the
-            app by using the "Reset all data" option, or by contacting us
-            directly.
+            app by using the "Reset all data" option, or by contacting us at{' '}
+            {CONTACT_EMAIL}.
           </Paragraph>
           <Paragraph>
             Upon account deletion, all associated data (scan photos, health
@@ -192,17 +408,18 @@ export default function PrivacyPolicyScreen() {
         </Section>
       </View>
 
-      {/* 7. Camera and Photo Permissions */}
+      {/* 18. Camera and Photo Permissions */}
       <View style={styles.card}>
-        <Section title="7. Camera and Photo Permissions">
+        <Section title="18. Camera and Photo Permissions">
           <Paragraph>
             Glowlytics requires camera access to perform skin scans. Photos
             captured during scans are:
           </Paragraph>
           <BulletList
             items={[
+              'Processed on-device for real-time lesion detection during camera alignment.',
               'Stored locally on your device.',
-              'Optionally sent to our backend for AI-powered analysis (encrypted in transit).',
+              'Sent to our secure backend for AI-powered analysis (encrypted in transit via TLS).',
               'Never shared with third parties for marketing or advertising.',
               'Never posted publicly or made accessible to other users.',
             ]}
@@ -214,9 +431,9 @@ export default function PrivacyPolicyScreen() {
         </Section>
       </View>
 
-      {/* 8. Health Data */}
+      {/* 19. Health Data */}
       <View style={styles.card}>
-        <Section title="8. Health Data Disclaimer">
+        <Section title="19. Health Data Disclaimer">
           <Paragraph>
             Glowlytics provides skin health tracking for informational purposes
             only. Our analysis is non-diagnostic and should not be considered
@@ -224,9 +441,10 @@ export default function PrivacyPolicyScreen() {
           </Paragraph>
           <BulletList
             items={[
-              'Skin health scores and signals are generated using algorithmic analysis and AI, not clinical evaluation.',
+              'Skin health scores and signals are generated using algorithmic analysis and AI (including fine-tuned GPT-4o and custom computer vision models), not clinical evaluation.',
               'Results are not a substitute for professional dermatological consultation.',
-              'Health-related data (skin metrics, trends) is never shared with third parties, including insurance companies or employers.',
+              'Recommendations are informed by AAD and ACOG guidelines but are not medical prescriptions.',
+              'Health-related data (skin metrics, trends, lesion detections) is never shared with third parties, including insurance companies or employers.',
             ]}
           />
           <Paragraph>
@@ -236,9 +454,9 @@ export default function PrivacyPolicyScreen() {
         </Section>
       </View>
 
-      {/* 9. Children's Privacy */}
+      {/* 20. Children's Privacy */}
       <View style={styles.card}>
-        <Section title="9. Children's Privacy">
+        <Section title="20. Children's Privacy">
           <Paragraph>
             Glowlytics is not intended for use by individuals under the age of
             13. We do not knowingly collect personal information from children
@@ -247,19 +465,19 @@ export default function PrivacyPolicyScreen() {
           </Paragraph>
           <Paragraph>
             If you are a parent or guardian and believe your child has provided us
-            with personal data, please contact us at drmustafa@bdqholdings.com.
+            with personal data, please contact us at {CONTACT_EMAIL}.
           </Paragraph>
         </Section>
       </View>
 
-      {/* 10. Changes to This Policy */}
+      {/* 21. Changes */}
       <View style={styles.card}>
-        <Section title="10. Changes to This Policy">
+        <Section title="21. Changes to These Terms">
           <Paragraph>
-            We may update this Privacy Policy from time to time. Changes will be
-            posted within the app, and the "Effective date" at the top will be
-            revised accordingly. Continued use of Glowlytics after changes
-            constitutes acceptance of the updated policy.
+            We may update these Terms of Service and Privacy Policy from time to
+            time. Changes will be posted within the app, and the "Effective date"
+            at the top will be revised accordingly. Continued use of Glowlytics
+            after changes constitutes acceptance of the updated terms.
           </Paragraph>
           <Paragraph>
             For material changes, we will provide prominent notice within the app
@@ -268,20 +486,29 @@ export default function PrivacyPolicyScreen() {
         </Section>
       </View>
 
-      {/* 11. Contact */}
+      {/* 22. Contact */}
       <View style={styles.card}>
-        <Section title="11. Contact Information">
+        <Section title="22. Contact Information">
           <Paragraph>
-            If you have questions or concerns about this Privacy Policy or our
-            data practices, please contact us:
+            If you have questions or concerns about these Terms of Service,
+            Privacy Policy, or our data practices, please contact us:
           </Paragraph>
           <BulletList
             items={[
               'Company: BDQ Holdings LLC',
-              'Email: drmustafa@bdqholdings.com',
-              'Subject line: Glowlytics Privacy Inquiry',
+              `Website: ${DOMAIN}`,
+              `Email: ${CONTACT_EMAIL}`,
+              'Subject line: Glowlytics Legal Inquiry',
             ]}
           />
+          <TouchableOpacity
+            style={styles.emailButton}
+            onPress={() => Linking.openURL(`mailto:${CONTACT_EMAIL}?subject=Glowlytics%20Legal%20Inquiry`)}
+            activeOpacity={0.7}
+          >
+            <Feather name="mail" size={16} color={Colors.primaryLight} />
+            <Text style={styles.emailButtonText}>Contact us</Text>
+          </TouchableOpacity>
         </Section>
       </View>
 
@@ -356,7 +583,7 @@ const styles = StyleSheet.create({
   bulletDot: {
     width: 5,
     height: 5,
-    borderRadius: 3,
+    borderRadius: BorderRadius.xs,
     backgroundColor: Colors.primary,
     marginTop: 7,
     flexShrink: 0,
@@ -367,6 +594,42 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.sans,
     fontSize: FontSize.sm,
     lineHeight: 21,
+  },
+  dividerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    marginVertical: Spacing.lg,
+    paddingHorizontal: Spacing.sm,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: Colors.borderStrong,
+  },
+  dividerLabel: {
+    color: Colors.text,
+    fontFamily: FontFamily.sansBold,
+    fontSize: FontSize.lg,
+    letterSpacing: 0.3,
+  },
+  emailButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.xs,
+    backgroundColor: Colors.glassStrong,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    marginTop: Spacing.sm,
+  },
+  emailButtonText: {
+    color: Colors.primaryLight,
+    fontFamily: FontFamily.sansSemiBold,
+    fontSize: FontSize.sm,
   },
   footerSpacer: {
     height: Spacing.xl,

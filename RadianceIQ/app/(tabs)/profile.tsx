@@ -1,5 +1,6 @@
-import React, { useMemo } from 'react';
-import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useState } from 'react';
+import { Alert, Linking, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { AtmosphereScreen } from '../../src/components/AtmosphereScreen';
@@ -9,21 +10,21 @@ import {
   FontFamily,
   FontSize,
   Spacing,
+  Surfaces,
 } from '../../src/constants/theme';
 import { useStore } from '../../src/store/useStore';
 import {
   presentPaywall,
   presentCustomerCenter,
   checkSubscriptionStatus,
-  remainingFreeScans,
+  restorePurchases,
+  isTrialActive,
+  trialDaysRemaining,
 } from '../../src/services/subscription';
+import { scheduleDailyReminder, cancelDailyReminder } from '../../src/services/notifications';
 import { trackEvent, resetAnalytics } from '../../src/services/analytics';
-import { createDemoSeed } from '../../src/services/demoData';
-import { computeProductEffectiveness } from '../../src/services/ingredientDB';
-import {
-  buildOverallSkinInsight,
-  getLatestDailyForOutput,
-} from '../../src/services/skinInsights';
+import { formatRelativeTime } from '../../src/utils/formatRelativeTime';
+import { GamificationCard } from '../../src/components/GamificationCard';
 import { LevelProgressBar } from '../../src/components/LevelProgressBar';
 import { BadgeShowcase } from '../../src/components/BadgeShowcase';
 
@@ -41,35 +42,44 @@ try {
 const InfoRow: React.FC<{ label: string; value: string }> = ({ label, value }) => (
   <View style={styles.infoRow}>
     <Text style={styles.infoLabel}>{label}</Text>
-    <Text style={styles.infoValue}>{value}</Text>
+    <Text style={styles.infoValue} numberOfLines={1}>{value}</Text>
   </View>
 );
 
-const EffectivenessBadge: React.FC<{ score: number }> = ({ score }) => {
-  const color =
-    score >= 75 ? Colors.success :
-    score >= 55 ? Colors.primary :
-    score >= 35 ? Colors.warning :
-    Colors.error;
+const getErrorMessage = (err: unknown, fallback = 'Unknown error') => {
+  const clerkMessage = (err as any)?.errors?.[0]?.longMessage ?? (err as any)?.errors?.[0]?.message;
+  if (typeof clerkMessage === 'string' && clerkMessage.trim().length > 0) {
+    return clerkMessage;
+  }
+  return err instanceof Error ? err.message : String(err ?? fallback);
+};
 
-  return (
-    <View style={[styles.effectivenessBadge, { backgroundColor: color + '20', borderColor: color + '40' }]}>
-      <Text style={[styles.effectivenessText, { color }]}>{score}%</Text>
-    </View>
-  );
+const getHealthkitHint = (message: string) => {
+  if (/expo go|native module|unimplemented/i.test(message)) {
+    return 'HealthKit requires an iOS development/production build (not Expo Go). Rebuild the app with EAS and try again.';
+  }
+  return message;
 };
 
 export default function ProfileTab() {
   const router = useRouter();
   const user = useStore((s) => s.user);
   const protocol = useStore((s) => s.protocol);
-  const products = useStore((s) => s.products);
   const dailyRecords = useStore((s) => s.dailyRecords);
-  const modelOutputs = useStore((s) => s.modelOutputs);
   const gamification = useStore((s) => s.gamification);
   const subscription = useStore((s) => s.subscription);
   const setSubscription = useStore((s) => s.setSubscription);
+  const notificationSettings = useStore((s) => s.notificationSettings);
+  const setNotificationTime = useStore((s) => s.setNotificationTime);
   const resetAll = useStore((s) => s.resetAll);
+  const healthConnection = useStore((s) => s.user?.health_connection);
+  const healthSyncStatus = useStore((s) => s.healthSyncStatus);
+  const updateHealthConnection = useStore((s) => s.updateHealthConnection);
+
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [healthConnecting, setHealthConnecting] = useState(false);
+  const getStreak = useStore((s) => s.getStreak);
+  const streak = getStreak();
 
   const clerkUser = useUser ? useUser() : null;
   const clerk = useClerk ? useClerk() : null;
@@ -82,25 +92,6 @@ export default function ProfileTab() {
         ? 'Not applicable'
         : 'Prefer not to say';
 
-  // Compute overall insight for personalized scoring
-  const overallInsight = useMemo(() => {
-    const latestOutput = modelOutputs.length > 0 ? modelOutputs[modelOutputs.length - 1] : null;
-    const baseline = modelOutputs.length > 0 ? modelOutputs[0] : null;
-    const latestDaily = getLatestDailyForOutput(latestOutput, dailyRecords);
-    return buildOverallSkinInsight({ latestOutput, baselineOutput: baseline, latestDaily });
-  }, [modelOutputs, dailyRecords]);
-
-  // Compute product effectiveness scores
-  const productScores = useMemo(() => {
-    if (!protocol?.primary_goal) return new Map<string, number>();
-    const scores = new Map<string, number>();
-    for (const p of products) {
-      const result = computeProductEffectiveness(p, protocol.primary_goal, overallInsight?.signals);
-      scores.set(p.user_product_id, result.score);
-    }
-    return scores;
-  }, [products, protocol, overallInsight]);
-
   const handleSignOut = async () => {
     if (clerk) {
       Alert.alert(
@@ -112,33 +103,20 @@ export default function ProfileTab() {
             text: 'Sign out',
             style: 'destructive',
             onPress: async () => {
-              trackEvent('auth_sign_out');
-              resetAnalytics();
-              await clerk.signOut();
-              resetAll();
-              router.replace('/');
+              try {
+                trackEvent('auth_sign_out');
+                resetAnalytics();
+                await clerk.signOut();
+                await resetAll();
+                // AuthRedirector handles navigation when isSignedIn → false
+              } catch {
+                Alert.alert('Sign out failed', 'Please try again.');
+              }
             },
           },
         ],
       );
     }
-  };
-
-  const handleLoadDemo = () => {
-    const demo = createDemoSeed();
-    resetAll();
-    const store = useStore.getState();
-    store.createUser(demo.user);
-    for (const p of demo.products) store.addProduct(p);
-    // Load records and outputs directly into state
-    useStore.setState({
-      protocol: demo.protocol,
-      dailyRecords: demo.records,
-      modelOutputs: demo.outputs,
-      gamification: demo.gamification,
-    });
-    store.persistData();
-    Alert.alert('Demo loaded', '21 days of scan history, 4 products, and gamification data loaded.');
   };
 
   const handleResetAllData = () => {
@@ -150,8 +128,8 @@ export default function ProfileTab() {
         {
           text: 'Delete everything',
           style: 'destructive',
-          onPress: () => {
-            resetAll();
+          onPress: async () => {
+            await resetAll();
             router.replace('/');
           },
         },
@@ -159,16 +137,107 @@ export default function ProfileTab() {
     );
   };
 
+  const handleHealthConnect = async () => {
+    setHealthConnecting(true);
+    try {
+      const { getHealthConnectionState, connectHealthData } = require('../../src/services/healthPermissions');
+
+      const initialState = await getHealthConnectionState();
+      if (initialState.status === 'unavailable') {
+        updateHealthConnection(initialState);
+        Alert.alert(
+          'Apple Health unavailable',
+          initialState.availability_note || 'Apple Health is not available on this device.',
+        );
+        return;
+      }
+
+      const conn = await connectHealthData();
+      updateHealthConnection(conn);
+
+      if (conn.status === 'granted') {
+        const { added, errors } = await useStore.getState().syncHealthData();
+        if (errors.length > 0) {
+          console.warn('[Health] Sync completed with errors:', errors[0]);
+        }
+        if (added === 0 && errors.length > 0) {
+          Alert.alert('Connected with limited data', errors[0]);
+        }
+        return;
+      }
+
+      const reason =
+        conn.availability_note ||
+        (conn.status === 'denied'
+          ? 'Permission was not granted. You can allow access in Apple Health > Sharing > Apps.'
+          : 'Apple Health is not available on this device.');
+      Alert.alert(
+        conn.status === 'denied' ? 'Apple Health permission needed' : 'Apple Health unavailable',
+        reason,
+      );
+    } catch (e: unknown) {
+      const message = getHealthkitHint(getErrorMessage(e));
+      console.warn('[Health] Connect failed:', message);
+      Alert.alert('Could not connect Apple Health', message);
+      updateHealthConnection({
+        status: 'unavailable',
+        availability_note: message,
+      });
+    } finally {
+      setHealthConnecting(false);
+    }
+  };
+
   return (
     <AtmosphereScreen>
-      <View style={styles.header}>
-        <Text style={styles.eyebrow}>Profile</Text>
-        <Text style={styles.title}>Your details</Text>
+      {/* Identity header */}
+      <View style={styles.identityHeader}>
+        <View style={styles.avatarWrap}>
+          <View style={styles.avatarGlow} />
+          <View style={styles.avatarCircle}>
+            <Text style={styles.avatarLetter}>
+              {(clerkEmail?.[0] || user?.age_range?.[0] || 'G').toUpperCase()}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.identityInfo}>
+          {clerkEmail && <Text style={styles.identityEmail} numberOfLines={1}>{clerkEmail}</Text>}
+          <View style={styles.identityMeta}>
+            <View style={[styles.tierBadge, {
+              backgroundColor: subscription.is_active
+                ? 'rgba(192, 123, 42, 0.12)'
+                : isTrialActive(subscription)
+                  ? Colors.surfaceOverlay
+                  : Colors.surface,
+            }]}>
+              <Text style={[styles.tierBadgeText, {
+                color: subscription.is_active
+                  ? Colors.warning
+                  : isTrialActive(subscription)
+                    ? Colors.primary
+                    : Colors.textMuted,
+              }]}>
+                {subscription.is_active ? 'Glow Pro' : isTrialActive(subscription) ? 'Trial' : 'Free'}
+              </Text>
+            </View>
+            {streak > 0 && (
+              <View style={styles.identityStreakRow}>
+                <Feather name="zap" size={11} color={streak >= 7 ? Colors.warning : Colors.primary} />
+                <Text style={[styles.identityStreak, { color: streak >= 7 ? Colors.warning : Colors.primary }]}>
+                  {streak}d
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
       </View>
 
-      {/* Account */}
+      {/* Account & Subscription */}
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Account</Text>
+        <View style={styles.cardTitleRow}>
+          <Feather name="user" size={15} color={Colors.primary} />
+          <Text style={styles.cardTitle}>Account & Plan</Text>
+        </View>
         {clerkEmail ? (
           <InfoRow label="Email" value={clerkEmail} />
         ) : null}
@@ -176,6 +245,8 @@ export default function ProfileTab() {
           style={styles.modeButton}
           onPress={handleSignOut}
           activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Sign out of your account"
         >
           <Feather name="log-out" size={16} color={Colors.error} />
           <Text style={[styles.modeButtonText, { color: Colors.error }]}>Sign out</Text>
@@ -185,32 +256,25 @@ export default function ProfileTab() {
           style={styles.modeButton}
           onPress={() => router.push('/privacy-policy')}
           activeOpacity={0.7}
+          accessibilityRole="link"
+          accessibilityLabel="Terms and Privacy Policy"
         >
           <Feather name="shield" size={16} color={Colors.primaryLight} />
-          <Text style={styles.modeButtonText}>Privacy Policy</Text>
+          <Text style={styles.modeButtonText}>Terms & Privacy Policy</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={[styles.modeButton, styles.modeButtonDestructive]}
           onPress={handleResetAllData}
           activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Reset all data"
         >
           <Feather name="trash-2" size={16} color={Colors.error} />
           <Text style={[styles.modeButtonText, { color: Colors.error }]}>Reset all data</Text>
         </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.modeButton}
-          onPress={handleLoadDemo}
-          activeOpacity={0.7}
-        >
-          <Feather name="database" size={16} color={Colors.primary} />
-          <Text style={[styles.modeButtonText, { color: Colors.primary }]}>Load demo data</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Subscription */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Subscription</Text>
+        {/* Subscription inline */}
+        <View style={styles.divider} />
         {subscription.is_active ? (
           <>
             <InfoRow label="Plan" value="Glow Pro" />
@@ -226,11 +290,17 @@ export default function ProfileTab() {
             )}
             <TouchableOpacity
               style={styles.modeButton}
-              onPress={() => {
+              onPress={async () => {
                 trackEvent('subscription_manage_tapped');
-                presentCustomerCenter();
+                try {
+                  await presentCustomerCenter();
+                } catch {
+                  Alert.alert('Subscription', 'Unable to open subscription management. Please try again later.');
+                }
               }}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Manage subscription"
             >
               <Feather name="settings" size={16} color={Colors.primaryLight} />
               <Text style={styles.modeButtonText}>Manage subscription</Text>
@@ -238,18 +308,29 @@ export default function ProfileTab() {
           </>
         ) : (
           <>
-            <InfoRow label="Plan" value="Free" />
             <InfoRow
-              label="Free scans remaining"
-              value={String(remainingFreeScans(subscription))}
+              label="Plan"
+              value={isTrialActive(subscription) ? 'Free Trial' : 'Free'}
             />
+            {isTrialActive(subscription) && (
+              <InfoRow
+                label="Trial days remaining"
+                value={String(trialDaysRemaining(subscription))}
+              />
+            )}
             <TouchableOpacity
               style={styles.modeButton}
+              accessibilityRole="button"
+              accessibilityLabel="Upgrade to Glow Pro"
               onPress={async () => {
-                const purchased = await presentPaywall();
-                if (purchased) {
-                  const sub = await checkSubscriptionStatus(subscription);
-                  setSubscription(sub);
+                try {
+                  const purchased = await presentPaywall();
+                  if (purchased) {
+                    const sub = await checkSubscriptionStatus(subscription);
+                    setSubscription(sub);
+                  }
+                } catch {
+                  Alert.alert('Subscription', 'Unable to load upgrade options. Please try again later.');
                 }
               }}
               activeOpacity={0.7}
@@ -257,13 +338,171 @@ export default function ProfileTab() {
               <Feather name="zap" size={16} color={Colors.primary} />
               <Text style={[styles.modeButtonText, { color: Colors.primary }]}>Upgrade to Glow Pro</Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.modeButton}
+              onPress={async () => {
+                try {
+                  const sub = await restorePurchases(subscription);
+                  setSubscription(sub);
+                  if (sub.is_active) {
+                    Alert.alert('Restored', 'Your subscription has been restored.');
+                  } else {
+                    Alert.alert('Nothing to restore', 'No previous purchases found.');
+                  }
+                } catch {
+                  Alert.alert('Restore failed', 'Unable to restore purchases. Please try again later.');
+                }
+              }}
+              activeOpacity={0.7}
+            >
+              <Feather name="refresh-cw" size={16} color={Colors.primaryLight} />
+              <Text style={styles.modeButtonText}>Restore Purchases</Text>
+            </TouchableOpacity>
           </>
         )}
       </View>
 
-      {/* Demographics */}
+      {/* Health Data */}
+      {Platform.OS === 'ios' && healthConnection?.status !== 'unavailable' && (
+        <View style={styles.card}>
+          <View style={styles.cardTitleRow}>
+            <Feather name="heart" size={15} color="#FF7A78" />
+            <Text style={styles.cardTitle}>Health Data</Text>
+          </View>
+          {healthConnection?.status === 'granted' ? (
+            <>
+              <InfoRow label="Apple Health" value="Connected" />
+              <InfoRow
+                label="Last synced"
+                value={formatRelativeTime(healthSyncStatus.last_sync_at) ?? 'Never'}
+              />
+              <TouchableOpacity
+                style={styles.modeButton}
+                onPress={() => {
+                  Linking.openURL('x-apple-health://').catch(() => {
+                    Linking.openURL('app-settings:').catch(() => {});
+                  });
+                }}
+                activeOpacity={0.7}
+              >
+                <Feather name="settings" size={16} color={Colors.primaryLight} />
+                <Text style={styles.modeButtonText}>Manage in iOS Settings</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <TouchableOpacity
+              style={styles.modeButton}
+              onPress={handleHealthConnect}
+              disabled={healthConnecting}
+              activeOpacity={0.7}
+            >
+              <Feather name="activity" size={16} color={Colors.primary} />
+              <Text style={[styles.modeButtonText, { color: Colors.primary }]}>
+                {healthConnecting ? 'Connecting...' : 'Connect Apple Health'}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
+      {/* Notifications */}
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Demographics</Text>
+        <View style={styles.cardTitleRow}>
+          <Feather name="bell" size={15} color={Colors.secondary} />
+          <Text style={styles.cardTitle}>Notifications</Text>
+        </View>
+        <TouchableOpacity
+          style={styles.infoRow}
+          onPress={() => {
+            if (notificationSettings.notifications_enabled) {
+              setShowTimePicker(true);
+            }
+          }}
+          activeOpacity={notificationSettings.notifications_enabled ? 0.7 : 1}
+        >
+          <Text style={styles.infoLabel}>Daily reminder</Text>
+          <Text style={[styles.infoValue, notificationSettings.notifications_enabled && notificationSettings.notification_time
+            ? { color: Colors.primary }
+            : { color: Colors.textDim }]}>
+            {notificationSettings.notifications_enabled && notificationSettings.notification_time
+              ? notificationSettings.notification_time
+              : 'Off'}
+          </Text>
+        </TouchableOpacity>
+        {showTimePicker && (
+          <DateTimePicker
+            value={(() => {
+              const [h, m] = (notificationSettings.notification_time || '08:00').split(':').map(Number);
+              const d = new Date(2000, 0, 1, h, m);
+              return d;
+            })()}
+            mode="time"
+            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+            onChange={async (_, selected) => {
+              setShowTimePicker(Platform.OS === 'ios');
+              if (selected) {
+                const h = selected.getHours();
+                const m = selected.getMinutes();
+                const timeStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+                try {
+                  await scheduleDailyReminder(h, m);
+                  setNotificationTime(timeStr);
+                } catch { /* notification scheduling failed — non-fatal */ }
+              }
+            }}
+            themeVariant="light"
+          />
+        )}
+        {notificationSettings.notifications_enabled ? (
+          <View style={{ gap: Spacing.sm }}>
+            <TouchableOpacity
+              style={styles.modeButton}
+              onPress={() => setShowTimePicker(!showTimePicker)}
+              activeOpacity={0.7}
+            >
+              <Feather name="clock" size={16} color={Colors.primary} />
+              <Text style={[styles.modeButtonText, { color: Colors.primary }]}>Change time</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.modeButton}
+              onPress={async () => {
+                try {
+                  await cancelDailyReminder();
+                } catch { /* non-fatal */ }
+                setNotificationTime(null);
+                setShowTimePicker(false);
+              }}
+              activeOpacity={0.7}
+            >
+              <Feather name="bell-off" size={16} color={Colors.error} />
+              <Text style={[styles.modeButtonText, { color: Colors.error }]}>Turn off reminders</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={styles.modeButton}
+            onPress={async () => {
+              const defaultTime = '08:00';
+              const [h, m] = defaultTime.split(':').map(Number);
+              try {
+                await scheduleDailyReminder(h, m);
+                setNotificationTime(defaultTime);
+              } catch { /* non-fatal */ }
+            }}
+            activeOpacity={0.7}
+          >
+            <Feather name="bell" size={16} color={Colors.primary} />
+            <Text style={[styles.modeButtonText, { color: Colors.primary }]}>Enable daily reminder</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Your Profile — demographics + scan protocol combined */}
+      <View style={styles.card}>
+        <View style={styles.cardTitleRow}>
+          <Feather name="edit-3" size={15} color={Colors.clay} />
+          <Text style={styles.cardTitle}>Your Profile</Text>
+        </View>
         <InfoRow label="Age range" value={user?.age_range || '—'} />
         <InfoRow label="Location" value={user?.location_coarse || '—'} />
         <InfoRow label="Period tracking" value={periodLabel} />
@@ -273,71 +512,50 @@ export default function ProfileTab() {
         {user?.drink_baseline_frequency && (
           <InfoRow label="Alcohol" value={user.drink_baseline_frequency} />
         )}
-      </View>
-
-      {/* Scan protocol */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Scan protocol</Text>
+        <View style={styles.divider} />
         <InfoRow label="Goal" value={protocol?.primary_goal?.replace(/_/g, ' ') || '—'} />
         <InfoRow label="Region" value={protocol?.scan_region?.replace(/_/g, ' ') || '—'} />
         <InfoRow label="Total scans" value={String(dailyRecords.length)} />
       </View>
 
-      {/* Achievements */}
+      {/* Progress — gamification + achievements unified */}
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Achievements</Text>
+        <View style={styles.cardTitleRow}>
+          <Feather name="award" size={15} color={Colors.warning} />
+          <Text style={styles.cardTitle}>Progress</Text>
+        </View>
+        <GamificationCard gamification={gamification} streak={streak} />
+        <View style={styles.divider} />
         <LevelProgressBar xp={gamification.xp} />
         <BadgeShowcase earnedBadges={gamification.badges} />
-
-        {/* Personal bests */}
         <View style={styles.personalBests}>
-          <InfoRow label="Longest streak" value={`${gamification.personal_bests.longest_streak} days`} />
-          <InfoRow label="Lowest acne" value={gamification.personal_bests.lowest_acne < 100 ? String(gamification.personal_bests.lowest_acne) : '--'} />
-          <InfoRow label="Best skin score" value={gamification.personal_bests.highest_skin_score > 0 ? String(gamification.personal_bests.highest_skin_score) : '--'} />
-          <InfoRow label="Best week consistency" value={gamification.personal_bests.most_consistent_week > 0 ? `${gamification.personal_bests.most_consistent_week} / 7 days` : '--'} />
-        </View>
-      </View>
-
-      {/* Products */}
-      <View style={styles.card}>
-        <View style={styles.cardHeader}>
-          <Text style={styles.cardTitle}>Products</Text>
-          <Text style={styles.productCount}>{products.length}</Text>
-        </View>
-
-        {products.length > 0 ? (
-          products.map((p) => {
-            const score = productScores.get(p.user_product_id);
-            return (
-              <TouchableOpacity
-                key={p.user_product_id}
-                style={styles.productRow}
-                activeOpacity={0.7}
-                onPress={() => router.push({ pathname: '/product/[id]', params: { id: p.user_product_id } })}
-              >
-                <View style={styles.productInfo}>
-                  <View style={styles.productNameRow}>
-                    <Text style={styles.productName} numberOfLines={1}>{p.product_name}</Text>
-                    {score !== undefined && <EffectivenessBadge score={score} />}
-                  </View>
-                  <Text style={styles.productMeta}>{p.usage_schedule} · {p.ingredients_list.length} ingredients</Text>
-                </View>
-                <Feather name="chevron-right" size={16} color={Colors.textMuted} />
-              </TouchableOpacity>
-            );
-          })
-        ) : (
-          <Text style={styles.emptyText}>No products added yet.</Text>
-        )}
-
-        <View style={styles.productActions}>
-          <TouchableOpacity
-            style={styles.addButton}
-            onPress={() => router.push('/onboarding/products')}
-          >
-            <Feather name="plus" size={16} color={Colors.primaryLight} />
-            <Text style={styles.addButtonText}>Add a Product</Text>
-          </TouchableOpacity>
+          <Text style={styles.personalBestsTitle}>Personal bests</Text>
+          <View style={styles.bestGrid}>
+            <View style={[styles.bestItem, { backgroundColor: 'rgba(192, 123, 42, 0.06)' }]}>
+              <Text style={[styles.bestValue, { color: Colors.warning }]}>
+                {gamification.personal_bests?.longest_streak || '--'}
+              </Text>
+              <Text style={styles.bestLabel}>Longest streak</Text>
+            </View>
+            <View style={[styles.bestItem, { backgroundColor: Colors.glowCoral }]}>
+              <Text style={[styles.bestValue, { color: Colors.acne }]}>
+                {(gamification.personal_bests?.lowest_acne ?? 100) < 100 ? gamification.personal_bests!.lowest_acne : '--'}
+              </Text>
+              <Text style={styles.bestLabel}>Lowest acne</Text>
+            </View>
+            <View style={[styles.bestItem, { backgroundColor: Colors.surfaceOverlay }]}>
+              <Text style={[styles.bestValue, { color: Colors.primary }]}>
+                {(gamification.personal_bests?.highest_skin_score ?? 0) > 0 ? gamification.personal_bests!.highest_skin_score : '--'}
+              </Text>
+              <Text style={styles.bestLabel}>Best score</Text>
+            </View>
+            <View style={[styles.bestItem, { backgroundColor: Colors.glowSecondary }]}>
+              <Text style={[styles.bestValue, { color: Colors.secondary }]}>
+                {(gamification.personal_bests?.most_consistent_week ?? 0) > 0 ? `${gamification.personal_bests!.most_consistent_week}/7` : '--'}
+              </Text>
+              <Text style={styles.bestLabel}>Best week</Text>
+            </View>
+          </View>
         </View>
       </View>
 
@@ -347,21 +565,80 @@ export default function ProfileTab() {
 }
 
 const styles = StyleSheet.create({
-  header: {
-    marginBottom: Spacing.lg,
+  identityHeader: {
+    ...Surfaces.hero,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: Spacing.lg,
+    gap: Spacing.md,
+    marginBottom: Spacing.md,
   },
-  eyebrow: {
-    color: Colors.primaryLight,
-    fontFamily: FontFamily.sansSemiBold,
-    fontSize: FontSize.xs,
-    textTransform: 'uppercase',
-    letterSpacing: 1.2,
+  avatarWrap: {
+    width: 60,
+    height: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  title: {
-    marginTop: Spacing.xs,
-    color: Colors.text,
+  avatarGlow: {
+    position: 'absolute',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: Colors.glowPrimary,
+  },
+  avatarCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarLetter: {
+    color: Colors.textOnDark,
     fontFamily: FontFamily.sansBold,
-    fontSize: FontSize.xxl,
+    fontSize: FontSize.xl,
+  },
+  identityInfo: {
+    flex: 1,
+    gap: Spacing.xs,
+  },
+  identityEmail: {
+    color: Colors.text,
+    fontFamily: FontFamily.sansSemiBold,
+    fontSize: FontSize.md,
+  },
+  identityMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  tierBadge: {
+    backgroundColor: Colors.surfaceOverlay,
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xxs,
+  },
+  tierBadgeText: {
+    color: Colors.primary,
+    fontFamily: FontFamily.sansSemiBold,
+    fontSize: FontSize.xxs,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  identityStreakRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  identityStreak: {
+    fontFamily: FontFamily.sansBold,
+    fontSize: FontSize.xs,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: Colors.divider,
+    marginVertical: Spacing.xs,
   },
   card: {
     backgroundColor: Colors.glass,
@@ -372,20 +649,15 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
     marginBottom: Spacing.md,
   },
-  cardHeader: {
+  cardTitleRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    gap: Spacing.sm,
   },
   cardTitle: {
     color: Colors.text,
     fontFamily: FontFamily.sansBold,
     fontSize: FontSize.md,
-  },
-  productCount: {
-    color: Colors.textMuted,
-    fontFamily: FontFamily.sansSemiBold,
-    fontSize: FontSize.sm,
   },
   infoRow: {
     flexDirection: 'row',
@@ -409,75 +681,6 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     textAlign: 'right',
   },
-  productRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: Spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.divider,
-  },
-  productInfo: {
-    flex: 1,
-    gap: 2,
-  },
-  productNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  productName: {
-    color: Colors.text,
-    fontFamily: FontFamily.sansSemiBold,
-    fontSize: FontSize.sm,
-    flexShrink: 1,
-  },
-  productMeta: {
-    color: Colors.textMuted,
-    fontFamily: FontFamily.sansMedium,
-    fontSize: FontSize.xs,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  effectivenessBadge: {
-    borderRadius: BorderRadius.full,
-    borderWidth: 1,
-    paddingVertical: 2,
-    paddingHorizontal: 8,
-  },
-  effectivenessText: {
-    fontFamily: FontFamily.sansBold,
-    fontSize: FontSize.xs,
-  },
-  emptyText: {
-    color: Colors.textMuted,
-    fontFamily: FontFamily.sansMedium,
-    fontSize: FontSize.sm,
-    paddingVertical: Spacing.sm,
-  },
-  productActions: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-    marginTop: Spacing.xs,
-  },
-  addButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.xs,
-    backgroundColor: Colors.glassStrong,
-    borderRadius: BorderRadius.full,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.md,
-  },
-  addButtonText: {
-    color: Colors.primaryLight,
-    fontFamily: FontFamily.sansSemiBold,
-    fontSize: FontSize.sm,
-  },
-
   modeButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -491,8 +694,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
   },
   modeButtonDestructive: {
-    borderColor: 'rgba(255, 122, 120, 0.2)',
-    backgroundColor: 'rgba(255, 122, 120, 0.06)',
+    borderColor: 'rgba(209, 67, 67, 0.18)',
+    backgroundColor: 'rgba(209, 67, 67, 0.06)',
   },
   modeButtonText: {
     color: Colors.primaryLight,
@@ -501,9 +704,34 @@ const styles = StyleSheet.create({
   },
   personalBests: {
     marginTop: Spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: Colors.divider,
-    paddingTop: Spacing.sm,
+    gap: Spacing.sm,
+  },
+  personalBestsTitle: {
+    color: Colors.textMuted,
+    fontFamily: FontFamily.sansSemiBold,
+    fontSize: FontSize.xs,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  bestGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  bestItem: {
+    width: '47%' as any,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    gap: Spacing.xxs,
+  },
+  bestValue: {
+    fontFamily: FontFamily.sansBold,
+    fontSize: FontSize.xl,
+  },
+  bestLabel: {
+    color: Colors.textMuted,
+    fontFamily: FontFamily.sansMedium,
+    fontSize: FontSize.xs,
   },
   footerSpacer: {
     height: Spacing.xl,

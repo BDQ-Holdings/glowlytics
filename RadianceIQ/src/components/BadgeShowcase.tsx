@@ -105,10 +105,10 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
   },
   badgeCellEarned: {
-    backgroundColor: 'rgba(125, 231, 225, 0.06)',
+    backgroundColor: 'rgba(58, 158, 143, 0.08)',
   },
   badgeCellLocked: {
-    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+    backgroundColor: 'rgba(0, 0, 0, 0.03)',
     opacity: 0.5,
   },
   iconCircle: {
@@ -119,7 +119,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   iconCircleEarned: {
-    backgroundColor: 'rgba(125, 231, 225, 0.15)',
+    backgroundColor: 'rgba(58, 158, 143, 0.12)',
   },
   iconCircleLocked: {
     backgroundColor: Colors.surfaceHighlight,
@@ -139,6 +139,6 @@ const styles = StyleSheet.create({
   earnedDate: {
     color: Colors.textMuted,
     fontFamily: FontFamily.sans,
-    fontSize: 9,
+    fontSize: FontSize.xxs,
   },
 });

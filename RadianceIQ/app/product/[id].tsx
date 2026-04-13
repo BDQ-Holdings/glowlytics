@@ -18,7 +18,9 @@ import {
   FontSize,
   Spacing,
   BorderRadius,
+  scoreColor,
 } from '../../src/constants/theme';
+import { SIGNAL_COLORS, SIGNAL_LABELS } from '../../src/constants/signals';
 import { useStore } from '../../src/store/useStore';
 import {
   computeProductEffectiveness,
@@ -31,6 +33,7 @@ import {
   getLatestDailyForOutput,
 } from '../../src/services/skinInsights';
 import { useCalmFadeIn } from '../../src/utils/animations';
+import { safeClamp } from '../../src/utils/safeClamp';
 
 import type { IngredientRating } from '../../src/services/ingredientDB';
 import type { CompositeSignals } from '../../src/services/skinInsights';
@@ -41,37 +44,15 @@ import type { CompositeSignals } from '../../src/services/skinInsights';
 const ringSize = 96;
 const ringStroke = 6;
 
-const clampScore = (value: number) => Math.max(0, Math.min(100, Math.round(value)));
+const clampScore = safeClamp;
 
-function scoreColor(score: number): string {
-  if (score >= 75) return '#5FD3AC';
-  if (score >= 55) return Colors.primary;
-  if (score >= 35) return '#F2B56A';
-  return '#FF7A78';
-}
 
 const ratingDotColor: Record<IngredientRating, string> = {
-  highly_beneficial: '#5FD3AC',
+  highly_beneficial: '#34A77B',
   beneficial: Colors.primary,
   neutral: Colors.textMuted,
-  potentially_concerning: '#F2B56A',
-  concerning: '#FF7A78',
-};
-
-const SIGNAL_LABELS: Record<keyof CompositeSignals, string> = {
-  structure: 'Structure',
-  hydration: 'Hydration',
-  inflammation: 'Inflammation',
-  sunDamage: 'Sun Damage',
-  elasticity: 'Elasticity',
-};
-
-const SIGNAL_COLORS: Record<keyof CompositeSignals, string> = {
-  structure: Colors.info,
-  hydration: Colors.primary,
-  inflammation: Colors.error,
-  sunDamage: Colors.warning,
-  elasticity: Colors.secondary,
+  potentially_concerning: '#C07B2A',
+  concerning: '#D14343',
 };
 
 const GOAL_LABELS: Record<string, string> = {
@@ -98,6 +79,7 @@ export default function ProductDetailScreen() {
   const latestOutput = modelOutputs.length > 0 ? modelOutputs[modelOutputs.length - 1] : null;
   const baseline = modelOutputs.length > 0 ? modelOutputs[0] : null;
   const latestDaily = getLatestDailyForOutput(latestOutput, dailyRecords);
+  const baselineDaily = getLatestDailyForOutput(baseline, dailyRecords);
 
   const overallInsight = useMemo(
     () =>
@@ -105,8 +87,13 @@ export default function ProductDetailScreen() {
         latestOutput,
         baselineOutput: baseline,
         latestDaily,
+        baselineDaily,
+        serverSignalScores: latestOutput?.signal_scores,
+        serverSignalFeatures: latestOutput?.signal_features,
+        serverSignalConfidence: latestOutput?.signal_confidence,
+        serverLesions: latestOutput?.lesions,
       }),
-    [latestOutput, baseline, latestDaily],
+    [latestOutput, baseline, latestDaily, baselineDaily],
   );
 
   const primaryGoal = protocol?.primary_goal ?? 'acne';
@@ -265,9 +252,15 @@ export default function ProductDetailScreen() {
             const dotColor = row.profile
               ? ratingDotColor[row.profile.rating]
               : Colors.textDim;
-            const displayName = row.profile
-              ? row.profile.canonicalName
-              : row.raw;
+            // ALWAYS show the user-entered name verbatim. The canonical name is shown as a
+            // secondary tag only when it differs from the raw input — this preserves
+            // clinical specificity (e.g. "Tretinoin Cream USP 0.025%" instead of the
+            // generic canonical "Tretinoin"). Fixes TestFlight feedback #1.
+            const rawDisplay = row.raw;
+            const canonical = row.profile?.canonicalName ?? null;
+            const showCanonicalTag =
+              canonical !== null &&
+              canonical.toLowerCase() !== rawDisplay.trim().toLowerCase();
             const desc = row.profile
               ? row.profile.description
               : 'Not in database';
@@ -282,7 +275,16 @@ export default function ProductDetailScreen() {
               >
                 <View style={[styles.dot, { backgroundColor: dotColor }]} />
                 <View style={styles.ingredientInfo}>
-                  <Text style={styles.ingredientName}>{displayName}</Text>
+                  <View style={styles.ingredientNameRow}>
+                    <Text style={styles.ingredientName} numberOfLines={2}>
+                      {rawDisplay}
+                    </Text>
+                    {showCanonicalTag && (
+                      <View style={styles.canonicalTag}>
+                        <Text style={styles.canonicalTagText}>{canonical}</Text>
+                      </View>
+                    )}
+                  </View>
                   <Text style={styles.ingredientDesc} numberOfLines={2}>
                     {desc}
                   </Text>
@@ -379,12 +381,12 @@ export default function ProductDetailScreen() {
                   <Feather
                     name={arrowIcon}
                     size={16}
-                    color={direction === 'up' ? '#5FD3AC' : '#FF7A78'}
+                    color={direction === 'up' ? '#34A77B' : '#D14343'}
                   />
                   <Text
                     style={[
                       styles.signalDirection,
-                      { color: direction === 'up' ? '#5FD3AC' : '#FF7A78' },
+                      { color: direction === 'up' ? '#34A77B' : '#D14343' },
                     ]}
                   >
                     {direction === 'up' ? 'Improves' : 'May reduce'}
@@ -506,17 +508,38 @@ const styles = StyleSheet.create({
   dot: {
     width: 8,
     height: 8,
-    borderRadius: 4,
+    borderRadius: BorderRadius.xs,
     marginTop: 6,
   },
   ingredientInfo: {
     flex: 1,
     gap: Spacing.xxs,
   },
+  ingredientNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: Spacing.xs,
+  },
   ingredientName: {
     color: Colors.text,
     fontFamily: FontFamily.sansSemiBold,
     fontSize: FontSize.md,
+    flexShrink: 1,
+  },
+  canonicalTag: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.surfaceOverlay,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  canonicalTagText: {
+    color: Colors.textMuted,
+    fontFamily: FontFamily.sansMedium,
+    fontSize: FontSize.xxs,
+    letterSpacing: 0.3,
   },
   ingredientDesc: {
     color: Colors.textSecondary,
@@ -529,13 +552,13 @@ const styles = StyleSheet.create({
   alignmentBarTrack: {
     height: 8,
     backgroundColor: Colors.surfaceHighlight,
-    borderRadius: 4,
+    borderRadius: BorderRadius.xs,
     overflow: 'hidden',
     marginBottom: Spacing.sm,
   },
   alignmentBarFill: {
     height: '100%',
-    borderRadius: 4,
+    borderRadius: BorderRadius.xs,
   },
   alignmentMeta: {
     flexDirection: 'row',
@@ -595,7 +618,7 @@ const styles = StyleSheet.create({
   signalDot: {
     width: 8,
     height: 8,
-    borderRadius: 4,
+    borderRadius: BorderRadius.xs,
   },
   signalName: {
     flex: 1,

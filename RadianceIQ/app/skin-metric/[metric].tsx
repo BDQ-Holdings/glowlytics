@@ -1,6 +1,8 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Feather } from '@expo/vector-icons';
+import Animated, { FadeIn, FadeInDown, ZoomIn } from 'react-native-reanimated';
 import { AtmosphereScreen } from '../../src/components/AtmosphereScreen';
 import { Button } from '../../src/components/Button';
 import { FaceAssessmentMap } from '../../src/components/FaceAssessmentMap';
@@ -21,15 +23,73 @@ import { useStore } from '../../src/store/useStore';
 
 const validMetrics: SkinMetricKey[] = ['acne', 'sun_damage', 'skin_age'];
 
-const severityMeta: Record<SeverityLevel, { label: string; color: string }> = {
-  low: { label: 'Low Concern', color: Colors.success },
-  moderate: { label: 'Moderate Concern', color: Colors.warning },
-  high: { label: 'High Concern', color: Colors.error },
+// ---------------------------------------------------------------------------
+// Per-metric personality
+// ---------------------------------------------------------------------------
+interface MetricPersonality {
+  color: string;
+  glow: string;
+  icon: React.ComponentProps<typeof Feather>['name'];
+  tagline: string;
+}
+
+const METRIC_PERSONALITY: Record<SkinMetricKey, MetricPersonality> = {
+  acne: {
+    color: Colors.acne,
+    glow: 'rgba(209, 90, 87, 0.12)',
+    icon: 'thermometer',
+    tagline: 'Inflammation + congestion signal',
+  },
+  sun_damage: {
+    color: Colors.sunDamage,
+    glow: 'rgba(184, 140, 62, 0.12)',
+    icon: 'sun',
+    tagline: 'UV and pigmentation load',
+  },
+  skin_age: {
+    color: Colors.skinAge,
+    glow: 'rgba(75, 127, 204, 0.12)',
+    icon: 'clock',
+    tagline: 'Texture + elasticity drift',
+  },
+};
+
+const severityMeta: Record<SeverityLevel, { label: string; color: string; icon: React.ComponentProps<typeof Feather>['name'] }> = {
+  low: { label: 'Low', color: Colors.success, icon: 'check-circle' },
+  moderate: { label: 'Moderate', color: Colors.warning, icon: 'alert-circle' },
+  high: { label: 'High', color: Colors.error, icon: 'alert-triangle' },
 };
 
 const toMetricLabel = (metric: SkinMetricKey) =>
   metric === 'sun_damage' ? 'Sun Damage' : metric === 'skin_age' ? 'Skin Age' : 'Acne';
 
+// ---------------------------------------------------------------------------
+// Recommendation card config
+// ---------------------------------------------------------------------------
+const REC_CONFIG = {
+  stop: {
+    bg: 'rgba(209, 67, 67, 0.06)',
+    border: 'rgba(209, 67, 67, 0.15)',
+    labelColor: Colors.error,
+    icon: 'x-circle' as const,
+  },
+  consider: {
+    bg: 'rgba(192, 123, 42, 0.06)',
+    border: 'rgba(192, 123, 42, 0.15)',
+    labelColor: Colors.warning,
+    icon: 'plus-circle' as const,
+  },
+  continue: {
+    bg: 'rgba(52, 167, 123, 0.06)',
+    border: 'rgba(52, 167, 123, 0.15)',
+    labelColor: Colors.success,
+    icon: 'check-circle' as const,
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Screen
+// ---------------------------------------------------------------------------
 export default function MetricAssessmentDetail() {
   const router = useRouter();
   const params = useLocalSearchParams<{ metric?: string | string[] }>();
@@ -67,37 +127,16 @@ export default function MetricAssessmentDetail() {
   }, [detail]);
 
   const activeZone = detail?.zones.find((zone) => zone.key === selectedZone) || detail?.zones[0];
-  const zoneReportMotion = useRef(new Animated.Value(1)).current;
 
-  useEffect(() => {
-    zoneReportMotion.setValue(0);
-    Animated.timing(zoneReportMotion, {
-      toValue: 1,
-      duration: 220,
-      useNativeDriver: true,
-    }).start();
-  }, [activeZone?.key, zoneReportMotion]);
-
-  const zoneReportStyle = {
-    opacity: zoneReportMotion,
-    transform: [
-      {
-        translateY: zoneReportMotion.interpolate({
-          inputRange: [0, 1],
-          outputRange: [8, 0],
-        }),
-      },
-    ],
-  };
-
+  // ---- Invalid / empty states ----
   if (!metric) {
     return (
       <AtmosphereScreen scroll={false} contentContainerStyle={styles.invalidLayout}>
         <View style={styles.invalidState}>
           <Text style={styles.invalidTitle}>Unknown metric</Text>
-          <Text style={styles.invalidCopy}>This assessment route is invalid. Return to metric insights.</Text>
+          <Text style={styles.invalidCopy}>This assessment route is invalid.</Text>
         </View>
-        <Button title="Back to learn more" onPress={() => router.replace('/skin-metrics')} />
+        <Button title="Back" onPress={() => router.replace('/skin-metrics')} />
       </AtmosphereScreen>
     );
   }
@@ -106,7 +145,7 @@ export default function MetricAssessmentDetail() {
     return (
       <AtmosphereScreen scroll={false} contentContainerStyle={styles.invalidLayout}>
         <View style={styles.invalidState}>
-          <Text style={styles.invalidTitle}>{toMetricLabel(metric)} insights unavailable</Text>
+          <Text style={styles.invalidTitle}>{toMetricLabel(metric)}</Text>
           <Text style={styles.invalidCopy}>
             Run at least one scan to unlock this detailed assessment.
           </Text>
@@ -116,254 +155,291 @@ export default function MetricAssessmentDetail() {
     );
   }
 
+  const personality = METRIC_PERSONALITY[metric];
   const severityInfo = severityMeta[detail.severity];
 
   return (
     <AtmosphereScreen>
-      <View style={styles.header}>
-        <Text style={styles.eyebrow}>{detail.title} assessment</Text>
-        <Text style={styles.title}>{detail.title} detailed view</Text>
-        <Text style={styles.subtitle}>
-          Face-model overlays show where this metric is most active right now.
-        </Text>
-      </View>
-
-      <View style={styles.scoreCard}>
-        <Text style={styles.scoreLabel}>{detail.title} score</Text>
-        <View style={styles.scoreRow}>
-          <Text style={styles.scoreValue}>{detail.score}</Text>
-          <Text style={[styles.severityPill, { color: severityInfo.color }]}>{severityInfo.label}</Text>
+      {/* ── Header ── */}
+      <Animated.View entering={FadeInDown.duration(400)} style={styles.header}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.backButton}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+        >
+          <Feather name="arrow-left" size={22} color={Colors.text} />
+        </TouchableOpacity>
+        <View style={styles.headerTextCol}>
+          <Text style={[styles.headerTitle, { color: personality.color }]}>{detail.title}</Text>
+          <Text style={styles.headerTagline}>{personality.tagline}</Text>
         </View>
-        <Text style={styles.scoreSummary}>{detail.summary}</Text>
-      </View>
+      </Animated.View>
 
-      <View style={styles.mapCard}>
+      {/* ── Hero: Score + Severity ── */}
+      <Animated.View entering={ZoomIn.duration(500).delay(100)} style={styles.heroScore}>
+        <View style={[styles.heroGlow, { backgroundColor: personality.glow }]} />
+        <Text style={[styles.heroScoreValue, { color: personality.color }]}>{Number.isFinite(detail.score) ? detail.score : 0}</Text>
+        <View style={[styles.severityBadge, { backgroundColor: severityInfo.color + '18' }]}>
+          <Feather name={severityInfo.icon} size={13} color={severityInfo.color} />
+          <Text style={[styles.severityLabel, { color: severityInfo.color }]}>
+            {severityInfo.label}
+          </Text>
+        </View>
+      </Animated.View>
+
+      {/* ── Face map ── */}
+      <Animated.View entering={FadeIn.duration(500).delay(200)}>
         <FaceAssessmentMap
           zones={detail.zones}
           selectedZoneKey={activeZone?.key || detail.zones[0].key}
           onSelectZone={setSelectedZone}
+          lesions={latestOutput?.lesions?.length ? latestOutput.lesions : undefined}
+          accentColor={personality.color}
         />
-        <View style={styles.zoneTabs}>
-          {detail.zones.map((zone) => {
-            const selected = zone.key === activeZone?.key;
+      </Animated.View>
+
+      {/* ── Summary ── */}
+      <Animated.View entering={FadeInDown.duration(400).delay(300)}>
+        <Text style={styles.summary}>{detail.summary}</Text>
+      </Animated.View>
+
+      {/* ── Zone finding ── */}
+      {activeZone && (
+        <Animated.View
+          key={activeZone.key}
+          entering={FadeInDown.duration(300)}
+          style={[styles.zoneFinding, { borderLeftColor: severityMeta[activeZone.severity].color }]}
+        >
+          <View style={styles.zoneFindingHeader}>
+            <Feather
+              name={severityMeta[activeZone.severity].icon}
+              size={16}
+              color={severityMeta[activeZone.severity].color}
+            />
+            <Text style={styles.zoneFindingTitle}>{activeZone.label}</Text>
+          </View>
+          <Text style={styles.zoneFindingCopy}>{activeZone.summary}</Text>
+          {activeZone.recommendation && (
+            <View style={styles.zoneFindingActionRow}>
+              <Feather name="arrow-right" size={12} color={Colors.primaryLight} />
+              <Text style={styles.zoneFindingAction}>{activeZone.recommendation}</Text>
+            </View>
+          )}
+        </Animated.View>
+      )}
+
+      {/* ── Product guidance ── */}
+      <Animated.View entering={FadeInDown.duration(400).delay(400)} style={styles.guidanceSection}>
+        <Text style={styles.guidanceSectionTitle}>Product guidance</Text>
+        <Text style={styles.guidanceReport}>{detail.report}</Text>
+
+        <View style={styles.recStack}>
+          {(['stop', 'consider', 'continue'] as const).map((type, i) => {
+            const cfg = REC_CONFIG[type];
+            const text =
+              type === 'stop'
+                ? latestOutput?.generated_insights?.product_guidance?.stop || detail.stopUsing
+                : type === 'consider'
+                  ? latestOutput?.generated_insights?.product_guidance?.consider || detail.considerUsing
+                  : latestOutput?.generated_insights?.product_guidance?.continue || detail.continueUsing;
+
             return (
-              <TouchableOpacity
-                key={zone.key}
-                activeOpacity={0.85}
-                style={[styles.zoneTab, selected && styles.zoneTabActive]}
-                onPress={() => setSelectedZone(zone.key)}
+              <Animated.View
+                key={type}
+                entering={FadeInDown.duration(300).delay(500 + i * 80)}
+                style={[styles.recRow, { backgroundColor: cfg.bg, borderColor: cfg.border }]}
               >
-                <Text style={[styles.zoneTabText, selected && styles.zoneTabTextActive]}>
-                  {zone.label}
-                </Text>
-              </TouchableOpacity>
+                <View style={styles.recHeader}>
+                  <Feather name={cfg.icon} size={14} color={cfg.labelColor} />
+                  <Text style={[styles.recLabel, { color: cfg.labelColor }]}>
+                    {type.charAt(0).toUpperCase() + type.slice(1)}
+                  </Text>
+                </View>
+                <Text style={styles.recText}>{text}</Text>
+              </Animated.View>
             );
           })}
         </View>
-      </View>
+      </Animated.View>
 
-      {activeZone ? (
-        <Animated.View style={[styles.zoneReportCard, zoneReportStyle]}>
-          <Text style={styles.zoneReportTitle}>{activeZone.label} finding</Text>
-          <Text style={styles.zoneReportCopy}>{activeZone.summary}</Text>
-          <Text style={styles.zoneAction}>{activeZone.recommendation}</Text>
-        </Animated.View>
-      ) : null}
-
-      <View style={styles.productCard}>
-        <Text style={styles.productTitle}>Detailed report and product guidance</Text>
-        <Text style={styles.productBody}>{detail.report}</Text>
-        <View style={styles.recommendationStack}>
-          <View style={styles.recommendationRow}>
-            <Text style={styles.recommendationLabel}>Stop using</Text>
-            <Text style={styles.recommendationText}>{detail.stopUsing}</Text>
-          </View>
-          <View style={styles.recommendationRow}>
-            <Text style={styles.recommendationLabel}>Consider using</Text>
-            <Text style={styles.recommendationText}>{detail.considerUsing}</Text>
-          </View>
-          <View style={styles.recommendationRow}>
-            <Text style={styles.recommendationLabel}>Continue</Text>
-            <Text style={styles.recommendationText}>{detail.continueUsing}</Text>
-          </View>
-        </View>
-      </View>
-
-      <Button title="Back to all metrics" variant="ghost" onPress={() => router.back()} />
+      {/* ── Disclaimer ── */}
+      <Animated.View entering={FadeIn.duration(300).delay(700)}>
+        <Text style={styles.disclaimer}>
+          For informational purposes only. Consult a dermatologist for diagnosis and treatment.
+        </Text>
+      </Animated.View>
     </AtmosphereScreen>
   );
 }
 
 const styles = StyleSheet.create({
+  // Header
   header: {
-    gap: Spacing.sm,
-    marginBottom: Spacing.lg,
-  },
-  eyebrow: {
-    color: Colors.primaryLight,
-    fontFamily: FontFamily.sansSemiBold,
-    fontSize: FontSize.xs,
-    textTransform: 'uppercase',
-    letterSpacing: 1.1,
-  },
-  title: {
-    color: Colors.text,
-    fontFamily: FontFamily.serifBold,
-    fontSize: FontSize.hero,
-    lineHeight: 41,
-  },
-  subtitle: {
-    color: Colors.textSecondary,
-    fontFamily: FontFamily.sans,
-    fontSize: FontSize.md,
-    lineHeight: 22,
-  },
-  scoreCard: {
-    backgroundColor: Colors.glassStrong,
-    borderRadius: BorderRadius.xxl,
-    borderWidth: 1,
-    borderColor: Colors.borderStrong,
-    padding: Spacing.lg,
-    gap: Spacing.sm,
-    marginBottom: Spacing.md,
-  },
-  scoreLabel: {
-    color: Colors.textMuted,
-    fontFamily: FontFamily.sansSemiBold,
-    fontSize: FontSize.xs,
-    textTransform: 'uppercase',
-    letterSpacing: 0.9,
-  },
-  scoreRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     gap: Spacing.sm,
-  },
-  scoreValue: {
-    color: Colors.text,
-    fontFamily: FontFamily.sansBold,
-    fontSize: FontSize.display,
-    lineHeight: 52,
-  },
-  severityPill: {
-    fontFamily: FontFamily.sansSemiBold,
-    fontSize: FontSize.sm,
-    textTransform: 'uppercase',
-    letterSpacing: 0.9,
-  },
-  scoreSummary: {
-    color: Colors.textSecondary,
-    fontFamily: FontFamily.sans,
-    fontSize: FontSize.md,
-    lineHeight: 22,
-  },
-  mapCard: {
-    backgroundColor: Colors.glass,
-    borderRadius: BorderRadius.xl,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    padding: Spacing.md,
-    gap: Spacing.md,
     marginBottom: Spacing.md,
   },
-  zoneTabs: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.sm,
+  backButton: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  zoneTab: {
-    backgroundColor: Colors.surfaceLight,
-    borderRadius: BorderRadius.full,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
+  headerTextCol: {
+    flex: 1,
+    gap: 2,
   },
-  zoneTabActive: {
-    backgroundColor: Colors.surfaceHighlight,
-    borderColor: Colors.borderStrong,
+  headerTitle: {
+    fontFamily: FontFamily.sansBold,
+    fontSize: FontSize.xxl,
   },
-  zoneTabText: {
+  headerTagline: {
     color: Colors.textMuted,
     fontFamily: FontFamily.sansMedium,
-    fontSize: FontSize.sm,
+    fontSize: FontSize.xs,
   },
-  zoneTabTextActive: {
-    color: Colors.text,
-    fontFamily: FontFamily.sansSemiBold,
+
+  // Hero score — big, centered, bold
+  heroScore: {
+    alignItems: 'center',
+    paddingVertical: Spacing.lg,
+    marginBottom: Spacing.sm,
+    position: 'relative',
   },
-  zoneReportCard: {
-    backgroundColor: Colors.glass,
-    borderRadius: BorderRadius.xl,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    padding: Spacing.md,
-    gap: Spacing.sm,
-    marginBottom: Spacing.md,
+  heroGlow: {
+    position: 'absolute',
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    top: 0,
   },
-  zoneReportTitle: {
-    color: Colors.text,
+  heroScoreValue: {
     fontFamily: FontFamily.sansBold,
-    fontSize: FontSize.lg,
+    fontSize: 72,
+    lineHeight: 80,
   },
-  zoneReportCopy: {
+  severityBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingVertical: 5,
+    paddingHorizontal: Spacing.md,
+    borderRadius: BorderRadius.full,
+    marginTop: Spacing.xs,
+  },
+  severityLabel: {
+    fontFamily: FontFamily.sansSemiBold,
+    fontSize: FontSize.xs,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+
+  // Summary
+  summary: {
     color: Colors.textSecondary,
     fontFamily: FontFamily.sans,
     fontSize: FontSize.md,
-    lineHeight: 22,
+    lineHeight: 23,
+    marginBottom: Spacing.lg,
   },
-  zoneAction: {
+
+  // Zone finding
+  zoneFinding: {
+    backgroundColor: Colors.surfaceOverlay,
+    borderRadius: BorderRadius.lg,
+    borderLeftWidth: 3,
+    padding: Spacing.lg,
+    gap: Spacing.sm,
+    marginBottom: Spacing.lg,
+  },
+  zoneFindingHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  zoneFindingTitle: {
+    color: Colors.text,
+    fontFamily: FontFamily.sansBold,
+    fontSize: FontSize.md,
+  },
+  zoneFindingCopy: {
+    color: Colors.textSecondary,
+    fontFamily: FontFamily.sans,
+    fontSize: FontSize.sm,
+    lineHeight: 20,
+  },
+  zoneFindingActionRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.xs,
+    marginTop: Spacing.xxs,
+  },
+  zoneFindingAction: {
+    flex: 1,
     color: Colors.primaryLight,
     fontFamily: FontFamily.sansSemiBold,
     fontSize: FontSize.sm,
     lineHeight: 20,
   },
-  productCard: {
-    backgroundColor: Colors.glassStrong,
-    borderRadius: BorderRadius.xl,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    padding: Spacing.lg,
+
+  // Guidance section
+  guidanceSection: {
     gap: Spacing.sm,
     marginBottom: Spacing.lg,
   },
-  productTitle: {
+  guidanceSectionTitle: {
     color: Colors.text,
     fontFamily: FontFamily.sansBold,
     fontSize: FontSize.lg,
   },
-  productBody: {
+  guidanceReport: {
     color: Colors.textSecondary,
     fontFamily: FontFamily.sans,
-    fontSize: FontSize.md,
-    lineHeight: 22,
+    fontSize: FontSize.sm,
+    lineHeight: 21,
   },
-  recommendationStack: {
-    marginTop: Spacing.sm,
+  recStack: {
     gap: Spacing.sm,
+    marginTop: Spacing.xs,
   },
-  recommendationRow: {
-    backgroundColor: Colors.glass,
+  recRow: {
     borderRadius: BorderRadius.lg,
     borderWidth: 1,
-    borderColor: Colors.border,
-    padding: Spacing.sm,
-    gap: Spacing.xs,
+    padding: Spacing.lg,
+    gap: Spacing.sm,
   },
-  recommendationLabel: {
-    color: Colors.textMuted,
-    fontFamily: FontFamily.sansSemiBold,
+  recHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  recLabel: {
+    fontFamily: FontFamily.sansBold,
     fontSize: FontSize.xs,
     textTransform: 'uppercase',
-    letterSpacing: 0.9,
+    letterSpacing: 0.8,
   },
-  recommendationText: {
+  recText: {
     color: Colors.text,
     fontFamily: FontFamily.sans,
     fontSize: FontSize.sm,
     lineHeight: 20,
   },
+
+  // Disclaimer
+  disclaimer: {
+    color: Colors.textDim,
+    fontFamily: FontFamily.sans,
+    fontSize: FontSize.xs,
+    lineHeight: 16,
+    textAlign: 'center',
+    marginBottom: Spacing.md,
+  },
+
+  // Invalid states
   invalidLayout: {
     justifyContent: 'space-between',
   },

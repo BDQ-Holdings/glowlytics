@@ -14,14 +14,8 @@ import {
   Shadows,
   Spacing,
 } from '../constants/theme';
+import { formatMetricStatus } from '../constants/signals';
 import { useStore } from '../store/useStore';
-
-const formatMetricStatus = (value: number) => {
-  if (value <= 25) return 'Calm';
-  if (value <= 50) return 'Stable';
-  if (value <= 75) return 'Elevated';
-  return 'Watch';
-};
 
 export default function TodayScreen() {
   const router = useRouter();

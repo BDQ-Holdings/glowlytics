@@ -1,4 +1,6 @@
 import type { DailyRecord, DetectedLesion, ModelOutput, ProductEntry, SignalConfidence, SignalFeatures, SignalScores } from '../types';
+import { localDateStr } from '../utils/localDate';
+import { safeClamp } from '../utils/safeClamp';
 
 export type SkinMetricKey = 'acne' | 'sun_damage' | 'skin_age';
 export type SeverityLevel = 'low' | 'moderate' | 'high';
@@ -45,7 +47,7 @@ export interface MetricDetailInsight {
   continueUsing: string;
 }
 
-const clamp = (value: number, min = 0, max = 100) => Math.max(min, Math.min(max, value));
+const clamp = (value: number) => safeClamp(value, 50);
 
 /**
  * Maps a 0-100 composite score to a clinical severity bucket.
@@ -216,6 +218,7 @@ export const buildOverallSkinInsight = ({
   latestOutput,
   baselineOutput,
   latestDaily,
+  baselineDaily,
   serverSignalScores,
   serverSignalFeatures,
   serverSignalConfidence,
@@ -224,6 +227,7 @@ export const buildOverallSkinInsight = ({
   latestOutput: ModelOutput | null;
   baselineOutput: ModelOutput | null;
   latestDaily: DailyRecord | null;
+  baselineDaily?: DailyRecord | null;
   serverSignalScores?: SignalScores;
   serverSignalFeatures?: SignalFeatures;
   serverSignalConfidence?: SignalConfidence;
@@ -235,7 +239,7 @@ export const buildOverallSkinInsight = ({
   // otherwise fall back to existing derivation from 3 proxy scores
   let signals: CompositeSignals;
 
-  if (serverSignalScores && typeof serverSignalScores.structure === 'number') {
+  if (serverSignalScores) {
     signals = {
       structure: clamp(serverSignalScores.structure),
       hydration: clamp(serverSignalScores.hydration),
@@ -267,9 +271,9 @@ export const buildOverallSkinInsight = ({
         acneRisk: baselineOutput.acne_score,
         sunRisk: baselineOutput.sun_damage_score,
         ageRisk: baselineOutput.skin_age_score,
-        inflammationRisk: baselineOutput.acne_score,
-        pigmentationRisk: baselineOutput.sun_damage_score,
-        textureRisk: baselineOutput.skin_age_score,
+        inflammationRisk: baselineDaily?.scanner_indices?.inflammation_index ?? baselineOutput.acne_score,
+        pigmentationRisk: baselineDaily?.scanner_indices?.pigmentation_index ?? baselineOutput.sun_damage_score,
+        textureRisk: baselineDaily?.scanner_indices?.texture_index ?? baselineOutput.skin_age_score,
       })
     : null;
 
@@ -479,7 +483,7 @@ export const computeSignalHistory = (
 ): { date: string; value: number }[] => {
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - days);
-  const cutoffStr = cutoff.toISOString().split('T')[0];
+  const cutoffStr = localDateStr(cutoff);
 
   const recentRecords = dailyRecords
     .filter((r) => r.date >= cutoffStr)

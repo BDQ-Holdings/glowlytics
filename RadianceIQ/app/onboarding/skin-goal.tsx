@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
 import { View, StyleSheet } from 'react-native';
-import { useRouter } from 'expo-router';
 import Svg, { Defs, RadialGradient, Stop, Circle, Ellipse, Path } from 'react-native-svg';
 import { OnboardingTransition } from '../../src/components/OnboardingTransition';
 import { OnboardingOptionCard } from '../../src/components/OnboardingOptionCard';
 import { useStore } from '../../src/store/useStore';
-import { screenToRoute } from '../../src/services/onboardingFlow';
+import { useOnboardingNavigation } from '../../src/hooks/useOnboardingNavigation';
 import { Spacing } from '../../src/constants/theme';
 import type { PrimaryGoal, ScanRegion } from '../../src/types';
 
@@ -39,76 +38,125 @@ const GOAL_OPTIONS: GoalOption[] = [
 
 function AcneIllustration() {
   return (
-    <Svg width={160} height={140} viewBox="0 0 160 140">
+    <Svg width={200} height={170} viewBox="0 0 200 170">
       <Defs>
-        <RadialGradient id="acneGlow" cx="50%" cy="50%" r="50%">
-          <Stop offset="0%" stopColor="#F48A87" stopOpacity={0.5} />
-          <Stop offset="70%" stopColor="#F48A87" stopOpacity={0.1} />
-          <Stop offset="100%" stopColor="#F48A87" stopOpacity={0} />
+        <RadialGradient id="acneCore" cx="50%" cy="50%" r="50%">
+          <Stop offset="0%" stopColor="#EF4444" stopOpacity={0.8} />
+          <Stop offset="40%" stopColor="#D15A57" stopOpacity={0.35} />
+          <Stop offset="100%" stopColor="#D15A57" stopOpacity={0} />
+        </RadialGradient>
+        <RadialGradient id="acneOrange" cx="50%" cy="50%" r="50%">
+          <Stop offset="0%" stopColor="#F5A623" stopOpacity={0.6} />
+          <Stop offset="60%" stopColor="#E8933A" stopOpacity={0.12} />
+          <Stop offset="100%" stopColor="#E8933A" stopOpacity={0} />
+        </RadialGradient>
+        <RadialGradient id="acnePurple" cx="50%" cy="50%" r="50%">
+          <Stop offset="0%" stopColor="#8B5CF6" stopOpacity={0.45} />
+          <Stop offset="60%" stopColor="#6366B5" stopOpacity={0.1} />
+          <Stop offset="100%" stopColor="#6366B5" stopOpacity={0} />
         </RadialGradient>
       </Defs>
-      <Circle cx={80} cy={70} r={50} fill="url(#acneGlow)" />
-      <Circle cx={80} cy={70} r={38} fill="none" stroke="#F48A87" strokeWidth={1} strokeOpacity={0.3} />
-      <Circle cx={80} cy={70} r={26} fill="none" stroke="#F48A87" strokeWidth={1.2} strokeOpacity={0.35} />
-      <Circle cx={65} cy={55} r={6} fill="#F48A87" fillOpacity={0.35} />
-      <Circle cx={95} cy={60} r={4.5} fill="#F48A87" fillOpacity={0.3} />
-      <Circle cx={75} cy={85} r={5} fill="#F48A87" fillOpacity={0.28} />
-      <Circle cx={90} cy={80} r={3.5} fill="#F48A87" fillOpacity={0.25} />
-      <Circle cx={80} cy={70} r={3} fill="#F48A87" fillOpacity={0.5} />
-      <Circle cx={50} cy={45} r={2} fill="#F48A87" fillOpacity={0.15} />
-      <Circle cx={115} cy={90} r={2} fill="#F48A87" fillOpacity={0.15} />
+      <Circle cx={70} cy={55} r={42} fill="url(#acneOrange)" />
+      <Circle cx={145} cy={120} r={38} fill="url(#acnePurple)" />
+      <Circle cx={100} cy={85} r={55} fill="url(#acneCore)" />
+      <Circle cx={100} cy={85} r={42} fill="none" stroke="#EF4444" strokeWidth={1} strokeOpacity={0.3} />
+      <Circle cx={100} cy={85} r={30} fill="none" stroke="#D15A57" strokeWidth={1.2} strokeOpacity={0.35} />
+      {/* Breakout spots — bold, saturated */}
+      <Circle cx={80} cy={65} r={7} fill="#EF4444" fillOpacity={0.45} />
+      <Circle cx={120} cy={72} r={5.5} fill="#D15A57" fillOpacity={0.4} />
+      <Circle cx={90} cy={100} r={6} fill="#EF4444" fillOpacity={0.38} />
+      <Circle cx={112} cy={95} r={4.5} fill="#F5A623" fillOpacity={0.35} />
+      <Circle cx={100} cy={85} r={3.5} fill="#EF4444" fillOpacity={0.55} />
+      {/* Particles */}
+      <Circle cx={50} cy={35} r={2.5} fill="#F5A623" fillOpacity={0.5} />
+      <Circle cx={158} cy={45} r={2} fill="#8B5CF6" fillOpacity={0.4} />
+      <Circle cx={45} cy={135} r={2} fill="#D15A57" fillOpacity={0.3} />
+      <Circle cx={160} cy={140} r={2.5} fill="#EF4444" fillOpacity={0.35} />
     </Svg>
   );
 }
 
 function SunDamageIllustration() {
   return (
-    <Svg width={160} height={140} viewBox="0 0 160 140">
+    <Svg width={200} height={170} viewBox="0 0 200 170">
       <Defs>
-        <RadialGradient id="sunGlow" cx="50%" cy="50%" r="50%">
-          <Stop offset="0%" stopColor="#EDC27B" stopOpacity={0.5} />
-          <Stop offset="70%" stopColor="#EDC27B" stopOpacity={0.1} />
-          <Stop offset="100%" stopColor="#EDC27B" stopOpacity={0} />
+        <RadialGradient id="sunCore" cx="50%" cy="50%" r="50%">
+          <Stop offset="0%" stopColor="#F5C842" stopOpacity={0.85} />
+          <Stop offset="40%" stopColor="#D4A024" stopOpacity={0.35} />
+          <Stop offset="100%" stopColor="#B88C3E" stopOpacity={0} />
+        </RadialGradient>
+        <RadialGradient id="sunOrange" cx="50%" cy="50%" r="50%">
+          <Stop offset="0%" stopColor="#EF7B4D" stopOpacity={0.6} />
+          <Stop offset="60%" stopColor="#E8593A" stopOpacity={0.12} />
+          <Stop offset="100%" stopColor="#E8593A" stopOpacity={0} />
+        </RadialGradient>
+        <RadialGradient id="sunTeal" cx="50%" cy="50%" r="50%">
+          <Stop offset="0%" stopColor="#3A9E8F" stopOpacity={0.4} />
+          <Stop offset="60%" stopColor="#3A9E8F" stopOpacity={0.08} />
+          <Stop offset="100%" stopColor="#3A9E8F" stopOpacity={0} />
         </RadialGradient>
       </Defs>
-      <Circle cx={80} cy={70} r={50} fill="url(#sunGlow)" />
-      <Circle cx={80} cy={70} r={30} fill="none" stroke="#EDC27B" strokeWidth={1} strokeOpacity={0.25} />
-      {/* Sun rays */}
-      <Path d="M80 30 L80 18" stroke="#EDC27B" strokeWidth={1.5} strokeOpacity={0.35} strokeLinecap="round" />
-      <Path d="M80 122 L80 110" stroke="#EDC27B" strokeWidth={1.5} strokeOpacity={0.35} strokeLinecap="round" />
-      <Path d="M38 70 L26 70" stroke="#EDC27B" strokeWidth={1.5} strokeOpacity={0.35} strokeLinecap="round" />
-      <Path d="M134 70 L122 70" stroke="#EDC27B" strokeWidth={1.5} strokeOpacity={0.35} strokeLinecap="round" />
-      <Path d="M51 41 L43 33" stroke="#EDC27B" strokeWidth={1.2} strokeOpacity={0.25} strokeLinecap="round" />
-      <Path d="M109 99 L117 107" stroke="#EDC27B" strokeWidth={1.2} strokeOpacity={0.25} strokeLinecap="round" />
-      <Path d="M109 41 L117 33" stroke="#EDC27B" strokeWidth={1.2} strokeOpacity={0.25} strokeLinecap="round" />
-      <Path d="M51 99 L43 107" stroke="#EDC27B" strokeWidth={1.2} strokeOpacity={0.25} strokeLinecap="round" />
-      <Circle cx={80} cy={70} r={14} fill="#EDC27B" fillOpacity={0.25} />
-      <Circle cx={80} cy={70} r={5} fill="#EDC27B" fillOpacity={0.5} />
+      <Circle cx={65} cy={55} r={40} fill="url(#sunOrange)" />
+      <Circle cx={150} cy={130} r={35} fill="url(#sunTeal)" />
+      <Circle cx={100} cy={85} r={50} fill="url(#sunCore)" />
+      <Circle cx={100} cy={85} r={32} fill="none" stroke="#F5C842" strokeWidth={1.2} strokeOpacity={0.35} />
+      {/* Sun rays — bolder */}
+      <Path d="M100 38 L100 24" stroke="#F5C842" strokeWidth={2} strokeOpacity={0.5} strokeLinecap="round" />
+      <Path d="M100 146 L100 132" stroke="#D4A024" strokeWidth={2} strokeOpacity={0.45} strokeLinecap="round" />
+      <Path d="M52 85 L38 85" stroke="#EF7B4D" strokeWidth={2} strokeOpacity={0.45} strokeLinecap="round" />
+      <Path d="M162 85 L148 85" stroke="#F5C842" strokeWidth={2} strokeOpacity={0.45} strokeLinecap="round" />
+      <Path d="M67 52 L58 43" stroke="#D4A024" strokeWidth={1.5} strokeOpacity={0.35} strokeLinecap="round" />
+      <Path d="M133 118 L142 127" stroke="#3A9E8F" strokeWidth={1.5} strokeOpacity={0.3} strokeLinecap="round" />
+      <Path d="M133 52 L142 43" stroke="#EF7B4D" strokeWidth={1.5} strokeOpacity={0.35} strokeLinecap="round" />
+      <Path d="M67 118 L58 127" stroke="#F5C842" strokeWidth={1.5} strokeOpacity={0.3} strokeLinecap="round" />
+      {/* Core */}
+      <Circle cx={100} cy={85} r={16} fill="#F5C842" fillOpacity={0.35} />
+      <Circle cx={100} cy={85} r={6} fill="#F5C842" fillOpacity={0.7} />
+      {/* Particles */}
+      <Circle cx={42} cy={30} r={2.5} fill="#EF7B4D" fillOpacity={0.5} />
+      <Circle cx={165} cy={35} r={2} fill="#F5C842" fillOpacity={0.45} />
+      <Circle cx={38} cy={145} r={2} fill="#3A9E8F" fillOpacity={0.35} />
+      <Circle cx={168} cy={148} r={2.5} fill="#D4A024" fillOpacity={0.4} />
     </Svg>
   );
 }
 
 function SkinAgeIllustration() {
   return (
-    <Svg width={160} height={140} viewBox="0 0 160 140">
+    <Svg width={200} height={170} viewBox="0 0 200 170">
       <Defs>
-        <RadialGradient id="ageBlue" cx="50%" cy="50%" r="50%">
-          <Stop offset="0%" stopColor="#8DB5FF" stopOpacity={0.5} />
-          <Stop offset="70%" stopColor="#8DB5FF" stopOpacity={0.1} />
-          <Stop offset="100%" stopColor="#8DB5FF" stopOpacity={0} />
+        <RadialGradient id="ageBlueCore" cx="50%" cy="50%" r="50%">
+          <Stop offset="0%" stopColor="#3B82F6" stopOpacity={0.8} />
+          <Stop offset="40%" stopColor="#4B7FCC" stopOpacity={0.35} />
+          <Stop offset="100%" stopColor="#4B7FCC" stopOpacity={0} />
+        </RadialGradient>
+        <RadialGradient id="agePurple2" cx="50%" cy="50%" r="50%">
+          <Stop offset="0%" stopColor="#8B5CF6" stopOpacity={0.6} />
+          <Stop offset="60%" stopColor="#6366B5" stopOpacity={0.12} />
+          <Stop offset="100%" stopColor="#6366B5" stopOpacity={0} />
+        </RadialGradient>
+        <RadialGradient id="ageTeal2" cx="50%" cy="50%" r="50%">
+          <Stop offset="0%" stopColor="#3A9E8F" stopOpacity={0.45} />
+          <Stop offset="60%" stopColor="#3A9E8F" stopOpacity={0.08} />
+          <Stop offset="100%" stopColor="#3A9E8F" stopOpacity={0} />
         </RadialGradient>
       </Defs>
-      <Circle cx={80} cy={70} r={50} fill="url(#ageBlue)" />
-      {/* Texture waves */}
-      <Path d="M30 55 Q55 45 80 55 Q105 65 130 55" fill="none" stroke="#8DB5FF" strokeWidth={0.8} strokeOpacity={0.2} />
-      <Path d="M30 70 Q55 60 80 70 Q105 80 130 70" fill="none" stroke="#8DB5FF" strokeWidth={1} strokeOpacity={0.25} />
-      <Path d="M30 85 Q55 75 80 85 Q105 95 130 85" fill="none" stroke="#8DB5FF" strokeWidth={0.8} strokeOpacity={0.2} />
+      <Circle cx={65} cy={60} r={42} fill="url(#agePurple2)" />
+      <Circle cx={145} cy={125} r={38} fill="url(#ageTeal2)" />
+      <Circle cx={100} cy={85} r={52} fill="url(#ageBlueCore)" />
+      {/* Texture waves — bolder */}
+      <Path d="M35 60 Q65 48 100 60 Q135 72 165 60" fill="none" stroke="#3B82F6" strokeWidth={1.2} strokeOpacity={0.3} />
+      <Path d="M35 85 Q65 73 100 85 Q135 97 165 85" fill="none" stroke="#8B5CF6" strokeWidth={1.5} strokeOpacity={0.35} />
+      <Path d="M35 110 Q65 98 100 110 Q135 122 165 110" fill="none" stroke="#3A9E8F" strokeWidth={1.2} strokeOpacity={0.3} />
       {/* Elasticity curves */}
-      <Ellipse cx={80} cy={70} rx={28} ry={20} fill="none" stroke="#8DB5FF" strokeWidth={1.2} strokeOpacity={0.3} />
-      <Circle cx={80} cy={70} r={10} fill="#8DB5FF" fillOpacity={0.2} />
-      <Circle cx={80} cy={70} r={4} fill="#8DB5FF" fillOpacity={0.45} />
-      <Circle cx={55} cy={50} r={1.5} fill="#8DB5FF" fillOpacity={0.2} />
-      <Circle cx={110} cy={90} r={1.5} fill="#8DB5FF" fillOpacity={0.2} />
+      <Ellipse cx={100} cy={85} rx={30} ry={22} fill="none" stroke="#3B82F6" strokeWidth={1.5} strokeOpacity={0.35} />
+      <Circle cx={100} cy={85} r={12} fill="#3B82F6" fillOpacity={0.25} />
+      <Circle cx={100} cy={85} r={4.5} fill="#3B82F6" fillOpacity={0.6} />
+      {/* Particles */}
+      <Circle cx={42} cy={32} r={2.5} fill="#8B5CF6" fillOpacity={0.5} />
+      <Circle cx={165} cy={38} r={2} fill="#3B82F6" fillOpacity={0.45} />
+      <Circle cx={38} cy={140} r={2} fill="#3A9E8F" fillOpacity={0.35} />
+      <Circle cx={168} cy={145} r={2.5} fill="#8B5CF6" fillOpacity={0.4} />
     </Svg>
   );
 }
@@ -119,77 +167,90 @@ const ILLUSTRATIONS: Record<PrimaryGoal, React.ReactNode> = {
   skin_age: <SkinAgeIllustration />,
 };
 
-// Default illustration when nothing is selected
 function DefaultGoalIllustration() {
   return (
-    <Svg width={160} height={140} viewBox="0 0 160 140">
+    <Svg width={200} height={170} viewBox="0 0 200 170">
       <Defs>
-        <RadialGradient id="defaultGlow" cx="50%" cy="50%" r="50%">
-          <Stop offset="0%" stopColor="#7DE7E1" stopOpacity={0.4} />
-          <Stop offset="70%" stopColor="#7DE7E1" stopOpacity={0.1} />
-          <Stop offset="100%" stopColor="#7DE7E1" stopOpacity={0} />
+        <RadialGradient id="defGlow" cx="50%" cy="50%" r="50%">
+          <Stop offset="0%" stopColor="#3A9E8F" stopOpacity={0.6} />
+          <Stop offset="45%" stopColor="#3A9E8F" stopOpacity={0.2} />
+          <Stop offset="100%" stopColor="#3A9E8F" stopOpacity={0} />
+        </RadialGradient>
+        <RadialGradient id="defPurple" cx="50%" cy="50%" r="50%">
+          <Stop offset="0%" stopColor="#8B5CF6" stopOpacity={0.4} />
+          <Stop offset="60%" stopColor="#6366B5" stopOpacity={0.08} />
+          <Stop offset="100%" stopColor="#6366B5" stopOpacity={0} />
+        </RadialGradient>
+        <RadialGradient id="defGold" cx="50%" cy="50%" r="50%">
+          <Stop offset="0%" stopColor="#F5C842" stopOpacity={0.4} />
+          <Stop offset="60%" stopColor="#D4A024" stopOpacity={0.08} />
+          <Stop offset="100%" stopColor="#D4A024" stopOpacity={0} />
         </RadialGradient>
       </Defs>
-      <Circle cx={80} cy={70} r={50} fill="url(#defaultGlow)" />
-      <Circle cx={80} cy={70} r={35} fill="none" stroke="#7DE7E1" strokeWidth={0.8} strokeOpacity={0.2} />
-      <Circle cx={80} cy={70} r={20} fill="none" stroke="#7DE7E1" strokeWidth={1} strokeOpacity={0.25} />
-      <Circle cx={80} cy={70} r={5} fill="#7DE7E1" fillOpacity={0.35} />
+      <Circle cx={70} cy={55} r={38} fill="url(#defGold)" />
+      <Circle cx={140} cy={125} r={35} fill="url(#defPurple)" />
+      <Circle cx={100} cy={85} r={48} fill="url(#defGlow)" />
+      <Circle cx={100} cy={85} r={35} fill="none" stroke="#3A9E8F" strokeWidth={0.8} strokeOpacity={0.25} />
+      <Circle cx={100} cy={85} r={22} fill="none" stroke="#8B5CF6" strokeWidth={1} strokeOpacity={0.2} />
+      <Circle cx={100} cy={85} r={6} fill="#3A9E8F" fillOpacity={0.45} />
     </Svg>
   );
 }
 
 export default function SkinGoal() {
-  const router = useRouter();
-  const {
-    onboardingFlow,
-    onboardingFlowIndex,
-    setOnboardingFlowIndex,
-    setProtocol,
-  } = useStore();
+  const { advance, goBack, onboardingFlow, onboardingFlowIndex } = useOnboardingNavigation();
+  const setProtocol = useStore((s) => s.setProtocol);
+  const updateUser = useStore((s) => s.updateUser);
 
-  const [selected, setSelected] = useState<PrimaryGoal | null>(null);
+  const [selected, setSelected] = useState<PrimaryGoal[]>([]);
+
+  const toggle = (goal: PrimaryGoal) => {
+    setSelected((prev) =>
+      prev.includes(goal)
+        ? prev.filter((g) => g !== goal)
+        : [...prev, goal],
+    );
+  };
+
+  const allSelected = selected.length === GOAL_OPTIONS.length;
 
   const handleContinue = () => {
-    if (!selected) return;
-    const option = GOAL_OPTIONS.find((o) => o.value === selected);
+    if (selected.length === 0) return;
+    const primary = selected[0];
+    const option = GOAL_OPTIONS.find((o) => o.value === primary);
     if (!option) return;
-    setProtocol(option.value, option.defaultRegion);
-    const nextIndex = onboardingFlowIndex + 1;
-    setOnboardingFlowIndex(nextIndex);
-    router.push(screenToRoute(onboardingFlow[nextIndex]));
+    updateUser({ skin_goals: selected });
+    const region = selected.length === GOAL_OPTIONS.length ? 'whole_face' : option.defaultRegion;
+    setProtocol(option.value, region);
+    advance();
   };
 
   const handleTrackAll = () => {
-    // Default to acne goal with whole_face when tracking everything
+    const allGoals = GOAL_OPTIONS.map((o) => o.value);
+    updateUser({ skin_goals: allGoals });
     setProtocol('acne', 'whole_face');
-    const nextIndex = onboardingFlowIndex + 1;
-    setOnboardingFlowIndex(nextIndex);
-    router.push(screenToRoute(onboardingFlow[nextIndex]));
+    advance();
   };
 
-  const handleBack = () => {
-    const prevIndex = onboardingFlowIndex - 1;
-    setOnboardingFlowIndex(prevIndex);
-    router.back();
-  };
-
-  const illustration = selected ? ILLUSTRATIONS[selected] : <DefaultGoalIllustration />;
+  // Show illustration for last selected goal, or default
+  const lastSelected = selected.length > 0 ? selected[selected.length - 1] : null;
+  const illustration = lastSelected ? ILLUSTRATIONS[lastSelected] : <DefaultGoalIllustration />;
 
   return (
     <OnboardingTransition
       illustration={illustration}
-      heading="What's your biggest skin concern?"
-      subtext="We'll orient your first scan and your weekly insights around this."
-      primaryLabel="This is my focus"
+      heading="What do you want to focus on?"
+      subtext="Pick one or several — we'll tailor your scans and insights to all of them."
+      primaryLabel={selected.length > 1 ? `Continue (${selected.length})` : 'Continue'}
       primaryOnPress={handleContinue}
-      primaryDisabled={!selected}
-      secondaryLabel="I want to track everything"
-      secondaryOnPress={handleTrackAll}
-      showProgress={true}
-      totalSteps={5}
-      currentStep={3}
-      showBack={true}
-      onBack={handleBack}
+      primaryDisabled={selected.length === 0}
+      secondaryLabel={allSelected ? undefined : 'Track everything'}
+      secondaryOnPress={allSelected ? undefined : handleTrackAll}
+      showProgress
+      totalSteps={onboardingFlow.length}
+      currentStep={onboardingFlowIndex}
+      showBack
+      onBack={goBack}
     >
       <View style={styles.options}>
         {GOAL_OPTIONS.map((opt) => (
@@ -197,8 +258,9 @@ export default function SkinGoal() {
             key={opt.value}
             label={opt.label}
             description={opt.description}
-            selected={selected === opt.value}
-            onPress={() => setSelected(opt.value)}
+            selected={selected.includes(opt.value)}
+            onPress={() => toggle(opt.value)}
+            multiSelect
           />
         ))}
       </View>
@@ -208,6 +270,6 @@ export default function SkinGoal() {
 
 const styles = StyleSheet.create({
   options: {
-    gap: Spacing.sm,
+    gap: Spacing.sm + 4,
   },
 });

@@ -37,6 +37,16 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
+# ONNX model files (downloaded via scripts/download-models.sh)
+backend/models/*.onnx
+backend/models/*.pt
+
+# Build artifacts
+*.ipa
+*.apk
+*.aab
+build-*.ipa
+
 # generated native folders
 /ios
 /android

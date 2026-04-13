@@ -1,0 +1,30 @@
+{
+  "cli": {
+    "version": ">= 16.0.0"
+  },
+  "build": {
+    "production": {
+      "distribution": "store",
+      "autoIncrement": true,
+      "ios": {
+        "buildConfiguration": "Release"
+      }
+    },
+    "preview": {
+      "distribution": "internal"
+    },
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "appleId": "drmustafa@bdqholdings.com",
+        "ascAppId": "6744096507",
+        "appleTeamId": "NQ684Q9258"
+      }
+    }
+  }
+}

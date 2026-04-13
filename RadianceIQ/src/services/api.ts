@@ -6,7 +6,9 @@ import type {
   ModelOutput, PrimaryGoal, ScanRegion,
 } from '../types';
 
-const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:3001';
+import { env } from '../config/env';
+
+const API_BASE = env.API_BASE_URL;
 
 let getAuthToken: (() => Promise<string | null>) | null = null;
 
@@ -24,17 +26,29 @@ export const getAuthHeaders = async (): Promise<Record<string, string>> => {
   return h;
 };
 
-const request = async <T>(path: string, options: RequestInit = {}): Promise<T> => {
+const request = async <T>(path: string, options: RequestInit = {}, timeoutMs = 15_000): Promise<T> => {
   const h = await getAuthHeaders();
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers: { ...h, ...options.headers as Record<string, string> },
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`API ${res.status}: ${body}`);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${API_BASE}${path}`, {
+      ...options,
+      headers: { ...h, ...options.headers as Record<string, string> },
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => 'Unknown error');
+      throw new Error(`API ${res.status}: ${body}`);
+    }
+    return res.json();
+  } catch (err: any) {
+    if (err.name === 'AbortError') {
+      throw new Error(`API timeout after ${timeoutMs}ms: ${path}`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
   }
-  return res.json();
 };
 
 // ---- Users ----
@@ -91,3 +105,19 @@ export const lookupBarcode = (barcode: string) =>
 
 export const searchProducts = (query: string) =>
   request<Array<{ name: string; brands: string; ingredients: string; image_url: string | null; source: string }>>(`/api/products/search?q=${encodeURIComponent(query)}`);
+
+export interface PhotoIdentifyResult {
+  identified: boolean;
+  name: string;
+  brand: string;
+  ingredients: string[];
+  confidence: 'low' | 'med' | 'high';
+  source?: string;
+  error?: string;
+}
+
+export const identifyProductPhoto = (image_base64: string) =>
+  request<PhotoIdentifyResult>('/api/products/identify-photo', {
+    method: 'POST',
+    body: JSON.stringify({ image_base64 }),
+  }, 30_000);

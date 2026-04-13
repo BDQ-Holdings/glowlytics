@@ -33,6 +33,7 @@ jest.mock('pg', () => {
 jest.mock('../rag', () => ({
   seedGuidelines: jest.fn(),
   queryGuidelines: jest.fn(),
+  queryGuidelinesMulti: jest.fn().mockResolvedValue([]),
 }));
 
 const request = require('supertest');

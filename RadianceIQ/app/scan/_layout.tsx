@@ -9,6 +9,8 @@ export default function ScanLayout() {
         contentStyle: { backgroundColor: Colors.background },
         animation: 'slide_from_right',
       }}
-    />
+    >
+      <Stack.Screen name="analyzing" options={{ gestureEnabled: false, animation: 'fade' }} />
+    </Stack>
   );
 }

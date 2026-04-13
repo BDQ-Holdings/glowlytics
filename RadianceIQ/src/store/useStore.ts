@@ -5,10 +5,20 @@ import type {
   UserProfile, ScanProtocol, ProductEntry, DailyRecord,
   ModelOutput, PrimaryGoal, ScanRegion, HealthConnectionState,
   GamificationState, Badge, WeeklyChallenge, LevelName,
-  OnboardingScreenName, SubscriptionState,
+  OnboardingScreenName, SubscriptionState, NotificationSettings,
+  DetectedLesion, HealthDailyRecord, HealthSyncStatus, Pattern, FirstLookInsight,
+  PatternNotificationsState,
 } from '../types';
-import { defaultSubscription, canScan as canScanPure } from '../services/subscription';
+import { defaultSubscription, canScan as canScanPure, startTrial as computeTrial } from '../services/subscription';
 import * as api from '../services/api';
+import { buildOnboardingFlow } from '../services/onboardingFlow';
+import { localDateStr } from '../utils/localDate';
+import { detectPatterns } from '../services/patternEngine';
+import { trackEvent } from '../services/analytics';
+// healthSync imports the native @kingstinct/react-native-healthkit module at the top level,
+// which throws when loaded under Jest (no TurboModule registry). Defer to a dynamic require
+// inside syncHealthData so the test environment never triggers the native binding.
+import type { pullLastNDays as PullLastNDays } from '../services/healthSync';
 import {
   getLevelForXP,
   getXPForScan,
@@ -31,9 +41,10 @@ interface AppState {
   onboardingFlow: OnboardingScreenName[];
   onboardingFlowIndex: number;
 
-  // Pending scan result (processing→checkin handoff)
+  // Pending scan result (processing→analyzing handoff)
   pendingScanResult: Partial<ModelOutput> | null;
   pendingPhotoBase64: string | null;
+  pendingLesions: DetectedLesion[] | null;
 
   // Gamification
   gamification: GamificationState;
@@ -41,10 +52,23 @@ interface AppState {
   // Subscription
   subscription: SubscriptionState;
 
+  // Notifications
+  notificationSettings: NotificationSettings;
+
+  // Health data + patterns
+  healthDailyRecords: HealthDailyRecord[];
+  healthSyncStatus: HealthSyncStatus;
+  patterns: Pattern[];
+  firstLookInsight: FirstLookInsight | null;
+
+  // Pattern notification tracking
+  patternNotifications: PatternNotificationsState;
+
   // Actions
   setOnboardingStep: (step: number) => void;
   setOnboardingFlow: (flow: OnboardingScreenName[]) => void;
   setOnboardingFlowIndex: (index: number) => void;
+  reconcileAuthUserId: (authUserId: string) => void;
   createUser: (data: Partial<UserProfile>) => void;
   updateUser: (data: Partial<UserProfile>) => void;
   updateHealthConnection: (data: Partial<HealthConnectionState>) => void;
@@ -57,12 +81,13 @@ interface AppState {
   clearPendingScanResult: () => void;
   setPendingPhotoBase64: (base64: string | null) => void;
   clearPendingPhotoBase64: () => void;
+  setPendingLesions: (lesions: DetectedLesion[] | null) => void;
   getStreak: () => number;
   getLatestOutput: () => ModelOutput | null;
   getOutputHistory: (days: number) => ModelOutput[];
   loadPersistedData: () => Promise<void>;
   persistData: () => Promise<void>;
-  resetAll: () => void;
+  resetAll: () => Promise<void>;
   awardXP: (amount: number) => void;
   checkAndAwardBadges: () => void;
   updatePersonalBests: () => void;
@@ -70,14 +95,33 @@ interface AppState {
   setSubscription: (sub: SubscriptionState) => void;
   incrementFreeScansUsed: () => void;
   canPerformScan: () => boolean;
+  startTrial: () => void;
+  setNotificationTime: (time: string | null) => void;
+  setNotificationsEnabled: (enabled: boolean) => void;
+  addHealthDailyRecord: (record: HealthDailyRecord) => void;
+  upsertHealthDailyRecord: (date: string, record: HealthDailyRecord) => void;
+  syncHealthData: () => Promise<{ added: number; errors: string[] }>;
+  syncHealthDataInitial: () => Promise<{ added: number; errors: string[] }>;
+  setPatterns: (patterns: Pattern[]) => void;
+  setFirstLookInsight: (insight: FirstLookInsight | null) => void;
+  runPatternDetection: () => void;
+  setFirstUnlockNotifSent: (sent: boolean) => void;
 }
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const randomHex = (length: number) =>
+  Array.from({ length }, () => Math.floor(Math.random() * 16).toString(16)).join('');
 
 const generateId = () => {
   try {
-    return uuidv4();
+    const id = uuidv4();
+    if (UUID_RE.test(id)) return id;
   } catch {
-    return `id_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    // fall through
   }
+  // UUID-safe fallback for native/runtime edge cases
+  return `${randomHex(8)}-${randomHex(4)}-4${randomHex(3)}-a${randomHex(3)}-${randomHex(12)}`;
 };
 
 const defaultHealthConnection = (): HealthConnectionState => ({
@@ -137,9 +181,39 @@ const normalizeUser = (user?: Partial<UserProfile> | null): UserProfile | null =
   };
 };
 
+const isApiStatus = (err: unknown, status: number) =>
+  err instanceof Error && err.message.startsWith(`API ${status}:`);
+
+const toBackendUserProfilePayload = (user: UserProfile): Partial<UserProfile> => ({
+  ...user,
+  age_range: user.age_range && user.age_range.trim().length > 0 ? user.age_range : '25-34',
+  location_coarse:
+    user.location_coarse && user.location_coarse.trim().length > 0
+      ? user.location_coarse
+      : 'Unknown',
+});
+
+const toApiDailyRecordPayload = (record: DailyRecord): Omit<DailyRecord, 'daily_id'> => ({
+  ...record,
+  // Backends expect UUID in scanner_reading_id; sanitize legacy/non-UUID local IDs.
+  scanner_reading_id: UUID_RE.test(record.scanner_reading_id)
+    ? record.scanner_reading_id
+    : generateId(),
+});
+
 /** Fire-and-forget backend sync — never blocks the UI */
-const syncToBackend = (fn: () => Promise<unknown>) => {
-  fn().catch((err) => console.warn('[Sync] Backend sync failed:', err.message));
+const syncToBackend = (label: string, fn: () => Promise<unknown>) => {
+  fn().catch((err) => console.warn(`[Sync] ${label} failed:`, err.message));
+};
+
+/** Debounced persist — collapses rapid successive calls into one AsyncStorage write */
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+const debouncedPersist = (persistFn: () => Promise<void>) => {
+  if (persistTimer) clearTimeout(persistTimer);
+  persistTimer = setTimeout(() => {
+    persistTimer = null;
+    persistFn();
+  }, 50);
 };
 
 export const useStore = create<AppState>((set, get) => ({
@@ -149,20 +223,57 @@ export const useStore = create<AppState>((set, get) => ({
   dailyRecords: [],
   modelOutputs: [],
   onboardingStep: 0,
-  onboardingFlow: ['welcome', 'age-range', 'sex', 'location', 'skin-goal', 'supplements', 'exercise', 'shower-frequency', 'hand-washing', 'camera-permission', 'ready'],
+  onboardingFlow: buildOnboardingFlow(),
   onboardingFlowIndex: 0,
   pendingScanResult: null,
   pendingPhotoBase64: null,
+  pendingLesions: null,
   gamification: defaultGamification(),
   subscription: defaultSubscription(),
+  notificationSettings: { notifications_enabled: false, notification_time: null },
+  healthDailyRecords: [],
+  healthSyncStatus: {
+    last_sync_at: null,
+    last_success_at: null,
+    last_error: null,
+    in_progress: false,
+  },
+  patterns: [],
+  firstLookInsight: null,
+  patternNotifications: { first_pattern_unlock_sent: false },
 
   setOnboardingStep: (step) => set({ onboardingStep: step }),
   setOnboardingFlow: (flow) => set({ onboardingFlow: flow }),
   setOnboardingFlowIndex: (index) => set({ onboardingFlowIndex: index }),
+  reconcileAuthUserId: (authUserId) => {
+    const state = get();
+    const user = state.user;
+    if (!authUserId || !user || user.user_id === authUserId) return;
+
+    const migratedUser = normalizeUser({ ...user, user_id: authUserId });
+    if (!migratedUser) return;
+
+    set({
+      user: migratedUser,
+      protocol: state.protocol ? { ...state.protocol, user_id: authUserId } : null,
+      products: state.products.map((p) => ({ ...p, user_id: authUserId })),
+      dailyRecords: state.dailyRecords.map((r) => ({ ...r, user_id: authUserId })),
+    });
+    debouncedPersist(() => get().persistData());
+
+    syncToBackend('reconcile user id', async () => {
+      try {
+        await api.createUser(toBackendUserProfilePayload(migratedUser));
+      } catch (err) {
+        if (isApiStatus(err, 409)) return;
+        throw err;
+      }
+    });
+  },
 
   createUser: (data) => {
     const user = normalizeUser({
-      user_id: generateId(),
+      user_id: data.user_id || generateId(),
       age_range: data.age_range || '',
       location_coarse: data.location_coarse || '',
       period_applicable: data.period_applicable || 'prefer_not',
@@ -174,11 +285,24 @@ export const useStore = create<AppState>((set, get) => ({
       wearable_source: data.wearable_source,
       camera_permission_status: data.camera_permission_status || 'not_requested',
       health_connection: data.health_connection || defaultHealthConnection(),
-      onboarding_complete: false,
+      onboarding_complete: data.onboarding_complete || false,
     });
     set({ user });
-    get().persistData();
-    if (user) syncToBackend(() => api.createUser(user));
+    // Auto-start the 7-day trial on first user creation. Idempotent — startTrial() is a no-op
+    // if trial_start_date already exists. Closes the gap where users reach the camera before
+    // hitting the onboarding paywall (e.g. upgraded from a pre-paywall build).
+    get().startTrial();
+    debouncedPersist(() => get().persistData());
+    if (user) {
+      syncToBackend('create user profile', async () => {
+        try {
+          await api.createUser(toBackendUserProfilePayload(user));
+        } catch (err) {
+          if (isApiStatus(err, 409)) return;
+          throw err;
+        }
+      });
+    }
   },
 
   updateUser: (data) => {
@@ -193,8 +317,24 @@ export const useStore = create<AppState>((set, get) => ({
       },
     });
     set({ user: updated });
-    get().persistData();
-    syncToBackend(() => api.updateUser(current.user_id, data));
+    debouncedPersist(() => get().persistData());
+    if (!updated) return;
+    const payload = { ...data } as Partial<UserProfile> & { user_id?: string };
+    delete payload.user_id;
+    if (Object.keys(payload).length === 0) return;
+
+    syncToBackend('update user profile', async () => {
+      try {
+        await api.updateUser(updated.user_id, payload);
+      } catch (err) {
+        if (isApiStatus(err, 404)) {
+          await api.createUser(toBackendUserProfilePayload(updated));
+          await api.updateUser(updated.user_id, payload);
+          return;
+        }
+        throw err;
+      }
+    });
   },
 
   updateHealthConnection: (data) => {
@@ -221,7 +361,7 @@ export const useStore = create<AppState>((set, get) => ({
     });
 
     set({ user: updated });
-    get().persistData();
+    debouncedPersist(() => get().persistData());
   },
 
   setProtocol: (goal, region) => {
@@ -233,11 +373,11 @@ export const useStore = create<AppState>((set, get) => ({
       primary_goal: goal,
       scan_region: region,
       scan_frequency: 'daily',
-      baseline_date: new Date().toISOString().split('T')[0],
+      baseline_date: localDateStr(),
     };
     set({ protocol });
-    get().persistData();
-    syncToBackend(() => api.createProtocol({
+    debouncedPersist(() => get().persistData());
+    syncToBackend('create protocol', () => api.createProtocol({
       user_id: user.user_id,
       primary_goal: goal,
       scan_region: region,
@@ -254,14 +394,14 @@ export const useStore = create<AppState>((set, get) => ({
       user_id: user.user_id,
     };
     set((s) => ({ products: [...s.products, entry] }));
-    get().persistData();
-    syncToBackend(() => api.addProduct(entry));
+    debouncedPersist(() => get().persistData());
+    syncToBackend('add product', () => api.addProduct(entry));
   },
 
   removeProduct: (id) => {
     set((s) => ({ products: s.products.filter((p) => p.user_product_id !== id) }));
-    get().persistData();
-    syncToBackend(() => api.deleteProduct(id));
+    debouncedPersist(() => get().persistData());
+    syncToBackend('remove product', () => api.deleteProduct(id));
   },
 
   addDailyRecord: (record) => {
@@ -273,11 +413,21 @@ export const useStore = create<AppState>((set, get) => ({
       user_id: user.user_id,
     };
     set((s) => ({ dailyRecords: [...s.dailyRecords, entry] }));
-    if (!get().subscription.is_active) {
-      get().incrementFreeScansUsed();
-    }
-    get().persistData();
-    syncToBackend(() => api.addDailyRecord(entry));
+    debouncedPersist(() => get().persistData());
+    syncToBackend('add daily record', async () => {
+      const synced = await api.addDailyRecord(toApiDailyRecordPayload(entry));
+      if (synced.daily_id && synced.daily_id !== entry.daily_id) {
+        set((s) => ({
+          dailyRecords: s.dailyRecords.map((r) =>
+            r.daily_id === entry.daily_id ? { ...r, daily_id: synced.daily_id } : r
+          ),
+          modelOutputs: s.modelOutputs.map((o) =>
+            o.daily_id === entry.daily_id ? { ...o, daily_id: synced.daily_id } : o
+          ),
+        }));
+        debouncedPersist(() => get().persistData());
+      }
+    });
 
     // Calculate context items logged for XP bonus
     let contextItems = 0;
@@ -298,26 +448,203 @@ export const useStore = create<AppState>((set, get) => ({
       output_id: generateId(),
     };
     set((s) => ({ modelOutputs: [...s.modelOutputs, entry] }));
-    get().persistData();
-    syncToBackend(() => api.addModelOutput(entry));
+    debouncedPersist(() => get().persistData());
+    syncToBackend('add model output', async () => {
+      let backendDailyId = entry.daily_id;
+      const localRecord = get().dailyRecords.find((r) => r.daily_id === entry.daily_id);
+      if (localRecord) {
+        const syncedDaily = await api.addDailyRecord(toApiDailyRecordPayload(localRecord));
+        if (syncedDaily.daily_id) {
+          backendDailyId = syncedDaily.daily_id;
+          if (backendDailyId !== localRecord.daily_id) {
+            set((s) => ({
+              dailyRecords: s.dailyRecords.map((r) =>
+                r.daily_id === localRecord.daily_id ? { ...r, daily_id: backendDailyId } : r
+              ),
+              modelOutputs: s.modelOutputs.map((o) =>
+                o.daily_id === localRecord.daily_id ? { ...o, daily_id: backendDailyId } : o
+              ),
+            }));
+            debouncedPersist(() => get().persistData());
+          }
+        }
+      }
+      await api.addModelOutput({ ...entry, daily_id: backendDailyId });
+    });
     get().updatePersonalBests();
+  },
+
+  addHealthDailyRecord: (record) => {
+    set((s) => ({ healthDailyRecords: [...s.healthDailyRecords, record] }));
+    debouncedPersist(() => get().persistData());
+  },
+
+  upsertHealthDailyRecord: (date, record) => {
+    set((s) => {
+      const existing = s.healthDailyRecords.findIndex((r) => r.date === date);
+      if (existing >= 0) {
+        const next = [...s.healthDailyRecords];
+        next[existing] = record;
+        return { healthDailyRecords: next };
+      }
+      return { healthDailyRecords: [...s.healthDailyRecords, record] };
+    });
+    debouncedPersist(() => get().persistData());
+  },
+
+  syncHealthData: async () => {
+    const user = get().user;
+    if (!user) return { added: 0, errors: ['no_user'] };
+    // Reentrancy guard: foreground listener + post-scan can fire close together.
+    // The in_progress flag becomes a real mutex by reading it here.
+    if (get().healthSyncStatus.in_progress) {
+      return { added: 0, errors: ['already_in_progress'] };
+    }
+    set((s) => ({ healthSyncStatus: { ...s.healthSyncStatus, in_progress: true } }));
+    try {
+      // Dynamic require keeps the native HealthKit binding out of the Jest module graph.
+      const pullLastNDays: typeof PullLastNDays = require('../services/healthSync').pullLastNDays;
+      const { records, errors } = await pullLastNDays(2, user.user_id);
+      for (const r of records) {
+        get().upsertHealthDailyRecord(r.date, r);
+      }
+      set((s) => ({
+        healthSyncStatus: {
+          ...s.healthSyncStatus,
+          in_progress: false,
+          last_sync_at: new Date().toISOString(),
+          last_success_at:
+            records.length > 0 ? new Date().toISOString() : s.healthSyncStatus.last_success_at,
+          last_error: errors.length > 0 ? errors[0] : null,
+        },
+      }));
+      // Trigger pattern re-detection after a successful sync
+      get().runPatternDetection();
+      return { added: records.length, errors };
+    } catch (e: any) {
+      set((s) => ({
+        healthSyncStatus: {
+          ...s.healthSyncStatus,
+          in_progress: false,
+          last_sync_at: new Date().toISOString(),
+          last_error: e?.message ?? String(e),
+        },
+      }));
+      return { added: 0, errors: [e?.message ?? String(e)] };
+    }
+  },
+
+  syncHealthDataInitial: async () => {
+    const user = get().user;
+    if (!user) return { added: 0, errors: ['no_user'] };
+    set((s) => ({ healthSyncStatus: { ...s.healthSyncStatus, in_progress: true } }));
+    try {
+      const pullLastNDays: typeof PullLastNDays = require('../services/healthSync').pullLastNDays;
+      const { records, errors } = await pullLastNDays(14, user.user_id);
+      for (const r of records) {
+        get().upsertHealthDailyRecord(r.date, r);
+      }
+      set((s) => ({
+        healthSyncStatus: {
+          ...s.healthSyncStatus,
+          in_progress: false,
+          last_sync_at: new Date().toISOString(),
+          last_success_at:
+            records.length > 0 ? new Date().toISOString() : s.healthSyncStatus.last_success_at,
+          last_error: errors.length > 0 ? errors[0] : null,
+        },
+      }));
+      get().runPatternDetection();
+      return { added: records.length, errors };
+    } catch (e: any) {
+      set((s) => ({
+        healthSyncStatus: {
+          ...s.healthSyncStatus,
+          in_progress: false,
+          last_sync_at: new Date().toISOString(),
+          last_error: e?.message ?? String(e),
+        },
+      }));
+      return { added: 0, errors: [e?.message ?? String(e)] };
+    }
+  },
+
+  setPatterns: (patterns) => {
+    set({ patterns });
+    debouncedPersist(() => get().persistData());
+  },
+
+  setFirstLookInsight: (insight) => {
+    set({ firstLookInsight: insight });
+    debouncedPersist(() => get().persistData());
+  },
+
+  setFirstUnlockNotifSent: (sent) => {
+    set((s) => ({ patternNotifications: { ...s.patternNotifications, first_pattern_unlock_sent: sent } }));
+    debouncedPersist(() => get().persistData());
+  },
+
+  runPatternDetection: () => {
+    const state = get();
+    if (!state.user) return;
+    try {
+      const previous = state.patterns;
+      const next = detectPatterns({
+        modelOutputs: state.modelOutputs,
+        dailyRecords: state.dailyRecords,
+        healthDailyRecords: state.healthDailyRecords,
+        userProfile: state.user,
+      });
+      set({ patterns: next });
+      debouncedPersist(() => get().persistData());
+      // Fire pattern_first_seen for newly detected real patterns
+      const prevIds = new Set(previous.filter((p) => !p.isPredicted).map((p) => p.id));
+      for (const p of next) {
+        if (!p.isPredicted && !prevIds.has(p.id)) {
+          trackEvent('pattern_first_seen', {
+            pattern_type: p.type,
+            confidence: p.confidence,
+            data_days_at_detection: state.dailyRecords.length,
+          });
+        }
+      }
+      // Fire one-time unlock notification if appropriate.
+      // Dynamic require to keep expo-notifications out of Jest.
+      try {
+        const { maybeSendFirstPatternUnlockNotification } =
+          require('../services/patternNotifications');
+        maybeSendFirstPatternUnlockNotification(
+          previous,
+          next,
+          state.patternNotifications.first_pattern_unlock_sent,
+        ).then((sent: boolean) => {
+          if (sent) get().setFirstUnlockNotifSent(true);
+        });
+      } catch {
+        // patternNotifications module failed to load — non-fatal
+      }
+    } catch (e: any) {
+      console.warn('[patternEngine] detection failed:', e?.message ?? e);
+    }
   },
 
   setPendingScanResult: (result) => set({ pendingScanResult: result }),
   clearPendingScanResult: () => set({ pendingScanResult: null }),
   setPendingPhotoBase64: (base64) => set({ pendingPhotoBase64: base64 }),
   clearPendingPhotoBase64: () => set({ pendingPhotoBase64: null }),
+  setPendingLesions: (lesions) => set({ pendingLesions: lesions }),
 
   getStreak: () => {
-    const records = get().dailyRecords.sort((a, b) => b.date.localeCompare(a.date));
+    const records = get().dailyRecords;
     if (records.length === 0) return 0;
+    const dateSet = new Set(records.map((r) => r.date));
     let streak = 0;
     const today = new Date();
     for (let i = 0; i < records.length; i++) {
       const expected = new Date(today);
       expected.setDate(expected.getDate() - i);
-      const expectedStr = expected.toISOString().split('T')[0];
-      if (records.find((r) => r.date === expectedStr)) {
+      const expectedStr = localDateStr(expected);
+      if (dateSet.has(expectedStr)) {
         streak++;
       } else {
         break;
@@ -335,7 +662,7 @@ export const useStore = create<AppState>((set, get) => ({
   getOutputHistory: (days) => {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - days);
-    const cutoffStr = cutoff.toISOString().split('T')[0];
+    const cutoffStr = localDateStr(cutoff);
     const records = get().dailyRecords.filter((r) => r.date >= cutoffStr);
     const dailyIds = new Set(records.map((r) => r.daily_id));
     return get().modelOutputs.filter((o) => dailyIds.has(o.daily_id));
@@ -352,7 +679,7 @@ export const useStore = create<AppState>((set, get) => ({
         },
       };
     });
-    get().persistData();
+    debouncedPersist(() => get().persistData());
   },
 
   checkAndAwardBadges: () => {
@@ -392,7 +719,7 @@ export const useStore = create<AppState>((set, get) => ({
         },
       };
     });
-    get().persistData();
+    debouncedPersist(() => get().persistData());
   },
 
   updatePersonalBests: () => {
@@ -413,7 +740,7 @@ export const useStore = create<AppState>((set, get) => ({
         personal_bests: updatedBests,
       },
     }));
-    get().persistData();
+    debouncedPersist(() => get().persistData());
   },
 
   generateWeeklyChallenges: () => {
@@ -425,12 +752,12 @@ export const useStore = create<AppState>((set, get) => ({
         weekly_challenges: challenges,
       },
     }));
-    get().persistData();
+    debouncedPersist(() => get().persistData());
   },
 
   setSubscription: (sub) => {
     set({ subscription: sub });
-    get().persistData();
+    debouncedPersist(() => get().persistData());
   },
 
   incrementFreeScansUsed: () => {
@@ -440,9 +767,51 @@ export const useStore = create<AppState>((set, get) => ({
         free_scans_used: s.subscription.free_scans_used + 1,
       },
     }));
+    debouncedPersist(() => get().persistData());
   },
 
   canPerformScan: () => canScanPure(get().subscription),
+
+  startTrial: () => {
+    if (get().subscription.trial_start_date) return; // already started
+    const trialFields = computeTrial();
+    set((s) => ({
+      subscription: { ...s.subscription, ...trialFields },
+    }));
+    // Sync trial dates to backend
+    const user = get().user;
+    if (user) {
+      syncToBackend('update trial dates', async () => {
+        const patch = {
+          trial_start_date: trialFields.trial_start_date,
+          trial_end_date: trialFields.trial_end_date,
+        } as any;
+        try {
+          await api.updateUser(user.user_id, patch);
+        } catch (err) {
+          if (isApiStatus(err, 404)) {
+            await api.createUser(toBackendUserProfilePayload(user));
+            await api.updateUser(user.user_id, patch);
+            return;
+          }
+          throw err;
+        }
+      });
+    }
+    debouncedPersist(() => get().persistData());
+  },
+
+  setNotificationTime: (time) => {
+    set({ notificationSettings: { notifications_enabled: time !== null, notification_time: time } });
+    debouncedPersist(() => get().persistData());
+  },
+
+  setNotificationsEnabled: (enabled) => {
+    set((s) => ({
+      notificationSettings: { ...s.notificationSettings, notifications_enabled: enabled },
+    }));
+    debouncedPersist(() => get().persistData());
+  },
 
   loadPersistedData: async () => {
     try {
@@ -456,6 +825,13 @@ export const useStore = create<AppState>((set, get) => ({
       );
 
       if (hasPersistedSession) {
+        // Restore onboarding flow: use persisted flow, or rebuild from profile if stale/missing
+        let restoredFlow: OnboardingScreenName[] = parsed.onboardingFlow;
+        if (!Array.isArray(restoredFlow) || (parsed.user?.sex && !restoredFlow.includes('products'))) {
+          restoredFlow = buildOnboardingFlow(parsed.user?.sex, parsed.user?.menstrual_status);
+        }
+        const restoredIndex = typeof parsed.onboardingFlowIndex === 'number' ? parsed.onboardingFlowIndex : 0;
+
         set({
           user: normalizeUser(parsed.user),
           protocol: parsed.protocol || null,
@@ -463,8 +839,38 @@ export const useStore = create<AppState>((set, get) => ({
           dailyRecords: parsed.dailyRecords || [],
           modelOutputs: parsed.modelOutputs || [],
           gamification: parsed.gamification || defaultGamification(),
-          subscription: parsed.subscription || defaultSubscription(),
+          subscription: {
+            ...defaultSubscription(),
+            ...parsed.subscription,
+            trial_start_date: parsed.subscription?.trial_start_date ?? null,
+            trial_end_date: parsed.subscription?.trial_end_date ?? null,
+          },
+          notificationSettings: parsed.notificationSettings || { notifications_enabled: false, notification_time: null },
+          onboardingFlow: restoredFlow,
+          onboardingFlowIndex: restoredIndex,
+          healthDailyRecords: parsed.healthDailyRecords || [],
+          healthSyncStatus: parsed.healthSyncStatus || {
+            last_sync_at: null,
+            last_success_at: null,
+            last_error: null,
+            in_progress: false,
+          },
+          patterns: parsed.patterns || [],
+          firstLookInsight: parsed.firstLookInsight || null,
+          patternNotifications: parsed.patternNotifications || { first_pattern_unlock_sent: false },
         });
+
+        // Backfill: upgraded users from pre-paywall builds may have no trial dates.
+        // If they're not paid AND have never had a trial, grant one now (one-time only).
+        // Fix layer 2 of 3 for the paywall gap.
+        const restoredSub = get().subscription;
+        if (
+          !restoredSub.is_active &&
+          restoredSub.trial_start_date === null &&
+          restoredSub.trial_end_date === null
+        ) {
+          get().startTrial();
+        }
         return;
       }
 
@@ -476,16 +882,37 @@ export const useStore = create<AppState>((set, get) => ({
 
   persistData: async () => {
     try {
-      const { user, protocol, products, dailyRecords, modelOutputs, gamification, subscription } = get();
+      const {
+        user, protocol, products, dailyRecords, modelOutputs, gamification,
+        subscription, notificationSettings, onboardingFlow, onboardingFlowIndex,
+        healthDailyRecords, healthSyncStatus, patterns, firstLookInsight,
+        patternNotifications,
+      } = get();
+      // Cap stored records to last 365 days to prevent AsyncStorage bloat
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 365);
+      const cutoffStr = localDateStr(cutoff);
+      const cappedDailyRecords = dailyRecords.filter((r) => r.date >= cutoffStr);
+      const cappedDailyIds = new Set(cappedDailyRecords.map((r) => r.daily_id));
+      const cappedModelOutputs = modelOutputs.filter((o) => cappedDailyIds.has(o.daily_id));
+      const cappedHealthRecords = healthDailyRecords.filter((r) => r.date >= cutoffStr);
       await AsyncStorage.setItem('glowlytics_data', JSON.stringify({
-        user, protocol, products, dailyRecords, modelOutputs, gamification, subscription,
+        user, protocol, products,
+        dailyRecords: cappedDailyRecords,
+        modelOutputs: cappedModelOutputs,
+        gamification, subscription, notificationSettings,
+        onboardingFlow, onboardingFlowIndex,
+        healthDailyRecords: cappedHealthRecords,
+        healthSyncStatus, patterns, firstLookInsight, patternNotifications,
       }));
     } catch (e) {
       console.log('Failed to persist data', e);
     }
   },
 
-  resetAll: () => {
+  resetAll: async () => {
+    // Cancel any pending debounced persist so it doesn't re-write cleared data
+    if (persistTimer) { clearTimeout(persistTimer); persistTimer = null; }
     set({
       user: null,
       protocol: null,
@@ -493,11 +920,29 @@ export const useStore = create<AppState>((set, get) => ({
       dailyRecords: [],
       modelOutputs: [],
       onboardingStep: 0,
+      onboardingFlow: buildOnboardingFlow(),
+      onboardingFlowIndex: 0,
       pendingScanResult: null,
       pendingPhotoBase64: null,
+      pendingLesions: null,
       gamification: defaultGamification(),
       subscription: defaultSubscription(),
+      notificationSettings: { notifications_enabled: false, notification_time: null },
+      healthDailyRecords: [],
+      healthSyncStatus: {
+        last_sync_at: null,
+        last_success_at: null,
+        last_error: null,
+        in_progress: false,
+      },
+      patterns: [],
+      firstLookInsight: null,
+      patternNotifications: { first_pattern_unlock_sent: false },
     });
-    AsyncStorage.removeItem('glowlytics_data');
+    try {
+      await AsyncStorage.removeItem('glowlytics_data');
+    } catch {
+      // Best-effort cleanup
+    }
   },
 }));

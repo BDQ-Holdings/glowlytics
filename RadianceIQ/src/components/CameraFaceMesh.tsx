@@ -37,7 +37,7 @@ export const CameraFaceMesh: React.FC<Props> = ({ status, width, height }) => {
       meshOpacity.value = withTiming(0.3, { duration: 300 });
       glowOpacity.value = withTiming(0, { duration: 300 });
     } else {
-      meshOpacity.value = withTiming(0.85, { duration: 400 });
+      meshOpacity.value = withTiming(0.8, { duration: 400 });
       glowOpacity.value = withTiming(0.6, { duration: 400 });
     }
   }, [status]);
@@ -50,10 +50,9 @@ export const CameraFaceMesh: React.FC<Props> = ({ status, width, height }) => {
     opacity: glowOpacity.value,
   }));
 
-  const meshColor = status === 'aligned' ? Colors.primary : 'rgba(255, 255, 255, 0.7)';
-  const vertexColor = status === 'aligned' ? Colors.primaryLight : 'rgba(255, 255, 255, 0.5)';
+  const meshColor = status === 'aligned' ? Colors.primary : 'rgba(255, 255, 255, 0.75)';
 
-  // Uniform scaling — prevents portrait aspect ratio from stretching the mesh
+  // Uniform scaling
   const scale = Math.min(width / MESH_VB_W, height / MESH_VB_H);
   const ox = (width - MESH_VB_W * scale) / 2;
   const oy = (height - MESH_VB_H * scale) / 2;
@@ -72,17 +71,20 @@ export const CameraFaceMesh: React.FC<Props> = ({ status, width, height }) => {
           </Defs>
           <Circle
             cx={150 * scale + ox}
-            cy={148 * scale + oy}
+            cy={155 * scale + oy}
             r={MESH_VB_W * scale * 0.45}
             fill="url(#meshGlow)"
           />
         </Svg>
       </AnimatedView>
 
-      {/* Wireframe mesh */}
+      {/* Dense triangulated wireframe */}
       <AnimatedView style={[StyleSheet.absoluteFill, meshStyle]}>
         <Svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
-          <G>
+          {/* Face mesh — horizontally compressed for realistic proportions */}
+          {/* transform scales x by 0.86 around center to create elongated oval */}
+          <G transform={`translate(${150 * scale + ox}, 0) scale(0.86, 1) translate(${-(150 * scale + ox)}, 0)`}>
+            {/* All triangle edges — uniform thin lines */}
             {edges.map(([a, b], i) => (
               <Line
                 key={i}
@@ -91,28 +93,9 @@ export const CameraFaceMesh: React.FC<Props> = ({ status, width, height }) => {
                 x2={V[b][0] * scale + ox}
                 y2={V[b][1] * scale + oy}
                 stroke={meshColor}
-                strokeWidth={0.8}
+                strokeWidth={0.7}
               />
             ))}
-          </G>
-          <G>
-            {V.map(([x, y], i) => {
-              const isContour = i <= 23;
-              const isEye = i >= 50 && i <= 69;
-              const isNose = i >= 70 && i <= 83;
-              const isLip = i >= 111 && i <= 127;
-              const bright = isContour || isEye || isNose || isLip;
-              return (
-                <Circle
-                  key={i}
-                  cx={x * scale + ox}
-                  cy={y * scale + oy}
-                  r={bright ? 2.0 : 1.2}
-                  fill={vertexColor}
-                  opacity={bright ? 0.8 : 0.4}
-                />
-              );
-            })}
           </G>
         </Svg>
       </AnimatedView>

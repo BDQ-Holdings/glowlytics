@@ -2,35 +2,40 @@ import type { BiologicalSex, MenstrualStatus, OnboardingScreenName } from '../ty
 
 /**
  * Builds the onboarding screen flow based on user answers.
- * Female users get menstrual/cycle screens inserted after skin-goal.
+ *
+ * Flow order:
+ *   welcome → age-range → sex → skin-goal → camera-permission → health-permission
+ *     → [menstrual → cycle-details]? (female AND !healthSyncedCycleDetected)
+ *     → scan-reminder → preview → paywall
+ *
+ * The third argument `healthSyncedCycleDetected` is set by the health-permission
+ * screen after granting HealthKit access. When true AND user is female, the manual
+ * menstrual + cycle-details screens are skipped because HealthKit already provides
+ * the cycle data.
  */
 export function buildOnboardingFlow(
   sex?: BiologicalSex,
   menstrualStatus?: MenstrualStatus,
+  healthSyncedCycleDetected?: boolean,
 ): OnboardingScreenName[] {
   const flow: OnboardingScreenName[] = [
     'welcome',
     'age-range',
     'sex',
-    'location',
     'skin-goal',
+    'camera-permission',
+    'health-permission',
   ];
 
-  if (sex === 'female') {
+  // Female users who did NOT get cycle data from HealthKit: show manual screens.
+  if (sex === 'female' && !healthSyncedCycleDetected) {
     flow.push('menstrual');
     if (menstrualStatus === 'regular' || menstrualStatus === 'irregular') {
       flow.push('cycle-details');
     }
   }
 
-  flow.push(
-    'supplements',
-    'exercise',
-    'shower-frequency',
-    'hand-washing',
-    'camera-permission',
-    'ready',
-  );
+  flow.push('scan-reminder', 'preview', 'paywall');
 
   return flow;
 }

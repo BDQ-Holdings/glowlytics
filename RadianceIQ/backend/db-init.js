@@ -6,11 +6,11 @@ const pool = new Pool({
 });
 
 const schema = `
--- User profiles
+-- User profiles (user_id is the Clerk user ID string, e.g. 'user_2xABC...')
 CREATE TABLE IF NOT EXISTS user_profiles (
-  user_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id TEXT PRIMARY KEY,
   age_range VARCHAR(10) NOT NULL,
-  location_coarse VARCHAR(20) NOT NULL,
+  location_coarse VARCHAR(100) NOT NULL,
   period_applicable VARCHAR(20) NOT NULL DEFAULT 'prefer_not',
   period_last_start_date DATE,
   cycle_length_days INTEGER DEFAULT 28,
@@ -21,6 +21,8 @@ CREATE TABLE IF NOT EXISTS user_profiles (
   camera_permission_status VARCHAR(20) DEFAULT 'not_requested',
   health_connection JSONB DEFAULT '{}'::jsonb,
   onboarding_complete BOOLEAN DEFAULT FALSE,
+  trial_start_date TIMESTAMPTZ,
+  trial_end_date TIMESTAMPTZ,
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
 );
@@ -28,7 +30,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
 -- Scan protocols
 CREATE TABLE IF NOT EXISTS scan_protocols (
   protocol_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES user_profiles(user_id),
+  user_id TEXT REFERENCES user_profiles(user_id),
   primary_goal VARCHAR(20) NOT NULL,
   scan_region VARCHAR(30) NOT NULL,
   scan_frequency VARCHAR(10) DEFAULT 'daily',
@@ -39,7 +41,7 @@ CREATE TABLE IF NOT EXISTS scan_protocols (
 -- Product catalog
 CREATE TABLE IF NOT EXISTS product_catalog (
   user_product_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES user_profiles(user_id),
+  user_id TEXT REFERENCES user_profiles(user_id),
   product_name VARCHAR(200) NOT NULL,
   product_capture_method VARCHAR(20) NOT NULL,
   ingredients_list TEXT[] NOT NULL DEFAULT '{}',
@@ -53,7 +55,7 @@ CREATE TABLE IF NOT EXISTS product_catalog (
 -- Daily records
 CREATE TABLE IF NOT EXISTS daily_records (
   daily_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES user_profiles(user_id),
+  user_id TEXT REFERENCES user_profiles(user_id),
   date DATE NOT NULL,
   scanner_reading_id UUID,
   scanner_indices JSONB NOT NULL DEFAULT '{}',
@@ -92,13 +94,19 @@ CREATE TABLE IF NOT EXISTS model_outputs (
   signal_scores JSONB DEFAULT '{}',
   signal_features JSONB DEFAULT '{}',
   lesions JSONB DEFAULT '[]',
+  signal_confidence JSONB DEFAULT '{}',
+  conditions JSONB DEFAULT '[]',
+  rag_recommendations JSONB DEFAULT '[]',
+  personalized_feedback TEXT,
+  zone_severity JSONB DEFAULT '{}',
+  generated_insights JSONB DEFAULT '{}',
   created_at TIMESTAMP DEFAULT NOW()
 );
 
 -- Report artifacts
 CREATE TABLE IF NOT EXISTS report_artifacts (
   report_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES user_profiles(user_id),
+  user_id TEXT REFERENCES user_profiles(user_id),
   date_range VARCHAR(20),
   included_fields TEXT[] DEFAULT '{}',
   report_uri TEXT,
@@ -121,15 +129,90 @@ CREATE INDEX IF NOT EXISTS idx_products_user ON product_catalog(user_id);
 CREATE INDEX IF NOT EXISTS idx_waitlist_email ON waitlist(email);
 `;
 
-async function init() {
+// Migration: add new columns + migrate user_id from UUID to TEXT
+const migration = `
+ALTER TABLE model_outputs ADD COLUMN IF NOT EXISTS signal_confidence JSONB DEFAULT '{}';
+ALTER TABLE model_outputs ADD COLUMN IF NOT EXISTS conditions JSONB DEFAULT '[]';
+ALTER TABLE model_outputs ADD COLUMN IF NOT EXISTS rag_recommendations JSONB DEFAULT '[]';
+ALTER TABLE model_outputs ADD COLUMN IF NOT EXISTS personalized_feedback TEXT;
+ALTER TABLE model_outputs ADD COLUMN IF NOT EXISTS zone_severity JSONB DEFAULT '{}';
+ALTER TABLE model_outputs ADD COLUMN IF NOT EXISTS generated_insights JSONB DEFAULT '{}';
+ALTER TABLE product_catalog ADD COLUMN IF NOT EXISTS brand VARCHAR(200);
+`;
+
+// Migration v2: convert user_id columns from UUID to TEXT for Clerk IDs
+// This runs as separate statements since ALTER TYPE can fail if already TEXT
+const migrationV2 = `
+DO $$ BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'user_profiles' AND column_name = 'user_id' AND data_type = 'uuid'
+  ) THEN
+    -- Drop FKs, alter types, re-add FKs
+    ALTER TABLE report_artifacts DROP CONSTRAINT IF EXISTS report_artifacts_user_id_fkey;
+    ALTER TABLE scan_protocols DROP CONSTRAINT IF EXISTS scan_protocols_user_id_fkey;
+    ALTER TABLE product_catalog DROP CONSTRAINT IF EXISTS product_catalog_user_id_fkey;
+    ALTER TABLE daily_records DROP CONSTRAINT IF EXISTS daily_records_user_id_fkey;
+
+    ALTER TABLE user_profiles ALTER COLUMN user_id TYPE TEXT USING user_id::TEXT;
+    ALTER TABLE user_profiles ALTER COLUMN user_id DROP DEFAULT;
+    ALTER TABLE scan_protocols ALTER COLUMN user_id TYPE TEXT USING user_id::TEXT;
+    ALTER TABLE product_catalog ALTER COLUMN user_id TYPE TEXT USING user_id::TEXT;
+    ALTER TABLE daily_records ALTER COLUMN user_id TYPE TEXT USING user_id::TEXT;
+    ALTER TABLE report_artifacts ALTER COLUMN user_id TYPE TEXT USING user_id::TEXT;
+
+    ALTER TABLE scan_protocols ADD CONSTRAINT scan_protocols_user_id_fkey FOREIGN KEY (user_id) REFERENCES user_profiles(user_id);
+    ALTER TABLE product_catalog ADD CONSTRAINT product_catalog_user_id_fkey FOREIGN KEY (user_id) REFERENCES user_profiles(user_id);
+    ALTER TABLE daily_records ADD CONSTRAINT daily_records_user_id_fkey FOREIGN KEY (user_id) REFERENCES user_profiles(user_id);
+    ALTER TABLE report_artifacts ADD CONSTRAINT report_artifacts_user_id_fkey FOREIGN KEY (user_id) REFERENCES user_profiles(user_id);
+
+    RAISE NOTICE 'Migrated user_id columns from UUID to TEXT';
+  END IF;
+END $$;
+`;
+
+// Migration v3: add missing user_profiles columns for onboarding fields
+const migrationV3 = `
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS skin_goal VARCHAR(30);
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS sex VARCHAR(20);
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS menstrual_status VARCHAR(30);
+`;
+
+/**
+ * Initialize schema using a provided pool (does NOT close it).
+ * Runs CREATE TABLE IF NOT EXISTS + ALTER TABLE for migrations.
+ */
+async function initSchema(externalPool) {
+  await externalPool.query(schema);
   try {
-    await pool.query(schema);
-    console.log('Database schema initialized successfully.');
+    await externalPool.query(migration);
   } catch (err) {
-    console.error('Error initializing database:', err.message);
-  } finally {
-    await pool.end();
+    console.warn('[db-init] Migration v1 warning (may be harmless):', err.message);
+  }
+  try {
+    await externalPool.query(migrationV2);
+  } catch (err) {
+    console.warn('[db-init] Migration v2 warning (may be harmless):', err.message);
+  }
+  try {
+    await externalPool.query(migrationV3);
+  } catch (err) {
+    console.warn('[db-init] Migration v3 warning (may be harmless):', err.message);
   }
 }
 
-init();
+// Standalone execution: `node db-init.js`
+if (require.main === module) {
+  (async () => {
+    try {
+      await initSchema(pool);
+      console.log('Database schema initialized successfully.');
+    } catch (err) {
+      console.error('Error initializing database:', err.message);
+    } finally {
+      await pool.end();
+    }
+  })();
+}
+
+module.exports = { schema, initSchema };

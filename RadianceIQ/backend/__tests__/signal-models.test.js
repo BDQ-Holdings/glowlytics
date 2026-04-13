@@ -32,7 +32,18 @@ const {
   bboxToZone,
   mergeSignalScores,
   LESION_CLASSES,
+  computeIoU,
+  nms,
 } = require('../signal-models');
+
+const {
+  computeGaborFeatures,
+  computeLBPUniform,
+  computeFrangiFeatures,
+  computeLandmarkGeometry,
+  buildHydrationFeatures,
+  buildElasticityFeatures,
+} = require('../image-processing');
 
 // =====================================================================
 // UNIT TESTS: image-processing.js
@@ -403,6 +414,115 @@ describe('image-processing.js', () => {
 });
 
 // =====================================================================
+// UNIT TESTS: new image-processing features (Gabor, LBP-uniform, Frangi)
+// =====================================================================
+
+describe('image-processing.js (new features)', () => {
+  describe('computeGaborFeatures', () => {
+    test('returns Float32Array of length 24', () => {
+      const width = 32;
+      const height = 32;
+      const pixels = new Float32Array(width * height).fill(128);
+      const result = computeGaborFeatures(pixels, width, height);
+      expect(result).toBeInstanceOf(Float32Array);
+      expect(result.length).toBe(24);
+    });
+
+    test('non-constant image produces non-zero std features', () => {
+      const width = 64;
+      const height = 64;
+      const pixels = new Float32Array(width * height);
+      for (let i = 0; i < pixels.length; i++) {
+        pixels[i] = (i * 7) % 256;
+      }
+      const result = computeGaborFeatures(pixels, width, height);
+      // At least some std features (odd indices) should be non-zero
+      let hasNonZero = false;
+      for (let i = 1; i < 24; i += 2) {
+        if (result[i] > 0) hasNonZero = true;
+      }
+      expect(hasNonZero).toBe(true);
+    });
+  });
+
+  describe('computeLBPUniform', () => {
+    test('returns Float32Array of length 18 for r=2, n=16', () => {
+      const width = 16;
+      const height = 16;
+      const pixels = new Float32Array(width * height).fill(100);
+      const result = computeLBPUniform(pixels, width, height, 2, 16);
+      expect(result).toBeInstanceOf(Float32Array);
+      expect(result.length).toBe(18);
+    });
+
+    test('histogram sums to approximately 1 (normalized)', () => {
+      const width = 20;
+      const height = 20;
+      const pixels = new Float32Array(width * height);
+      for (let i = 0; i < pixels.length; i++) {
+        pixels[i] = (i * 13) % 256;
+      }
+      const result = computeLBPUniform(pixels, width, height, 2, 16);
+      let sum = 0;
+      for (let i = 0; i < result.length; i++) sum += result[i];
+      expect(sum).toBeCloseTo(1.0, 2);
+    });
+  });
+
+  describe('computeFrangiFeatures', () => {
+    test('returns Float32Array of length 9', () => {
+      const width = 32;
+      const height = 32;
+      const pixels = new Float32Array(width * height).fill(128);
+      const result = computeFrangiFeatures(pixels, width, height);
+      expect(result).toBeInstanceOf(Float32Array);
+      expect(result.length).toBe(9);
+    });
+  });
+
+  describe('computeLandmarkGeometry', () => {
+    test('returns Float32Array of length 5', () => {
+      const result = computeLandmarkGeometry();
+      expect(result).toBeInstanceOf(Float32Array);
+      expect(result.length).toBe(5);
+    });
+
+    test('all values are between 0 and 1', () => {
+      const result = computeLandmarkGeometry();
+      for (let i = 0; i < result.length; i++) {
+        expect(result[i]).toBeGreaterThanOrEqual(0);
+        expect(result[i]).toBeLessThanOrEqual(1);
+      }
+    });
+  });
+
+  describe('buildHydrationFeatures', () => {
+    test('returns Float32Array of length 44', () => {
+      const features = {
+        gabor_features: new Float32Array(24),
+        lbp_uniform_histogram: new Float32Array(18),
+        hydration: { specular_ratio: 0.02, specular_uniformity: 0.3 },
+      };
+      const result = buildHydrationFeatures(features);
+      expect(result).toBeInstanceOf(Float32Array);
+      expect(result.length).toBe(44);
+    });
+  });
+
+  describe('buildElasticityFeatures', () => {
+    test('returns Float32Array of length 14', () => {
+      const features = {
+        frangi_features: new Float32Array(9),
+        landmark_geometry: new Float32Array(5),
+      };
+      const result = buildElasticityFeatures(features);
+      expect(result).toBeInstanceOf(Float32Array);
+      expect(result.length).toBe(14);
+    });
+  });
+});
+
+// =====================================================================
 // UNIT TESTS: signal-models.js
 // =====================================================================
 
@@ -450,17 +570,82 @@ describe('signal-models.js', () => {
       expect(Array.isArray(LESION_CLASSES)).toBe(true);
     });
 
-    test('contains expected dermatological lesion classes', () => {
-      expect(LESION_CLASSES).toContain('comedone');
-      expect(LESION_CLASSES).toContain('papule');
-      expect(LESION_CLASSES).toContain('pustule');
-      expect(LESION_CLASSES).toContain('nodule');
-      expect(LESION_CLASSES).toContain('macule');
-      expect(LESION_CLASSES).toContain('patch');
+    test('contains the acne class for v2 single-class detector', () => {
+      expect(LESION_CLASSES).toContain('acne');
     });
 
-    test('has exactly 6 classes', () => {
-      expect(LESION_CLASSES).toHaveLength(6);
+    test('has exactly 1 class (v2 single-class detector)', () => {
+      expect(LESION_CLASSES).toHaveLength(1);
+    });
+  });
+
+  // ---- computeIoU ----
+
+  describe('computeIoU', () => {
+    test('identical boxes return 1.0', () => {
+      expect(computeIoU([0.1, 0.1, 0.3, 0.3], [0.1, 0.1, 0.3, 0.3])).toBeCloseTo(1.0, 5);
+    });
+
+    test('non-overlapping boxes return 0.0', () => {
+      expect(computeIoU([0, 0, 0.1, 0.1], [0.5, 0.5, 0.1, 0.1])).toBe(0);
+    });
+
+    test('partial overlap returns value between 0 and 1', () => {
+      const iou = computeIoU([0, 0, 0.4, 0.4], [0.2, 0.2, 0.4, 0.4]);
+      expect(iou).toBeGreaterThan(0);
+      expect(iou).toBeLessThan(1);
+    });
+
+    test('box fully inside another has correct IoU', () => {
+      // Inner box: [0.1, 0.1, 0.1, 0.1] area = 0.01
+      // Outer box: [0, 0, 0.5, 0.5] area = 0.25
+      // Intersection = 0.01, Union = 0.25
+      const iou = computeIoU([0, 0, 0.5, 0.5], [0.1, 0.1, 0.1, 0.1]);
+      expect(iou).toBeCloseTo(0.01 / 0.25, 4);
+    });
+
+    test('zero-area box returns 0', () => {
+      expect(computeIoU([0, 0, 0, 0], [0, 0, 0.1, 0.1])).toBe(0);
+    });
+  });
+
+  // ---- nms ----
+
+  describe('nms', () => {
+    test('keeps all boxes when no overlap', () => {
+      const boxes = [[0, 0, 0.1, 0.1], [0.5, 0.5, 0.1, 0.1], [0.9, 0.9, 0.1, 0.1]];
+      const scores = [0.9, 0.8, 0.7];
+      const kept = nms(boxes, scores, 0.45);
+      expect(kept).toHaveLength(3);
+    });
+
+    test('suppresses overlapping lower-confidence box', () => {
+      const boxes = [[0.1, 0.1, 0.3, 0.3], [0.12, 0.12, 0.3, 0.3]];
+      const scores = [0.9, 0.7];
+      const kept = nms(boxes, scores, 0.45);
+      expect(kept).toHaveLength(1);
+      expect(kept[0]).toBe(0); // higher-confidence box kept
+    });
+
+    test('returns empty for empty input', () => {
+      expect(nms([], [], 0.45)).toHaveLength(0);
+    });
+
+    test('single box is always kept', () => {
+      const kept = nms([[0.1, 0.1, 0.2, 0.2]], [0.5], 0.45);
+      expect(kept).toEqual([0]);
+    });
+
+    test('preserves order by confidence (highest first)', () => {
+      const boxes = [
+        [0, 0, 0.1, 0.1],
+        [0.5, 0.5, 0.1, 0.1],
+        [0.9, 0, 0.1, 0.1],
+      ];
+      const scores = [0.3, 0.9, 0.6];
+      const kept = nms(boxes, scores, 0.45);
+      // Should return indices sorted by descending score
+      expect(kept[0]).toBe(1);
     });
   });
 
@@ -476,7 +661,7 @@ describe('signal-models.js', () => {
     };
 
     const layer2NoOverrides = {
-      signalOverrides: { structure: null, hydration: null, elasticity: null },
+      signalOverrides: { structure: null, hydration: null, sunDamage: null, elasticity: null },
       lesions: [],
       signalConfidence: {
         structure: 'med', hydration: 'med', inflammation: 'med',
@@ -492,9 +677,9 @@ describe('signal-models.js', () => {
       elasticity: 40,
     };
 
-    test('Layer 2 overrides take precedence over weighted merge', () => {
+    test('Layer 2 overrides have highest weight in uncertainty-weighted merge', () => {
       const layer2WithOverrides = {
-        signalOverrides: { structure: 85, hydration: null, elasticity: 92 },
+        signalOverrides: { structure: 85, hydration: null, sunDamage: null, elasticity: 92 },
         lesions: [],
         signalConfidence: {
           structure: 'high', hydration: 'med', inflammation: 'med',
@@ -504,27 +689,46 @@ describe('signal-models.js', () => {
 
       const merged = mergeSignalScores(layer1Scores, layer2WithOverrides, layer3Scores);
 
-      // Structure and elasticity come directly from Layer 2 overrides
-      expect(merged.structure).toBe(85);
-      expect(merged.elasticity).toBe(92);
-      // Hydration has no override, so it should be a weighted merge
-      expect(merged.hydration).not.toBe(85);
-      expect(merged.hydration).not.toBe(92);
+      // With L2 override: merged = (0.5*L1 + 0.9*L2 + 0.6*L3) / (0.5+0.9+0.6)
+      // Structure: (0.5*70 + 0.9*85 + 0.6*50) / 2.0 = (35+76.5+30)/2.0 = 71 (rounded)
+      expect(merged.structure).toBe(71);
+      // Elasticity: (0.5*60 + 0.9*92 + 0.6*40) / 2.0 = (30+82.8+24)/2.0 = 68 (rounded)
+      expect(merged.elasticity).toBe(68);
+      // Hydration has no override (beta_L2=0), so only L1+L3
+      // (0.5*65 + 0.6*55) / 1.1 = (32.5+33)/1.1 = 60 (rounded)
+      expect(merged.hydration).toBe(60);
     });
 
-    test('without overrides, uses weighted merge of Layer 1 and Layer 3', () => {
+    test('sunDamage L2 override uses BETA_L2_LOADED.sunDamage = 0.85', () => {
+      const layer2WithSunDamage = {
+        signalOverrides: { structure: null, hydration: null, sunDamage: 80, elasticity: null },
+        lesions: [],
+        signalConfidence: {
+          structure: 'med', hydration: 'med', inflammation: 'med',
+          sunDamage: 'high', elasticity: 'med',
+        },
+      };
+
+      const merged = mergeSignalScores(layer1Scores, layer2WithSunDamage, layer3Scores);
+
+      // sunDamage: (0.8*75 + 0.85*80 + 0.6*65) / (0.8+0.85+0.6) = (60+68+39)/2.25 = 74 (rounded)
+      expect(merged.sunDamage).toBe(74);
+    });
+
+    test('without overrides, uses L1+L3 uncertainty-weighted merge', () => {
       const merged = mergeSignalScores(layer1Scores, layer2NoOverrides, layer3Scores);
 
-      // Structure: L1*0.6 + L3*0.4 = 70*0.6 + 50*0.4 = 42+20 = 62
-      expect(merged.structure).toBe(62);
-      // Hydration: L1*0.6 + L3*0.4 = 65*0.6 + 55*0.4 = 39+22 = 61
-      expect(merged.hydration).toBe(61);
-      // Inflammation: L1*0.7 + L3*0.3 = 80*0.7 + 60*0.3 = 56+18 = 74
-      expect(merged.inflammation).toBe(74);
-      // SunDamage: L1*0.7 + L3*0.3 = 75*0.7 + 65*0.3 = 52.5+19.5 = 72
-      expect(merged.sunDamage).toBe(72);
-      // Elasticity: L1*0.6 + L3*0.4 = 60*0.6 + 40*0.4 = 36+16 = 52
-      expect(merged.elasticity).toBe(52);
+      // No L2 overrides → beta_L2=0 for all
+      // Structure: (0.5*70 + 0.6*50) / (0.5+0.6) = (35+30)/1.1 = 59 (rounded)
+      expect(merged.structure).toBe(59);
+      // Hydration: (0.5*65 + 0.6*55) / 1.1 = (32.5+33)/1.1 = 60 (rounded)
+      expect(merged.hydration).toBe(60);
+      // Inflammation: (0.8*80 + 0.6*60) / 1.4 = (64+36)/1.4 = 71 (rounded)
+      expect(merged.inflammation).toBe(71);
+      // SunDamage: (0.8*75 + 0.6*65) / 1.4 = (60+39)/1.4 = 71 (rounded)
+      expect(merged.sunDamage).toBe(71);
+      // Elasticity: (0.5*60 + 0.6*40) / 1.1 = (30+24)/1.1 = 49 (rounded)
+      expect(merged.elasticity).toBe(49);
     });
 
     test('all merged scores are clamped to 0-100 integers', () => {
@@ -540,8 +744,8 @@ describe('signal-models.js', () => {
     test('null Layer 3 scores fall back to Layer 1 values', () => {
       const merged = mergeSignalScores(layer1Scores, layer2NoOverrides, null);
 
-      // When Layer 3 is null, Layer 1 scores are used for both weights
-      // Structure: L1*0.6 + L1*0.4 = L1 = 70
+      // When Layer 3 is null, L3 defaults to L1 value in the formula
+      // merged = (beta_L1 * L1 + beta_L3 * L1) / (beta_L1 + beta_L3) = L1
       expect(merged.structure).toBe(70);
       expect(merged.hydration).toBe(65);
       expect(merged.inflammation).toBe(80);
@@ -585,6 +789,7 @@ describe('POST /api/vision/analyze (signal pipeline integration)', () => {
   jest.mock('../rag', () => ({
     seedGuidelines: jest.fn(),
     queryGuidelines: jest.fn().mockResolvedValue([]),
+    queryGuidelinesMulti: jest.fn().mockResolvedValue([]),
   }));
 
   // Mock image-processing to return deterministic features
@@ -609,12 +814,23 @@ describe('POST /api/vision/analyze (signal pipeline integration)', () => {
   const mockRunAllModels = jest.fn();
   const mockMergeSignalScores = jest.fn();
 
+  const mockRunAcneDetector = jest.fn();
+
+  const mockApplyLesionFeedback = jest.fn((scores) => scores);
+
   jest.mock('../signal-models', () => ({
     initModels: jest.fn().mockResolvedValue({ loaded: [] }),
     runAllModels: mockRunAllModels,
+    runAcneDetector: mockRunAcneDetector,
+    runSkinSignalsModel: jest.fn(),
     mergeSignalScores: mockMergeSignalScores,
+    applyLesionFeedback: mockApplyLesionFeedback,
     bboxToZone: jest.fn(),
-    LESION_CLASSES: ['comedone', 'papule', 'pustule', 'nodule', 'macule', 'patch'],
+    LESION_CLASSES: ['acne'],
+    prepareImageTensorV2: jest.fn(),
+    prepareDetectorTensor: jest.fn(),
+    computeIoU: jest.fn(),
+    nms: jest.fn(),
   }));
 
   const request = require('supertest');
@@ -643,7 +859,7 @@ describe('POST /api/vision/analyze (signal pipeline integration)', () => {
   const MOCK_LAYER1_SCORES = { structure: 72, hydration: 65, inflammation: 78, sunDamage: 73, elasticity: 61 };
 
   const MOCK_LAYER2_RESULTS = {
-    signalOverrides: { structure: null, hydration: null, elasticity: null },
+    signalOverrides: { structure: null, hydration: null, sunDamage: null, elasticity: null },
     lesions: [],
     signalConfidence: {
       structure: 'med', hydration: 'med', inflammation: 'med',
@@ -793,8 +1009,8 @@ describe('POST /api/vision/analyze (signal pipeline integration)', () => {
 
   test('lesions array is passed through from Layer 2 results', async () => {
     const lesionsData = [
-      { class: 'papule', confidence: 0.87, bbox: [0.3, 0.4, 0.05, 0.05], zone: 'left_cheek' },
-      { class: 'comedone', confidence: 0.72, bbox: [0.5, 0.1, 0.03, 0.03], zone: 'forehead' },
+      { class: 'acne', confidence: 0.87, bbox: [0.3, 0.4, 0.05, 0.05], zone: 'left_cheek' },
+      { class: 'acne', confidence: 0.72, bbox: [0.5, 0.1, 0.03, 0.03], zone: 'forehead' },
     ];
 
     mockExtractFeatures.mockResolvedValueOnce(MOCK_FEATURES);
@@ -822,7 +1038,7 @@ describe('POST /api/vision/analyze (signal pipeline integration)', () => {
 
     expect(res.body.lesions).toEqual(lesionsData);
     expect(res.body.lesions).toHaveLength(2);
-    expect(res.body.lesions[0].class).toBe('papule');
+    expect(res.body.lesions[0].class).toBe('acne');
     expect(res.body.lesions[1].zone).toBe('forehead');
   });
 
@@ -853,5 +1069,55 @@ describe('POST /api/vision/analyze (signal pipeline integration)', () => {
     expect(l3).toHaveProperty('inflammation');
     expect(l3).toHaveProperty('sunDamage');
     expect(l3).toHaveProperty('elasticity');
+  });
+
+  // ---- POST /api/vision/detect-lesions (fast endpoint) ----
+
+  test('detect-lesions returns lesions array and latency_ms', async () => {
+    const mockLesions = [
+      { class: 'acne', confidence: 0.85, bbox: [0.3, 0.4, 0.05, 0.05], zone: 'left_cheek' },
+    ];
+    mockRunAcneDetector.mockResolvedValueOnce(mockLesions);
+
+    const res = await request(app)
+      .post('/api/vision/detect-lesions')
+      .send({ image_base64: 'dGVzdA==' })
+      .expect(200);
+
+    expect(res.body).toHaveProperty('lesions');
+    expect(res.body).toHaveProperty('latency_ms');
+    expect(Array.isArray(res.body.lesions)).toBe(true);
+    expect(typeof res.body.latency_ms).toBe('number');
+  });
+
+  test('detect-lesions returns empty lesions on error (graceful)', async () => {
+    mockRunAcneDetector.mockRejectedValueOnce(new Error('model failed'));
+
+    const res = await request(app)
+      .post('/api/vision/detect-lesions')
+      .send({ image_base64: 'dGVzdA==' })
+      .expect(200);
+
+    expect(res.body.lesions).toEqual([]);
+  });
+
+  test('detect-lesions returns 400 when image_base64 missing', async () => {
+    const res = await request(app)
+      .post('/api/vision/detect-lesions')
+      .send({})
+      .expect(400);
+
+    expect(res.body.error).toBe('image_base64 is required');
+  });
+
+  test('detect-lesions does not require authentication', async () => {
+    mockRunAcneDetector.mockResolvedValueOnce([]);
+
+    const res = await request(app)
+      .post('/api/vision/detect-lesions')
+      .send({ image_base64: 'dGVzdA==' })
+      .expect(200);
+
+    expect(res.body).toHaveProperty('lesions');
   });
 });

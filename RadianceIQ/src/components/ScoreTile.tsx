@@ -26,7 +26,8 @@ const TrendRail: React.FC<{
   data: number[];
   color: string;
   compact?: boolean;
-}> = ({ data, color, compact }) => {
+}> = ({ data: raw, color, compact }) => {
+  const data = raw.filter(Number.isFinite);
   const width = compact ? 132 : 208;
   const height = compact ? 28 : 34;
 
@@ -128,7 +129,7 @@ export const ScoreTile: React.FC<Props> = ({
 
       <View style={styles.railBlock}>
         <TrendRail
-          data={sparklineData && sparklineData.length > 1 ? sparklineData : [score - 6, score - 2, score]}
+          data={sparklineData && sparklineData.length > 1 ? sparklineData : [score]}
           color={color}
           compact={compact}
         />

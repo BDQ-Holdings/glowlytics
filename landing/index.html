@@ -3,364 +3,468 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Glowlytics — Your Skin. Understood.</title>
-  <meta name="description" content="AI-powered skin health tracking made by doctors. Understand your acne, sun damage, and skin age with clinical-grade analysis.">
-  <meta property="og:title" content="Glowlytics — Your Skin. Understood.">
-  <meta property="og:description" content="AI-powered skin health tracking made by doctors. Get early access.">
+  <title>Glowlytics | AI Skin Health Tracking Built by Doctors</title>
+  <meta name="description" content="Track your skin health daily with AI built by doctors. Understand acne, hydration, sun damage, and aging. Backed by dermatology research.">
+  <meta property="og:title" content="Glowlytics | AI Skin Health Tracking Built by Doctors">
+  <meta property="og:description" content="AI-powered skin health tracking built by doctors. Track 5 skin signals daily, detect lesions in real-time, and get evidence-based recommendations.">
   <meta property="og:image" content="https://glowlytics.ai/logo-full.png">
   <meta property="og:type" content="website">
   <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Glowlytics | AI Skin Health Tracking Built by Doctors">
+  <meta name="twitter:description" content="AI-powered skin health tracking built by doctors. Join the waitlist.">
+  <meta name="twitter:image" content="https://glowlytics.ai/logo-full.png">
+  <meta property="og:url" content="https://glowlytics.ai/">
+  <meta name="theme-color" content="#050a12">
   <link rel="icon" type="image/png" href="logo-emblem.png">
+  <link rel="canonical" href="https://glowlytics.ai/">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;1,9..40,400;1,9..40,500&display=swap" rel="stylesheet">
-  <style>
-    /* =====================================================
-       RESET & BASE
-    ===================================================== */
-    *, *::before, *::after {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
+  <link rel="preload" href="app-screenshot.webp" as="image" type="image/webp" fetchpriority="high">
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Glowlytics",
+    "applicationCategory": "HealthApplication",
+    "operatingSystem": "iOS",
+    "description": "AI-powered skin health tracking built by doctors. Track 5 skin signals daily with clinical-grade analysis.",
+    "url": "https://glowlytics.ai",
+    "author": {
+      "@type": "Organization",
+      "name": "BDQ Holdings LLC"
+    },
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD",
+      "description": "Free 7-day trial"
     }
+  }
+  </script>
+  <style>
+    /* ==========================================================
+       RESET & VARIABLES
+    ========================================================== */
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
     :root {
+      --bg-deep: #050a12;
+      --bg-dark: #080e1a;
+      --bg-card: #0c1424;
+      --teal: #7DE7E1;
+      --teal-dark: #1BA8A0;
+      --teal-dim: rgba(125, 231, 225, 0.12);
+      --teal-glow: rgba(125, 231, 225, 0.25);
       --purple: #8A6FE8;
-      --purple-light: #A891F0;
-      --teal: #5CE0D8;
-      --teal-mid: #39B5BF;
-      --teal-dark: #2a9aa3;
-      --dark: #0a1628;
-      --dark-2: #0e1e2e;
-      --dark-3: #1a2b3c;
-      --text-muted: #7a8f9e;
-      --text-mid: #5a6f7e;
-      --card-bg: #f7fafb;
-      --white: #ffffff;
-      --border: rgba(0,0,0,0.055);
-      --radius-card: 28px;
-      --shadow-card: 0 2px 4px rgba(0,0,0,0.04), 0 12px 40px rgba(0,0,0,0.09), 0 2px 12px rgba(0,0,0,0.05);
-      --shadow-card-hover: 0 4px 8px rgba(0,0,0,0.06), 0 24px 60px rgba(0,0,0,0.13), 0 4px 20px rgba(0,0,0,0.07);
-      --shadow-phone: 0 8px 16px rgba(0,0,0,0.12), 0 40px 100px rgba(0,0,0,0.24), 0 0 0 1px rgba(255,255,255,0.04);
+      --purple-dim: rgba(138, 111, 232, 0.15);
+      --coral: #FF7A78;
+      --amber: #F2B56A;
+      --blue: #4DA6FF;
+      --cream: #f8f6f1;
+      --cream-2: #f2efe8;
+      --warm-white: #fdfcfa;
+      --dark-text: #0e1e2e;
+      --mid-text: #5a6a78;
+      --light-text: #94a3b3;
+      --glass: rgba(255,255,255,0.04);
+      --glass-border: rgba(255,255,255,0.08);
+      --radius: 20px;
+      --radius-lg: 28px;
+      --radius-xl: 36px;
+      --font-display: 'Bricolage Grotesque', serif;
+      --font-body: 'Plus Jakarta Sans', -apple-system, sans-serif;
+      --ease-out: cubic-bezier(0.22, 0.78, 0.5, 1);
+      --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
     }
 
-    html {
-      scroll-behavior: smooth;
-    }
+    html { scroll-behavior: smooth; }
+
+    /* Page load fade-in */
+    html { opacity: 0; transition: opacity 0.3s ease; }
+    html.loaded { opacity: 1; }
 
     body {
-      font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-      background: #ffffff;
-      color: var(--dark-3);
+      font-family: var(--font-body);
+      background: var(--bg-deep);
+      color: #fff;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
       overflow-x: hidden;
     }
 
-    /* =====================================================
-       HERO OUTER — NIGHT SKY WITH DAWN AURORA
-    ===================================================== */
-    .hero-outer {
-      background:
-        radial-gradient(ellipse 80% 50% at 20% 0%, rgba(138,111,232,0.18) 0%, transparent 60%),
-        radial-gradient(ellipse 60% 40% at 80% 10%, rgba(92,224,216,0.12) 0%, transparent 55%),
-        radial-gradient(ellipse 100% 60% at 50% 100%, rgba(57,181,191,0.22) 0%, rgba(30,100,130,0.15) 40%, transparent 70%),
-        linear-gradient(180deg,
-          #060d1a 0%,
-          #080f1e 12%,
-          #091222 22%,
-          #0a1628 38%,
-          #0d1e35 55%,
-          #112644 68%,
-          #1a3850 80%,
-          #2a5060 90%,
-          #3a6870 100%
-        );
-      position: relative;
-      padding: 0 24px 0;
-      overflow: hidden;
+    a { color: inherit; text-decoration: none; }
+
+    .skip-link {
+      position: absolute;
+      left: -9999px;
+      top: 0;
+      z-index: 999;
+      background: var(--teal);
+      color: var(--bg-deep);
+      padding: 8px 16px;
+      font-weight: 600;
+      border-radius: 0 0 8px 0;
     }
 
-    /* Dense star field — multiple layers */
-    .hero-outer::before {
+    .skip-link:focus {
+      left: 0;
+    }
+
+    /* ==========================================================
+       GRAIN OVERLAY — GPU-composited for performance
+    ========================================================== */
+    body::after {
       content: '';
-      position: absolute;
+      position: fixed;
       inset: 0;
-      background-image:
-        /* Large bright stars */
-        radial-gradient(1.8px 1.8px at 8% 6%, rgba(255,255,255,0.85), transparent),
-        radial-gradient(2px 2px at 19% 3%, rgba(255,255,255,0.9), transparent),
-        radial-gradient(1.5px 1.5px at 34% 9%, rgba(255,255,255,0.7), transparent),
-        radial-gradient(2px 2px at 52% 4%, rgba(255,255,255,0.85), transparent),
-        radial-gradient(1.8px 1.8px at 67% 7%, rgba(255,255,255,0.75), transparent),
-        radial-gradient(2.2px 2.2px at 83% 3%, rgba(255,255,255,0.9), transparent),
-        radial-gradient(1.5px 1.5px at 93% 11%, rgba(255,255,255,0.65), transparent),
-        /* Medium stars */
-        radial-gradient(1.2px 1.2px at 5% 14%, rgba(255,255,255,0.55), transparent),
-        radial-gradient(1.3px 1.3px at 14% 19%, rgba(255,255,255,0.45), transparent),
-        radial-gradient(1px 1px at 25% 13%, rgba(255,255,255,0.5), transparent),
-        radial-gradient(1.2px 1.2px at 39% 17%, rgba(255,255,255,0.4), transparent),
-        radial-gradient(1.4px 1.4px at 47% 11%, rgba(255,255,255,0.55), transparent),
-        radial-gradient(1.1px 1.1px at 61% 15%, rgba(255,255,255,0.45), transparent),
-        radial-gradient(1.3px 1.3px at 72% 20%, rgba(255,255,255,0.4), transparent),
-        radial-gradient(1px 1px at 86% 16%, rgba(255,255,255,0.5), transparent),
-        radial-gradient(1.2px 1.2px at 97% 8%, rgba(255,255,255,0.45), transparent),
-        /* Small faint stars */
-        radial-gradient(1px 1px at 11% 26%, rgba(255,255,255,0.3), transparent),
-        radial-gradient(1px 1px at 22% 31%, rgba(255,255,255,0.25), transparent),
-        radial-gradient(1px 1px at 44% 24%, rgba(255,255,255,0.35), transparent),
-        radial-gradient(1px 1px at 57% 29%, rgba(255,255,255,0.28), transparent),
-        radial-gradient(1px 1px at 76% 27%, rgba(255,255,255,0.22), transparent),
-        radial-gradient(1px 1px at 90% 33%, rgba(255,255,255,0.3), transparent),
-        radial-gradient(1px 1px at 3% 32%, rgba(255,255,255,0.2), transparent),
-        radial-gradient(1px 1px at 31% 36%, rgba(255,255,255,0.18), transparent),
-        radial-gradient(1px 1px at 64% 38%, rgba(255,255,255,0.22), transparent),
-        /* Tinted stars — purple and teal */
-        radial-gradient(1.5px 1.5px at 16% 10%, rgba(180,160,255,0.6), transparent),
-        radial-gradient(1.2px 1.2px at 73% 5%, rgba(130,230,220,0.5), transparent),
-        radial-gradient(1px 1px at 42% 8%, rgba(160,200,255,0.45), transparent),
-        radial-gradient(1.3px 1.3px at 88% 22%, rgba(180,160,255,0.35), transparent);
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+      background-size: 200px 200px;
       pointer-events: none;
+      z-index: 50;
+      opacity: 0.35;
+      will-change: transform;
+      transform: translateZ(0);
     }
 
-    /* Dawn glow rising from bottom of sky */
-    .hero-outer::after {
-      content: '';
-      position: absolute;
-      bottom: 0;
-      left: -20%;
-      right: -20%;
-      height: 55%;
-      background:
-        radial-gradient(ellipse 70% 70% at 35% 100%, rgba(138,111,232,0.14) 0%, transparent 60%),
-        radial-gradient(ellipse 80% 80% at 65% 100%, rgba(57,181,191,0.18) 0%, transparent 65%),
-        radial-gradient(ellipse 140% 60% at 50% 100%, rgba(200,240,238,0.2) 0%, rgba(140,210,215,0.08) 40%, transparent 70%);
-      pointer-events: none;
-    }
-
-    /* =====================================================
-       WHITE HERO CARD
-    ===================================================== */
-    .hero-card {
-      position: relative;
-      z-index: 2;
-      max-width: 1100px;
-      margin: 24px auto 0;
-      background: rgba(247, 250, 251, 0.985);
-      border-radius: 36px 36px 0 0;
-      box-shadow:
-        0 -1px 0 rgba(255,255,255,0.12),
-        0 0 0 1px rgba(255,255,255,0.06),
-        inset 0 1px 0 rgba(255,255,255,0.9);
-      overflow: visible;
-    }
-
-    /* =====================================================
-       NAV (inside white card)
-    ===================================================== */
+    /* ==========================================================
+       NAV
+    ========================================================== */
     .nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      padding: 0 clamp(20px, 4vw, 48px);
+      transition: background 0.4s ease, backdrop-filter 0.4s ease, box-shadow 0.4s ease;
+    }
+
+    .nav.scrolled {
+      background: rgba(5, 10, 18, 0.82);
+      backdrop-filter: blur(20px) saturate(1.4);
+      -webkit-backdrop-filter: blur(20px) saturate(1.4);
+      box-shadow: 0 1px 0 rgba(125, 231, 225, 0.06);
+    }
+
+    .nav-inner {
+      max-width: 1200px;
+      margin: 0 auto;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 22px 44px;
+      height: 72px;
     }
 
     .nav-logo {
       display: flex;
       align-items: center;
       gap: 10px;
-      text-decoration: none;
-      flex-shrink: 0;
     }
 
     .nav-logo img {
-      width: 36px;
-      height: 36px;
+      width: 32px;
+      height: 32px;
       object-fit: contain;
     }
 
     .nav-logo-text {
-      font-size: 17px;
+      font-family: var(--font-display);
+      font-size: 18px;
       font-weight: 700;
-      background: linear-gradient(135deg, var(--purple) 0%, var(--teal-mid) 100%);
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, var(--teal) 0%, var(--purple) 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
-      letter-spacing: -0.3px;
     }
 
     .nav-links {
       display: flex;
       align-items: center;
-      gap: 30px;
+      gap: 32px;
     }
 
     .nav-links a {
-      color: var(--text-mid);
-      text-decoration: none;
       font-size: 14px;
       font-weight: 500;
-      transition: color 0.2s ease;
-      letter-spacing: -0.1px;
+      color: rgba(255,255,255,0.55);
+      transition: color 0.25s ease;
+      letter-spacing: -0.2px;
     }
 
-    .nav-links a:hover { color: var(--dark-2); }
+    .nav-links a:hover { color: rgba(255,255,255,0.9); }
 
-    .nav-cta {
-      background: var(--dark-2) !important;
-      color: #fff !important;
-      padding: 10px 22px !important;
-      border-radius: 999px !important;
-      font-weight: 600 !important;
-      font-size: 13.5px !important;
-      letter-spacing: -0.1px !important;
-      transition: transform 0.18s ease, box-shadow 0.18s ease !important;
+    .nav-links .nav-cta {
+      background: rgba(125, 231, 225, 0.1);
+      color: var(--teal);
+      padding: 10px 22px;
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: 13.5px;
+      border: 1px solid rgba(125, 231, 225, 0.2);
+      transition: all 0.25s ease;
     }
 
-    .nav-cta:hover {
-      transform: translateY(-1px) !important;
-      box-shadow: 0 6px 20px rgba(14,30,46,0.2) !important;
+    .nav-links .nav-cta:hover {
+      background: rgba(125, 231, 225, 0.18);
+      border-color: rgba(125, 231, 225, 0.35);
+      color: var(--teal);
     }
 
-    /* =====================================================
-       HERO CONTENT
-    ===================================================== */
+    /* Mobile hamburger */
+    .nav-toggle {
+      display: none;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 8px;
+      color: rgba(255,255,255,0.7);
+    }
+
+    .nav-toggle svg { display: block; }
+
+    .nav-toggle:hover { color: #fff; }
+
+    /* ==========================================================
+       HERO
+    ========================================================== */
+    .hero {
+      position: relative;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 120px clamp(20px, 5vw, 48px) 80px;
+      overflow: hidden;
+    }
+
+    /* Animated mesh gradient — GPU composited */
+    .hero-mesh {
+      position: absolute;
+      inset: 0;
+      contain: layout style;
+    }
+
+    .hero-mesh::before,
+    .hero-mesh::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+    }
+
+    .hero-mesh::before {
+      background:
+        radial-gradient(ellipse 80% 60% at 20% 10%, rgba(138,111,232,0.18) 0%, transparent 55%),
+        radial-gradient(ellipse 60% 50% at 80% 20%, rgba(125,231,225,0.12) 0%, transparent 50%),
+        radial-gradient(ellipse 100% 80% at 50% 90%, rgba(57,181,191,0.14) 0%, transparent 60%);
+      animation: meshFade 10s ease-in-out infinite alternate;
+    }
+
+    .hero-mesh::after {
+      background:
+        radial-gradient(ellipse 70% 70% at 75% 30%, rgba(138,111,232,0.14) 0%, transparent 55%),
+        radial-gradient(ellipse 80% 40% at 25% 15%, rgba(125,231,225,0.16) 0%, transparent 50%),
+        radial-gradient(ellipse 90% 70% at 55% 85%, rgba(57,181,191,0.12) 0%, transparent 60%);
+      animation: meshFade 10s ease-in-out infinite alternate-reverse;
+    }
+
+    @keyframes meshFade {
+      0% { opacity: 1; }
+      100% { opacity: 0.3; }
+    }
+
+    /* Grid overlay */
+    .hero-grid {
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(125,231,225,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(125,231,225,0.03) 1px, transparent 1px);
+      background-size: 80px 80px;
+      mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, black 20%, transparent 70%);
+      -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, black 20%, transparent 70%);
+    }
+
+    /* Orbs removed — decorative, not purposeful */
+
     .hero-content {
+      position: relative;
+      z-index: 2;
       text-align: center;
-      padding: 60px 44px 52px;
+      max-width: 800px;
     }
 
     .hero-badge {
       display: inline-flex;
       align-items: center;
-      gap: 7px;
-      background: rgba(138,111,232,0.08);
-      border: 1px solid rgba(138,111,232,0.16);
+      gap: 8px;
+      padding: 8px 18px 8px 12px;
       border-radius: 999px;
-      padding: 6px 14px 6px 10px;
-      font-size: 12.5px;
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
+      backdrop-filter: blur(12px);
+      font-size: 13px;
       font-weight: 600;
-      color: var(--purple);
-      letter-spacing: 0.1px;
-      margin-bottom: 26px;
+      color: var(--teal);
+      margin-bottom: 32px;
+      letter-spacing: 0.2px;
     }
 
     .hero-badge-dot {
-      width: 6px;
-      height: 6px;
+      width: 7px;
+      height: 7px;
       border-radius: 50%;
-      background: var(--purple);
-      animation: pulse-dot 2s ease-in-out infinite;
+      background: var(--teal);
     }
 
-    @keyframes pulse-dot {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.5; transform: scale(0.7); }
-    }
-
-    .hero-content h1 {
-      font-size: 64px;
+    .hero h1 {
+      font-family: var(--font-display);
+      font-size: clamp(48px, 8vw, 88px);
       font-weight: 800;
-      line-height: 1.04;
+      line-height: 1.0;
       letter-spacing: -3px;
-      color: var(--dark-2);
-      margin-bottom: 20px;
+      margin-bottom: 24px;
+      color: #fff;
     }
 
-    .hero-content h1 .accent {
-      background: linear-gradient(135deg, var(--purple) 0%, var(--teal-mid) 100%);
+    .hero h1 .accent {
+      background: linear-gradient(135deg, var(--teal) 0%, var(--purple) 60%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
+      position: relative;
     }
 
-    .hero-content .subtitle {
-      font-size: 17px;
-      color: var(--text-mid);
-      line-height: 1.72;
-      max-width: 430px;
-      margin: 0 auto 36px;
+    .hero-sub {
+      font-size: clamp(16px, 2vw, 19px);
+      color: rgba(255,255,255,0.68);
+      line-height: 1.7;
+      max-width: 520px;
+      margin: 0 auto 44px;
       font-weight: 400;
-      letter-spacing: -0.1px;
+      letter-spacing: -0.2px;
     }
 
-    .hero-btn {
+    .hero-actions {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .btn-primary {
       display: inline-flex;
       align-items: center;
-      gap: 8px;
-      background: var(--dark-2);
-      color: #fff;
-      padding: 16px 38px;
+      gap: 10px;
+      padding: 16px 36px;
+      background: var(--teal);
+      color: var(--bg-deep);
       border-radius: 999px;
       font-size: 15px;
-      font-weight: 600;
-      text-decoration: none;
-      font-family: inherit;
+      font-weight: 700;
+      font-family: var(--font-body);
       border: none;
       cursor: pointer;
       letter-spacing: -0.2px;
-      transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
-      box-shadow: 0 2px 8px rgba(14,30,46,0.12), 0 8px 24px rgba(14,30,46,0.16);
-    }
-
-    .hero-btn:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(14,30,46,0.18), 0 16px 40px rgba(14,30,46,0.22);
-      background: #18304a;
-    }
-
-    .hero-btn svg {
-      transition: transform 0.2s ease;
-    }
-
-    .hero-btn:hover svg {
-      transform: translateX(3px);
-    }
-
-    /* =====================================================
-       SHOWCASE — phone + floating cards
-    ===================================================== */
-    .showcase {
+      transition: all 0.3s var(--ease-out);
+      box-shadow: 0 2px 8px rgba(125, 231, 225, 0.12);
       position: relative;
-      display: flex;
-      justify-content: center;
-      align-items: flex-start;
-      padding: 24px 44px 0;
-      min-height: 580px;
+      overflow: hidden;
     }
 
-    /* Phone mockup */
+
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 16px rgba(125, 231, 225, 0.18);
+    }
+
+    .btn-primary svg { transition: transform 0.25s ease; }
+    .btn-primary:hover svg { transform: translateX(3px); }
+
+    .btn-ghost {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 16px 28px;
+      background: transparent;
+      color: rgba(255,255,255,0.65);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 999px;
+      font-size: 15px;
+      font-weight: 500;
+      font-family: var(--font-body);
+      cursor: pointer;
+      letter-spacing: -0.2px;
+      transition: all 0.25s ease;
+    }
+
+    .btn-ghost:hover {
+      color: #fff;
+      border-color: rgba(255,255,255,0.25);
+      background: rgba(255,255,255,0.04);
+    }
+
+    /* Phone showcase */
+    .hero-showcase {
+      position: relative;
+      margin-top: 64px;
+      z-index: 2;
+    }
+
+    .phone-wrapper {
+      position: relative;
+      display: inline-block;
+    }
+
+    .phone-wrapper::before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 110%;
+      height: 110%;
+      background: radial-gradient(ellipse, rgba(255,255,255,0.03) 0%, transparent 70%);
+      filter: blur(40px);
+      z-index: 1;
+      pointer-events: none;
+    }
+
     .phone {
-      width: 265px;
-      flex-shrink: 0;
+      width: clamp(240px, 28vw, 300px);
       border-radius: 40px;
       overflow: hidden;
-      border: 5px solid #111928;
-      box-shadow: var(--shadow-phone);
+      border: 4px solid rgba(255,255,255,0.08);
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,0.04),
+        0 20px 60px rgba(0,0,0,0.5);
       position: relative;
       z-index: 3;
-      background: #060B12;
-      transition: transform 0.4s ease, box-shadow 0.4s ease;
+      background: var(--bg-deep);
+      transition: transform 0.5s var(--ease-out), box-shadow 0.5s ease;
     }
 
     .phone::before {
       content: '';
       position: absolute;
-      top: 0; left: 50%;
+      top: 0;
+      left: 50%;
       transform: translateX(-50%);
-      width: 90px;
-      height: 26px;
-      background: #111928;
-      border-radius: 0 0 18px 18px;
+      width: 80px;
+      height: 24px;
+      background: #111;
+      border-radius: 0 0 16px 16px;
       z-index: 10;
     }
 
     .phone:hover {
-      transform: translateY(-4px) scale(1.005);
+      transform: translateY(-4px);
       box-shadow:
-        0 8px 20px rgba(0,0,0,0.16),
-        0 50px 120px rgba(0,0,0,0.30),
-        0 0 0 1px rgba(255,255,255,0.05);
+        0 0 0 1px rgba(255,255,255,0.06),
+        0 24px 64px rgba(0,0,0,0.5);
     }
 
     .phone img {
@@ -368,407 +472,1046 @@
       display: block;
     }
 
-    /* Floating cards — shared */
-    .fc {
+    /* Floating glass cards around phone */
+    .float-card {
       position: absolute;
-      background: var(--white);
-      border-radius: var(--radius-card);
-      box-shadow: var(--shadow-card);
+      background: rgba(12, 20, 36, 0.75);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: var(--radius);
+      padding: 18px 22px;
       z-index: 4;
-      border: 1px solid var(--border);
-      transition: transform 0.3s ease, box-shadow 0.3s ease;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+      transition: transform 0.35s var(--ease-out), box-shadow 0.35s ease;
+      animation: floatIn 0.7s var(--ease-out) both;
     }
 
-    .fc:hover {
-      transform: translateY(-3px);
-      box-shadow: var(--shadow-card-hover);
+    .float-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 12px 40px rgba(0,0,0,0.4);
     }
 
-    /* Left top: social proof */
-    .fc-social {
-      left: 5%;
-      top: 10%;
-      padding: 18px 24px;
-      display: flex;
-      align-items: center;
-      gap: 13px;
+    @keyframes floatIn {
+      from { opacity: 0; transform: translateY(20px) scale(0.95); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
     }
 
-    .avatars {
-      display: flex;
-      flex-shrink: 0;
+    .fc-score {
+      left: -190px;
+      top: 60px;
+      animation-delay: 0.6s;
+      z-index: 5;
     }
 
-    .avatars span {
-      width: 36px;
-      height: 36px;
-      border-radius: 50%;
-      border: 2.5px solid var(--white);
-      margin-left: -10px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 13px;
-      font-weight: 700;
-      color: #fff;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
-    }
-
-    .avatars span:first-child { margin-left: 0; }
-    .av1 { background: linear-gradient(135deg, #8A6FE8, #6B8AFF); }
-    .av2 { background: linear-gradient(135deg, #5CE0D8, #39B5BF); }
-    .av3 { background: linear-gradient(135deg, #F2B56A, #E8906A); }
-    .av4 { background: #e2e8ed; color: #7a8f9e !important; font-size: 11px !important; font-weight: 600 !important; }
-
-    .social-meta .num {
-      font-size: 17px;
-      font-weight: 700;
-      color: var(--dark-2);
-      letter-spacing: -0.3px;
-      line-height: 1.2;
-    }
-
-    .social-meta .lbl {
-      font-size: 11.5px;
-      color: var(--text-muted);
-      font-weight: 500;
-      margin-top: 1px;
-    }
-
-    /* Left bottom: score ring */
-    .fc-ring {
-      left: 2%;
-      top: 46%;
-      padding: 24px 28px;
-      text-align: center;
-    }
-
-    .ring-wrap {
-      width: 118px;
-      height: 118px;
-      margin: 0 auto 12px;
+    .fc-score .score-ring {
+      width: 72px;
+      height: 72px;
+      margin: 0 auto 10px;
       position: relative;
     }
 
-    .ring-wrap svg {
+    .fc-score .score-ring svg {
       width: 100%;
       height: 100%;
       transform: rotate(-90deg);
     }
 
-    .ring-track {
+    .score-track { fill: none; stroke: rgba(255,255,255,0.06); stroke-width: 5; }
+    .score-fill {
       fill: none;
-      stroke: #edf1f4;
-      stroke-width: 9;
-    }
-
-    .ring-fill {
-      fill: none;
-      stroke: url(#ringGrad);
-      stroke-width: 9;
+      stroke: var(--teal);
+      stroke-width: 5;
       stroke-linecap: round;
-      stroke-dasharray: 232 314;
-      stroke-dashoffset: 0;
-      transition: stroke-dasharray 1.2s ease;
+      stroke-dasharray: 0 188;
+      animation: ringFill 1.5s var(--ease-out) 1.2s forwards;
     }
 
-    .ring-val {
+    @keyframes ringFill {
+      to { stroke-dasharray: 140 188; }
+    }
+
+    .score-val {
       position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      text-align: center;
-      pointer-events: none;
-    }
-
-    .ring-val .big {
-      font-size: 28px;
-      font-weight: 800;
-      color: var(--dark-2);
-      display: block;
-      letter-spacing: -1px;
-      line-height: 1;
-    }
-
-    .ring-val .small {
-      font-size: 10.5px;
-      color: var(--text-muted);
-      font-weight: 500;
-      letter-spacing: 0.2px;
-      margin-top: 2px;
-      display: block;
-    }
-
-    .ring-legend {
-      font-size: 11.5px;
-      color: var(--text-mid);
-      display: flex;
-      flex-direction: column;
-      gap: 5px;
-    }
-
-    .ring-legend .row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 22px;
-    }
-
-    .ring-legend .row span:last-child {
-      font-weight: 600;
-      color: var(--dark-3);
-    }
-
-    .dot-i {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      display: inline-block;
-      margin-right: 5px;
-      vertical-align: middle;
-      flex-shrink: 0;
-    }
-
-    .dot-g { background: var(--teal); }
-    .dot-m { background: #dce4e9; }
-
-    /* Right top: stats grid */
-    .fc-stats {
-      right: 4%;
-      top: 8%;
-      padding: 22px 26px;
-      min-width: 230px;
-    }
-
-    .fc-stats-title {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 16px;
-    }
-
-    .fc-stats-title span {
-      font-size: 13.5px;
-      font-weight: 700;
-      color: var(--dark-2);
-      letter-spacing: -0.2px;
-    }
-
-    .fc-stats-title .arr {
-      width: 24px;
-      height: 24px;
-      border-radius: 50%;
-      background: #f0f4f6;
+      inset: 0;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 14px;
-      color: var(--text-muted);
-      cursor: pointer;
-      transition: background 0.2s;
+      font-family: var(--font-display);
+      font-size: 22px;
+      font-weight: 800;
+      color: #fff;
     }
 
-    .fc-stats-title .arr:hover { background: #e4eaed; }
-
-    .sg {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 14px;
-    }
-
-    .sg-cell {
+    .fc-score .score-label {
+      font-size: 11px;
+      color: rgba(255,255,255,0.45);
       text-align: center;
-      padding: 10px 8px;
-      border-radius: 14px;
-      background: #f7fafb;
-      transition: background 0.2s;
-    }
-
-    .sg-cell:hover { background: #eef3f5; }
-
-    .sg-cell .sg-icon {
-      font-size: 18px;
-      display: block;
-      margin-bottom: 4px;
-      line-height: 1;
-    }
-
-    .sg-cell .sg-val {
-      font-size: 18px;
-      font-weight: 700;
-      color: var(--dark-2);
-      letter-spacing: -0.5px;
-      line-height: 1;
-    }
-
-    .sg-cell .sg-lbl {
-      font-size: 10.5px;
-      color: var(--text-muted);
       font-weight: 500;
-      margin-top: 2px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
     }
 
-    /* Right bottom: recommendation snippet */
-    .fc-tag {
-      right: 3%;
-      top: 54%;
-      max-width: 240px;
-      padding: 20px 24px;
+    .fc-signals {
+      right: -210px;
+      top: 40px;
+      min-width: 180px;
+      animation-delay: 0.8s;
+      z-index: 6;
     }
 
-    .fc-tag-label {
+    .fc-signals-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: rgba(255,255,255,0.35);
+      margin-bottom: 14px;
+    }
+
+    .signal-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .signal-row:last-child { margin-bottom: 0; }
+
+    .signal-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .signal-name {
+      font-size: 12.5px;
+      color: rgba(255,255,255,0.6);
+      flex: 1;
+    }
+
+    .signal-val {
+      font-size: 13px;
+      font-weight: 700;
+      color: #fff;
+      font-family: var(--font-display);
+    }
+
+    .signal-bar-bg {
+      width: 48px;
+      height: 4px;
+      background: rgba(255,255,255,0.06);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .signal-bar-fill {
+      height: 100%;
+      border-radius: 2px;
+      transform-origin: left;
+      animation: barGrow 1s var(--ease-out) 1.4s both;
+    }
+
+    @keyframes barGrow {
+      from { transform: scaleX(0); }
+      to { transform: scaleX(1); }
+    }
+
+    .fc-insight {
+      left: -170px;
+      bottom: 60px;
+      max-width: 200px;
+      animation-delay: 1s;
+      z-index: 5;
+    }
+
+    .fc-insight-label {
       font-size: 10px;
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 1px;
-      color: var(--teal-mid);
-      margin-bottom: 7px;
+      color: var(--teal);
+      margin-bottom: 8px;
     }
 
-    .fc-tag p {
-      font-size: 13.5px;
-      font-weight: 500;
-      color: var(--dark-3);
-      line-height: 1.58;
+    .fc-insight p {
+      font-size: 13px;
+      color: rgba(255,255,255,0.55);
+      line-height: 1.55;
     }
 
-    /* =====================================================
-       ABOUT SECTION
-    ===================================================== */
-    .about {
-      background: var(--card-bg);
-      max-width: 1100px;
-      margin: 0 auto;
-      padding: 96px 44px 48px;
-      text-align: center;
-      border-radius: 0;
-    }
-
-    .about-eyebrow {
+    .fc-insight .typing-cursor {
       display: inline-block;
-      font-size: 12px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 2px;
-      color: var(--teal-mid);
-      margin-bottom: 28px;
-      opacity: 0.9;
+      width: 2px;
+      height: 14px;
+      background: var(--teal);
+      margin-left: 2px;
+      vertical-align: text-bottom;
+      animation: blink 1s step-end infinite;
     }
 
-    .about-body {
-      font-size: 30px;
-      font-weight: 500;
-      color: var(--dark-3);
-      line-height: 1.56;
-      max-width: 660px;
-      margin: 0 auto 0;
-      letter-spacing: -0.6px;
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
     }
 
-    .about-body .strong { font-weight: 700; color: var(--dark-2); }
-    .about-body .faded { color: #a0b2bf; }
-    .about-body .grad {
-      background: linear-gradient(135deg, var(--purple) 0%, var(--teal-mid) 100%);
+    /* ==========================================================
+       SOCIAL PROOF BAR
+    ========================================================== */
+    .social-bar {
+      position: relative;
+      z-index: 2;
+      padding: 48px clamp(20px, 4vw, 48px);
+      border-top: 1px solid rgba(255,255,255,0.04);
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+
+    .social-bar-inner {
+      max-width: 900px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: clamp(24px, 5vw, 56px);
+      flex-wrap: wrap;
+    }
+
+    .social-stat {
+      text-align: center;
+    }
+
+    .social-stat .num {
+      font-family: var(--font-display);
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -1px;
+      background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.7) 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
-      font-weight: 700;
     }
 
-    /* =====================================================
-       TRUST STRIP
-    ===================================================== */
-    .trust-strip {
-      max-width: 1100px;
-      margin: 0 auto;
-      padding: 32px 44px 56px;
-      display: flex;
-      justify-content: center;
-      gap: 10px;
-      flex-wrap: wrap;
-      background: var(--card-bg);
-      border-radius: 0 0 32px 32px;
+    .social-stat .lbl {
+      font-size: 13px;
+      color: rgba(255,255,255,0.35);
+      font-weight: 500;
+      margin-top: 4px;
+      letter-spacing: 0.3px;
     }
 
-    .trust-pill {
+    .social-divider {
+      width: 1px;
+      height: 40px;
+      background: rgba(255,255,255,0.08);
+    }
+
+    /* ==========================================================
+       SECTION TRANSITIONS (dark to cream)
+    ========================================================== */
+    .section-transition {
+      height: 200px;
+      background: linear-gradient(180deg, var(--bg-deep) 0%, var(--cream) 100%);
+      position: relative;
+    }
+
+    .section-transition::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent 0%, rgba(125,231,225,0.15) 50%, transparent 100%);
+    }
+
+    /* ==========================================================
+       HOW IT WORKS
+    ========================================================== */
+    .how {
+      background: var(--cream);
+      padding: 100px clamp(20px, 5vw, 48px) 120px;
+      position: relative;
+    }
+
+    .section-header {
+      text-align: center;
+      margin-bottom: 72px;
+    }
+
+    .section-eyebrow {
       display: inline-flex;
       align-items: center;
-      gap: 7px;
-      padding: 9px 18px;
+      gap: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 2.5px;
+      color: var(--purple);
+      margin-bottom: 20px;
+    }
+
+    .section-eyebrow::before,
+    .section-eyebrow::after {
+      content: '';
+      width: 24px;
+      height: 1px;
+      background: var(--purple);
+      opacity: 0.3;
+    }
+
+    .section-title {
+      font-family: var(--font-display);
+      font-size: clamp(36px, 5vw, 52px);
+      font-weight: 800;
+      letter-spacing: -2px;
+      color: var(--dark-text);
+      line-height: 1.1;
+    }
+
+    .how-steps {
+      max-width: 1000px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 32px;
+      position: relative;
+    }
+
+    /* Connecting line */
+    .how-steps::before {
+      content: '';
+      position: absolute;
+      top: 56px;
+      left: calc(16.66% + 16px);
+      right: calc(16.66% + 16px);
+      height: 1px;
+      background: rgba(0,0,0,0.1);
+      border-radius: 1px;
+    }
+
+    .step-card {
+      background: var(--warm-white);
+      border: 1px solid rgba(0,0,0,0.06);
+      border-radius: var(--radius-lg);
+      padding: 40px 32px;
+      text-align: center;
+      transition: transform 0.35s var(--ease-out), box-shadow 0.35s ease;
+      position: relative;
+    }
+
+    .step-card:hover {
+      transform: translateY(-6px);
+      box-shadow: 0 16px 48px rgba(0,0,0,0.08), 0 2px 8px rgba(0,0,0,0.04);
+    }
+
+    .step-num {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 24px;
+      font-family: var(--font-display);
+      font-size: 18px;
+      font-weight: 800;
+      position: relative;
+      z-index: 2;
+    }
+
+    .step-1 .step-num { background: var(--purple); color: #fff; }
+    .step-2 .step-num { background: var(--teal); color: var(--bg-deep); }
+    .step-3 .step-num { background: var(--coral); color: #fff; }
+
+    .step-icon {
+      font-size: 36px;
+      margin-bottom: 16px;
+      display: block;
+    }
+
+    .step-card h3 {
+      font-family: var(--font-display);
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--dark-text);
+      margin-bottom: 10px;
+      letter-spacing: -0.5px;
+    }
+
+    .step-card p {
+      font-size: 14.5px;
+      color: var(--mid-text);
+      line-height: 1.65;
+    }
+
+    /* ==========================================================
+       FEATURES BENTO GRID
+    ========================================================== */
+    .features {
+      background: var(--cream);
+      padding: 0 clamp(20px, 5vw, 48px) 120px;
+    }
+
+    .bento {
+      max-width: 1000px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      grid-auto-rows: minmax(200px, auto);
+      gap: 20px;
+    }
+
+    .bento-card {
+      background: var(--warm-white);
+      border: 1px solid rgba(0,0,0,0.06);
+      border-radius: var(--radius-lg);
+      padding: 36px 32px;
+      position: relative;
+      overflow: hidden;
+      transition: transform 0.35s var(--ease-out), box-shadow 0.35s ease;
+    }
+
+    .bento-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 16px 48px rgba(0,0,0,0.08);
+    }
+
+    .bento-card::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    .bento-card:hover::after { opacity: 1; }
+
+    .b-wide { grid-column: span 4; }
+    .b-narrow { grid-column: span 2; }
+    .b-half { grid-column: span 3; }
+
+    .b-teal::after { background: linear-gradient(90deg, var(--teal), transparent); }
+    .b-purple::after { background: linear-gradient(90deg, var(--purple), transparent); }
+    .b-coral::after { background: linear-gradient(90deg, var(--coral), transparent); }
+    .b-amber::after { background: linear-gradient(90deg, var(--amber), transparent); }
+    .b-blue::after { background: linear-gradient(90deg, var(--blue), transparent); }
+
+    .bento-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      margin-bottom: 20px;
+      transition: transform 0.3s var(--ease-out), box-shadow 0.3s ease;
+    }
+
+    .bento-card:hover .bento-icon {
+      transform: scale(1.1);
+    }
+
+    .bi-teal { background: rgba(125, 231, 225, 0.12); }
+    .bi-purple { background: rgba(138, 111, 232, 0.12); }
+    .bi-coral { background: rgba(255, 122, 120, 0.12); }
+    .bi-amber { background: rgba(242, 181, 106, 0.12); }
+    .bi-blue { background: rgba(77, 166, 255, 0.12); }
+
+    .bento-card h3 {
+      font-family: var(--font-display);
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--dark-text);
+      margin-bottom: 8px;
+      letter-spacing: -0.5px;
+    }
+
+    .bento-card p {
+      font-size: 14.5px;
+      color: var(--mid-text);
+      line-height: 1.65;
+    }
+
+    /* Animated signal bars inside bento card */
+    .mini-signals {
+      display: flex;
+      gap: 6px;
+      margin-top: 20px;
+      align-items: flex-end;
+      height: 60px;
+    }
+
+    .mini-bar {
+      flex: 1;
+      border-radius: 4px 4px 0 0;
+      animation: miniGrow 0.8s var(--ease-out) both;
+    }
+
+    .mini-bar:nth-child(1) { background: var(--teal); height: 73%; animation-delay: 0.1s; }
+    .mini-bar:nth-child(2) { background: var(--blue); height: 55%; animation-delay: 0.2s; }
+    .mini-bar:nth-child(3) { background: var(--coral); height: 40%; animation-delay: 0.3s; }
+    .mini-bar:nth-child(4) { background: var(--amber); height: 60%; animation-delay: 0.4s; }
+    .mini-bar:nth-child(5) { background: var(--purple); height: 82%; animation-delay: 0.5s; }
+
+    @keyframes miniGrow {
+      from { transform: scaleY(0); opacity: 0; }
+      to { transform: scaleY(1); opacity: 1; }
+    }
+
+    /* ==========================================================
+       WHY / COMPARISON
+    ========================================================== */
+    .compare-wrap {
+      max-width: 640px;
+      margin: 0 auto;
+    }
+
+    .compare-toggle {
+      display: flex;
+      background: rgba(0,0,0,0.04);
       border-radius: 999px;
-      background: var(--white);
-      border: 1px solid rgba(0,0,0,0.07);
-      font-size: 12.5px;
+      padding: 4px;
+      margin-bottom: 32px;
+      max-width: 320px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .compare-toggle button {
+      flex: 1;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 999px;
+      font-family: var(--font-body);
+      font-size: 13px;
       font-weight: 600;
-      color: var(--dark-3);
-      box-shadow: 0 1px 4px rgba(0,0,0,0.04);
-      letter-spacing: -0.1px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      background: transparent;
+      color: var(--mid-text);
+      letter-spacing: -0.2px;
     }
 
-    .trust-icon {
+    .compare-toggle button.active {
+      background: var(--warm-white);
+      color: var(--dark-text);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+
+    .compare-panel {
+      background: var(--warm-white);
+      border: 1px solid rgba(0,0,0,0.06);
+      border-radius: var(--radius-lg);
+      padding: 36px 32px;
+      transition: all 0.3s var(--ease-out);
+    }
+
+    .compare-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 0;
+      border-bottom: 1px solid rgba(0,0,0,0.05);
+    }
+
+    .compare-row:last-child { border-bottom: none; }
+
+    .compare-feature {
       font-size: 14px;
-      line-height: 1;
+      color: var(--dark-text);
+      font-weight: 500;
     }
 
-    /* =====================================================
-       CTA / WAITLIST SECTION
-    ===================================================== */
-    .cta {
-      background: var(--white);
-      padding: 88px 24px 80px;
+    .compare-value {
+      font-size: 14px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.4s var(--ease-out);
+    }
+
+    .compare-value.good { color: var(--teal-dark); }
+    .compare-value.bad { color: var(--coral); }
+    .compare-value.neutral { color: var(--mid-text); }
+
+    .compare-check { font-size: 16px; }
+
+    /* ==========================================================
+       SCIENCE SECTION (dark)
+    ========================================================== */
+    .transition-cream-dark {
+      height: 200px;
+      background: linear-gradient(180deg, var(--cream) 0%, var(--bg-deep) 100%);
+    }
+
+    .science {
+      background: var(--bg-deep);
+      padding: 100px clamp(20px, 5vw, 48px) 120px;
       text-align: center;
     }
 
-    .cta-inner {
-      max-width: 520px;
+    /* Dark-background section headers */
+    .science .section-eyebrow,
+    .testimonial .section-eyebrow,
+    .faq .section-eyebrow { color: var(--teal); }
+    .science .section-eyebrow::before,
+    .science .section-eyebrow::after,
+    .testimonial .section-eyebrow::before,
+    .testimonial .section-eyebrow::after,
+    .faq .section-eyebrow::before,
+    .faq .section-eyebrow::after { background: var(--teal); }
+    .science .section-title,
+    .testimonial .section-title,
+    .faq .section-title { color: #fff; }
+
+    .science-body {
+      max-width: 620px;
+      margin: 24px auto 0;
+      font-size: clamp(18px, 2.5vw, 24px);
+      font-weight: 400;
+      line-height: 1.7;
+      color: rgba(255,255,255,0.45);
+      letter-spacing: -0.3px;
+    }
+
+    .science-body strong {
+      color: rgba(255,255,255,0.85);
+      font-weight: 600;
+    }
+
+    .science-body .teal {
+      color: var(--teal);
+      font-weight: 600;
+    }
+
+    .layer-grid {
+      max-width: 900px;
+      margin: 64px auto 0;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+
+    .layer-card {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: var(--radius);
+      padding: 32px 24px;
+      text-align: center;
+      backdrop-filter: blur(12px);
+      transition: all 0.3s ease;
+    }
+
+    .layer-card:hover {
+      border-color: rgba(255,255,255,0.15);
+      background: rgba(255,255,255,0.07);
+      transform: translateY(-2px);
+    }
+
+    .layer-num {
+      font-family: var(--font-display);
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--teal);
+      margin-bottom: 12px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      transition: letter-spacing 0.3s ease;
+    }
+
+    .layer-card:hover .layer-num {
+      letter-spacing: 4px;
+    }
+
+    .layer-card h4 {
+      font-family: var(--font-display);
+      font-size: 18px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 8px;
+      letter-spacing: -0.3px;
+    }
+
+    .layer-card p {
+      font-size: 13.5px;
+      color: rgba(255,255,255,0.5);
+      line-height: 1.6;
+    }
+
+    /* ==========================================================
+       TESTIMONIAL
+    ========================================================== */
+    .testimonial {
+      background: var(--bg-deep);
+      padding: 80px clamp(20px, 5vw, 48px) 120px;
+      text-align: center;
+    }
+
+    .testimonial-grid {
+      max-width: 1000px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+
+    .testimonial-card {
+      max-width: none;
+      margin: 0;
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius-xl);
+      padding: 52px 44px;
+      position: relative;
+      transition: border-color 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .testimonial-card:hover {
+      border-color: rgba(255,255,255,0.12);
+    }
+
+    .t-stars {
+      color: #F2B56A;
+      font-size: 16px;
+      letter-spacing: 2px;
+      margin-bottom: 16px;
+    }
+
+    .testimonial-card::before {
+      content: '\201C';
+      font-family: var(--font-display);
+      font-size: 80px;
+      color: var(--teal);
+      opacity: 0.15;
+      position: absolute;
+      top: 16px;
+      left: 32px;
+      line-height: 1;
+    }
+
+    .testimonial-text {
+      font-size: 20px;
+      font-weight: 400;
+      color: rgba(255,255,255,0.8);
+      line-height: 1.7;
+      font-style: italic;
+      margin-bottom: 28px;
+      letter-spacing: -0.2px;
+    }
+
+    .testimonial-author {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+    }
+
+    .testimonial-avatar {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: rgba(125, 231, 225, 0.12);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 16px;
+      color: var(--teal);
+    }
+
+    .testimonial-meta .t-name {
+      font-weight: 600;
+      color: rgba(255,255,255,0.85);
+      font-size: 15px;
+    }
+
+    .testimonial-meta .t-role {
+      font-size: 13px;
+      color: rgba(255,255,255,0.35);
+      margin-top: 2px;
+    }
+
+    /* ==========================================================
+       TRUST LOGOS
+    ========================================================== */
+    .trust-strip {
+      background: var(--bg-deep);
+      padding: 56px clamp(20px, 4vw, 48px);
+      border-top: 1px solid rgba(255,255,255,0.04);
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      text-align: center;
+    }
+
+    .trust-logos-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 2.5px;
+      color: rgba(255,255,255,0.2);
+      margin-bottom: 32px;
+    }
+
+    .trust-logos {
+      max-width: 800px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: clamp(28px, 5vw, 56px);
+      flex-wrap: wrap;
+    }
+
+    .trust-logo {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      color: rgba(255,255,255,0.25);
+      transition: color 0.3s ease;
+    }
+
+    .trust-logo:hover {
+      color: rgba(255,255,255,0.45);
+    }
+
+    .trust-logo svg {
+      opacity: 0.5;
+      transition: opacity 0.3s ease;
+    }
+
+    .trust-logo:hover svg {
+      opacity: 0.7;
+    }
+
+    .trust-wordmark {
+      font-family: var(--font-display);
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      color: rgba(255,255,255,0.3);
+      transition: color 0.3s ease;
+    }
+
+    .trust-logo:hover .trust-wordmark {
+      color: rgba(255,255,255,0.5);
+    }
+
+    .trust-logo > span:last-child {
+      font-size: 10px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: rgba(255,255,255,0.15);
+    }
+
+    /* ==========================================================
+       BETA RESULTS
+    ========================================================== */
+    .beta-results {
+      background: linear-gradient(180deg, var(--bg-deep) 0%, #0a1222 100%);
+      padding: 80px clamp(20px, 5vw, 48px);
+      border-top: 1px solid rgba(125, 231, 225, 0.06);
+      border-bottom: 1px solid rgba(125, 231, 225, 0.06);
+    }
+
+    .beta-results-inner {
+      max-width: 900px;
       margin: 0 auto;
     }
 
-    .cta h2 {
-      font-size: 42px;
+    .beta-results-header {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+
+    .beta-results-header h3 {
+      font-family: var(--font-display);
+      font-size: clamp(24px, 4vw, 32px);
       font-weight: 800;
-      letter-spacing: -1.8px;
+      color: #fff;
+      letter-spacing: -1px;
+      margin-bottom: 8px;
+    }
+
+    .beta-results-header p {
+      font-size: 14px;
+      color: rgba(255,255,255,0.35);
+    }
+
+    .beta-stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 32px;
+    }
+
+    .beta-stat {
+      text-align: center;
+      padding: 32px 20px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: var(--radius);
+      transition: all 0.3s ease;
+    }
+
+    .beta-stat:hover {
+      border-color: rgba(125, 231, 225, 0.15);
+      background: rgba(255,255,255,0.05);
+    }
+
+    .beta-num {
+      font-family: var(--font-display);
+      font-size: clamp(40px, 6vw, 56px);
+      font-weight: 800;
+      letter-spacing: -2px;
+      background: linear-gradient(135deg, var(--teal) 0%, var(--purple) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
       margin-bottom: 12px;
-      color: var(--dark-2);
-      line-height: 1.08;
+      line-height: 1;
+    }
+
+    .beta-label {
+      font-size: 14px;
+      color: rgba(255,255,255,0.5);
+      line-height: 1.6;
+    }
+
+    /* ==========================================================
+       FAQ SECTION
+    ========================================================== */
+    .faq {
+      background: var(--bg-deep);
+      padding: 80px clamp(20px, 5vw, 48px) 120px;
+      text-align: center;
+    }
+
+    .faq-list {
+      max-width: 640px;
+      margin: 0 auto;
+      text-align: left;
+    }
+
+    .faq-item {
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .faq-item summary {
+      padding: 20px 0;
+      font-family: var(--font-display);
+      font-size: 16px;
+      font-weight: 600;
+      color: rgba(255,255,255,0.85);
+      cursor: pointer;
+      list-style: none;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      letter-spacing: -0.3px;
+      transition: color 0.2s ease;
+    }
+
+    .faq-item summary:hover { color: var(--teal); }
+
+    .faq-item summary::-webkit-details-marker { display: none; }
+
+    .faq-item summary::after {
+      content: '+';
+      font-size: 20px;
+      font-weight: 400;
+      color: rgba(255,255,255,0.3);
+      transition: transform 0.3s ease, color 0.3s ease;
+      flex-shrink: 0;
+      margin-left: 16px;
+    }
+
+    .faq-item[open] summary::after {
+      transform: rotate(45deg);
+      color: var(--teal);
+    }
+
+    .faq-item p {
+      padding: 0 0 20px;
+      font-size: 14.5px;
+      color: rgba(255,255,255,0.45);
+      line-height: 1.7;
+      animation: faqOpen 0.3s var(--ease-out);
+    }
+
+    @keyframes faqOpen {
+      from { opacity: 0; transform: translateY(-8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ==========================================================
+       CTA SECTION
+    ========================================================== */
+    .cta {
+      background: var(--bg-deep);
+      padding: 80px clamp(20px, 5vw, 48px) 120px;
+      text-align: center;
+      position: relative;
+      overflow: visible;
+      content-visibility: visible;
+    }
+
+    .cta-glow { display: none; }
+
+    .cta-inner {
+      max-width: 560px;
+      margin: 0 auto;
+      position: relative;
+      z-index: 2;
+    }
+
+    .cta h2 {
+      font-family: var(--font-display);
+      font-size: clamp(36px, 5vw, 48px);
+      font-weight: 800;
+      letter-spacing: -2px;
+      margin-bottom: 14px;
+      color: #fff;
+      line-height: 1.1;
     }
 
     .cta h2 .accent {
-      background: linear-gradient(135deg, var(--purple) 0%, var(--teal-mid) 100%);
+      background: linear-gradient(135deg, var(--teal) 0%, var(--purple) 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
     }
 
     .cta-sub {
-      font-size: 16px;
-      color: var(--text-mid);
-      margin-bottom: 36px;
-      line-height: 1.65;
-      font-weight: 400;
+      font-size: 17px;
+      color: rgba(255,255,255,0.45);
+      margin-bottom: 40px;
+      line-height: 1.7;
     }
 
-    /* Email form */
-    .form-wrap {
-      position: relative;
-    }
+    .form-wrap { position: relative; }
 
     .email-form {
       display: flex;
       gap: 10px;
-      max-width: 460px;
+      max-width: 480px;
       margin: 0 auto;
-      background: #f0f4f7;
-      border-radius: 20px;
-      padding: 7px 7px 7px 20px;
-      border: 1.5px solid transparent;
-      transition: border-color 0.25s ease, box-shadow 0.25s ease;
+      background: rgba(255,255,255,0.06);
+      border-radius: var(--radius);
+      padding: 7px 7px 7px 22px;
+      border: 1.5px solid rgba(255,255,255,0.12);
+      transition: all 0.3s ease;
     }
 
     .email-form:focus-within {
-      border-color: rgba(138,111,232,0.35);
-      box-shadow: 0 0 0 4px rgba(138,111,232,0.08);
-      background: #fff;
+      border-color: rgba(125,231,225,0.25);
+      background: rgba(255,255,255,0.08);
     }
 
     .email-form input {
@@ -776,59 +1519,51 @@
       background: transparent;
       border: none;
       font-size: 15px;
-      font-family: inherit;
-      color: var(--dark-2);
+      font-family: var(--font-body);
+      color: #fff;
       outline: none;
       min-width: 0;
-      padding: 9px 0;
-      font-weight: 400;
+      padding: 10px 0;
     }
 
-    .email-form input::placeholder { color: #a8bac6; }
+    .email-form input::placeholder { color: rgba(255,255,255,0.35); }
 
     .email-form button {
-      padding: 12px 24px;
-      background: var(--dark-2);
+      padding: 13px 26px;
+      background: var(--teal);
       border: none;
       border-radius: 14px;
-      color: #fff;
+      color: var(--bg-deep);
       font-size: 14px;
-      font-weight: 600;
-      font-family: inherit;
+      font-weight: 700;
+      font-family: var(--font-body);
       cursor: pointer;
       white-space: nowrap;
       letter-spacing: -0.2px;
-      transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+      transition: all 0.25s ease;
       flex-shrink: 0;
     }
 
     .email-form button:hover {
       transform: translateY(-1px);
-      box-shadow: 0 6px 20px rgba(14,30,46,0.22);
-      background: #18304a;
-    }
-
-    .email-form button:active {
-      transform: translateY(0);
+      opacity: 0.9;
     }
 
     .form-note {
-      font-size: 12px;
-      color: #b0c0ca;
-      margin-top: 14px;
-      font-weight: 400;
+      font-size: 12.5px;
+      color: rgba(255,255,255,0.2);
+      margin-top: 16px;
     }
 
-    /* Form success state */
     .form-ok {
       display: none;
       max-width: 460px;
       margin: 0 auto;
-      padding: 24px 28px;
-      background: linear-gradient(135deg, rgba(138,111,232,0.06) 0%, rgba(57,181,191,0.06) 100%);
-      border: 1px solid rgba(92,224,216,0.25);
-      border-radius: 20px;
-      animation: successSlide 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+      padding: 28px 32px;
+      background: rgba(125,231,225,0.06);
+      border: 1px solid rgba(125,231,225,0.15);
+      border-radius: var(--radius);
+      animation: successSlide 0.5s var(--ease-spring) forwards;
     }
 
     @keyframes successSlide {
@@ -840,17 +1575,16 @@
       width: 48px;
       height: 48px;
       border-radius: 50%;
-      background: linear-gradient(135deg, var(--purple) 0%, var(--teal-mid) 100%);
+      background: var(--teal);
       display: flex;
       align-items: center;
       justify-content: center;
       margin: 0 auto 14px;
-      box-shadow: 0 4px 16px rgba(138,111,232,0.3);
     }
 
     .form-ok-icon svg {
-      animation: checkDraw 0.4s ease 0.15s forwards;
       opacity: 0;
+      animation: checkDraw 0.4s ease 0.15s forwards;
     }
 
     @keyframes checkDraw {
@@ -858,39 +1592,45 @@
       to { opacity: 1; transform: scale(1); }
     }
 
+    .form-error {
+      display: none;
+      max-width: 460px;
+      margin: 12px auto 0;
+      padding: 12px 16px;
+      background: rgba(255, 122, 120, 0.08);
+      border: 1px solid rgba(255, 122, 120, 0.2);
+      border-radius: 12px;
+      font-size: 13px;
+      color: var(--coral);
+      text-align: center;
+    }
+
     .form-ok-title {
-      font-size: 17px;
+      font-family: var(--font-display);
+      font-size: 18px;
       font-weight: 700;
-      color: var(--dark-2);
+      color: #fff;
       margin-bottom: 6px;
-      letter-spacing: -0.3px;
     }
 
     .form-ok-sub {
       font-size: 14px;
-      color: var(--text-mid);
+      color: rgba(255,255,255,0.45);
       line-height: 1.6;
     }
 
-    /* =====================================================
+    /* ==========================================================
        FOOTER
-    ===================================================== */
+    ========================================================== */
     footer {
-      background: var(--white);
-      border-top: 1px solid rgba(0,0,0,0.05);
-      max-width: 100%;
-      padding: 28px 44px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 12px;
+      background: var(--bg-deep);
+      border-top: 1px solid rgba(255,255,255,0.04);
+      padding: 32px clamp(20px, 4vw, 48px);
     }
 
     .footer-inner {
-      max-width: 1100px;
+      max-width: 1200px;
       margin: 0 auto;
-      width: 100%;
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -898,10 +1638,15 @@
       gap: 12px;
     }
 
+    .footer-brand {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
     footer .c {
-      font-size: 12.5px;
-      color: #b0c0ca;
-      font-weight: 400;
+      font-size: 13px;
+      color: rgba(255,255,255,0.2);
     }
 
     footer .fl {
@@ -911,244 +1656,343 @@
     }
 
     footer .fl a {
-      font-size: 12.5px;
-      color: #b0c0ca;
-      text-decoration: none;
-      font-weight: 400;
-      transition: color 0.2s;
+      font-size: 13px;
+      color: rgba(255,255,255,0.2);
+      transition: color 0.25s ease;
     }
 
-    footer .fl a:hover { color: var(--text-mid); }
+    footer .fl a:hover { color: rgba(255,255,255,0.5); }
 
-    /* =====================================================
-       ANIMATIONS — load and scroll
-    ===================================================== */
-    @keyframes rise {
-      from { opacity: 0; transform: translateY(22px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    @keyframes riseScale {
-      from { opacity: 0; transform: translateY(18px) scale(0.97); }
-      to { opacity: 1; transform: translateY(0) scale(1); }
-    }
-
-    @keyframes floatCard {
-      from { opacity: 0; transform: translateY(14px) scale(0.965); }
-      to { opacity: 1; transform: translateY(0) scale(1); }
-    }
-
-    /* Passive float animation for cards */
-    @keyframes floatBob {
-      0%, 100% { transform: translateY(0px); }
-      50% { transform: translateY(-5px); }
-    }
-
-    .an { opacity: 0; animation: rise 0.7s cubic-bezier(0.22, 0.78, 0.5, 1) forwards; }
-    .an1 { animation-delay: 0.04s; }
-    .an2 { animation-delay: 0.14s; }
-    .an3 { animation-delay: 0.26s; }
-    .an4 { animation-delay: 0.38s; }
-
-    .fn { opacity: 0; animation: floatCard 0.6s cubic-bezier(0.22, 0.78, 0.5, 1) forwards; }
-    .fn1 { animation-delay: 0.5s; }
-    .fn2 { animation-delay: 0.66s; }
-    .fn3 { animation-delay: 0.82s; }
-    .fn4 { animation-delay: 0.98s; }
-
-    /* Scroll reveal */
+    /* ==========================================================
+       SCROLL REVEAL
+    ========================================================== */
+    /* Reveal: visible by default (SEO/no-JS safe). JS adds .reveal-init to enable animations. */
     .reveal {
-      opacity: 0;
-      transform: translateY(28px);
-      transition: opacity 0.7s cubic-bezier(0.22, 0.78, 0.5, 1), transform 0.7s cubic-bezier(0.22, 0.78, 0.5, 1);
+      transition: opacity 0.8s var(--ease-out), transform 0.8s var(--ease-out);
     }
 
-    .reveal.visible {
+    .reveal-init .reveal {
+      opacity: 0;
+      transform: translateY(32px);
+    }
+
+    .reveal-init .reveal.visible {
       opacity: 1;
       transform: translateY(0);
     }
 
-    .reveal-d1 { transition-delay: 0.05s; }
-    .reveal-d2 { transition-delay: 0.15s; }
-    .reveal-d3 { transition-delay: 0.28s; }
-    .reveal-d4 { transition-delay: 0.4s; }
+    .rd1 { transition-delay: 0.0s; }
+    .rd2 { transition-delay: 0.1s; }
+    .rd3 { transition-delay: 0.2s; }
+    .rd4 { transition-delay: 0.3s; }
+    .rd5 { transition-delay: 0.4s; }
+    .rd6 { transition-delay: 0.5s; }
 
-    /* Ambient float on cards (desktop only, reduced-motion safe) */
-    @media (prefers-reduced-motion: no-preference) {
-      .fc-social { animation: floatCard 0.6s cubic-bezier(0.22, 0.78, 0.5, 1) 0.5s both; }
-      .fc-ring { animation: floatCard 0.6s cubic-bezier(0.22, 0.78, 0.5, 1) 0.66s both; }
-      .fc-stats { animation: floatCard 0.6s cubic-bezier(0.22, 0.78, 0.5, 1) 0.82s both; }
-      .fc-tag { animation: floatCard 0.6s cubic-bezier(0.22, 0.78, 0.5, 1) 0.98s both; }
+    /* Hero entrance animations */
+    .an { opacity: 0; animation: rise 0.8s var(--ease-out) forwards; }
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(24px); }
+      to { opacity: 1; transform: translateY(0); }
     }
+    .an1 { animation-delay: 0.1s; }
+    .an2 { animation-delay: 0.25s; }
+    .an3 { animation-delay: 0.4s; }
+    .an4 { animation-delay: 0.55s; }
+    .an5 { animation-delay: 0.7s; }
 
-    /* =====================================================
+    /* ==========================================================
        RESPONSIVE — TABLET
-    ===================================================== */
-    @media (max-width: 960px) {
-      .hero-card {
-        border-radius: 28px 28px 0 0;
-        margin-top: 18px;
-      }
-
-      .nav { padding: 18px 28px; }
-      .nav-links a:not(.nav-cta) { display: none; }
-      .nav-logo-text { display: inline; }
-
-      .hero-content { padding: 48px 28px 44px; }
-      .hero-content h1 { font-size: 48px; letter-spacing: -2px; }
-      .hero-content .subtitle { font-size: 16px; max-width: 380px; }
-
-      .showcase {
-        padding: 18px 28px 0;
-        min-height: 480px;
-      }
-
-      .phone { width: 240px; }
-
-      .fc { display: none; }
-
-      .about { padding: 72px 28px 60px; }
-      .about-body { font-size: 26px; }
-
-      .trust-strip { padding: 28px 28px 48px; }
-
-      footer { padding: 24px 28px; }
+    ========================================================== */
+    /* Hide float cards in the dead zone to prevent overlap */
+    @media (max-width: 1100px) {
+      .float-card { display: none; }
+      .phone-wrapper::before { width: 100%; height: 100%; }
     }
 
-    /* =====================================================
+    @media (max-width: 960px) {
+      .nav-links { display: none; }
+      .nav-links.open {
+        display: flex;
+        flex-direction: column;
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: rgba(5, 10, 18, 0.95);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        padding: 20px 24px;
+        gap: 16px;
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+      }
+      .nav-links.open a { font-size: 16px; color: rgba(255,255,255,0.7); }
+      .nav-toggle { display: block; }
+
+      .hero h1 { letter-spacing: -2px; }
+
+      .how-steps {
+        grid-template-columns: 1fr;
+        max-width: 400px;
+      }
+
+      .how-steps::before { display: none; }
+
+      .bento {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .b-wide, .b-narrow, .b-half { grid-column: span 1; }
+
+      .layer-grid {
+        grid-template-columns: 1fr;
+        max-width: 400px;
+      }
+
+      .trust-logos {
+        gap: 24px;
+      }
+
+      .beta-stats {
+        grid-template-columns: 1fr;
+        max-width: 400px;
+        margin: 0 auto;
+      }
+
+      .testimonial-grid {
+        grid-template-columns: 1fr;
+        max-width: 480px;
+        margin: 0 auto;
+      }
+    }
+
+    /* ==========================================================
        RESPONSIVE — MOBILE
-    ===================================================== */
+    ========================================================== */
     @media (max-width: 600px) {
-      .hero-outer { padding: 0 16px; }
+      .nav-inner { height: 64px; }
+      .nav-logo img { width: 28px; height: 28px; }
+      .nav-logo-text { font-size: 16px; }
+      .nav-links .nav-cta { padding: 8px 16px; font-size: 12.5px; }
 
-      .hero-card {
-        border-radius: 22px 22px 0 0;
-        margin-top: 14px;
-      }
+      .hero { padding: 100px 20px 60px; min-height: 100svh; }
+      .hero h1 { letter-spacing: -1.5px; }
+      .hero-sub { font-size: 15.5px; }
+      .hero-actions { flex-direction: column; }
+      .btn-primary { width: 100%; justify-content: center; }
+      .btn-ghost { width: auto; padding: 12px 20px; font-size: 14px; border: none; }
 
-      .nav {
-        padding: 16px 20px;
-      }
+      .phone { width: 220px; border-radius: 32px; }
 
-      .nav-logo img { width: 30px; height: 30px; }
-      .nav-logo-text { font-size: 15px; }
+      .social-bar-inner { gap: 24px; }
+      .social-stat .num { font-size: 26px; }
 
-      .nav-cta {
-        padding: 9px 16px !important;
-        font-size: 13px !important;
-      }
+      .section-transition, .transition-cream-dark { height: 120px; }
 
-      .hero-content {
-        padding: 40px 20px 36px;
-      }
+      .how { padding: 80px 20px 100px; }
+      .step-card { padding: 32px 24px; }
 
-      .hero-content h1 {
-        font-size: 38px;
-        letter-spacing: -1.5px;
-        line-height: 1.06;
-      }
+      .features { padding: 0 20px 100px; }
+      .bento { grid-template-columns: 1fr; }
+      .b-wide, .b-narrow, .b-half { grid-column: span 1; }
 
-      .hero-content .subtitle {
-        font-size: 15.5px;
-        max-width: 320px;
-        margin-bottom: 30px;
-      }
+      .science { padding: 80px 20px 100px; }
+      .layer-grid { grid-template-columns: 1fr; }
 
-      .hero-badge { font-size: 11.5px; padding: 5px 12px 5px 9px; }
+      .testimonial { padding: 60px 20px 100px; }
+      .testimonial-grid { grid-template-columns: 1fr; max-width: 480px; }
+      .testimonial-card { padding: 36px 24px; }
+      .testimonial-card::before { font-size: 60px; top: 8px; left: 20px; }
+      .testimonial-text { font-size: 16px; }
 
-      .hero-btn {
-        padding: 15px 32px;
-        font-size: 14.5px;
-      }
-
-      .showcase {
-        padding: 20px 20px 0;
-        min-height: 400px;
-        justify-content: center;
-      }
-
-      .phone {
-        width: 210px;
-        border-radius: 32px;
-        border-width: 4px;
-      }
-
-      .phone::before {
-        width: 70px;
-        height: 20px;
-      }
-
-      .about {
-        padding: 60px 20px 50px;
-      }
-
-      .about-body {
-        font-size: 22px;
-        letter-spacing: -0.4px;
-      }
-
-      .trust-strip {
-        padding: 20px 20px 44px;
-        gap: 8px;
-      }
-
-      .trust-pill {
-        font-size: 11.5px;
-        padding: 8px 14px;
-      }
-
-      .cta {
-        padding: 72px 20px 68px;
-      }
-
-      .cta h2 {
-        font-size: 34px;
-        letter-spacing: -1.2px;
-      }
-
-      .cta-sub {
-        font-size: 15px;
-        margin-bottom: 28px;
-      }
+      .cta { padding: 0 20px 100px; }
 
       .email-form {
         flex-direction: column;
         background: transparent;
         padding: 0;
-        gap: 12px;
-        border: none !important;
-        box-shadow: none !important;
+        border: none;
+        box-shadow: none;
       }
 
       .email-form input {
-        background: #f0f4f7;
-        border: 1.5px solid transparent;
+        background: rgba(255,255,255,0.04);
+        border: 1.5px solid rgba(255,255,255,0.08);
         border-radius: 14px;
-        padding: 15px 18px;
-        font-size: 15px;
-        transition: border-color 0.2s, background 0.2s;
+        padding: 16px 24px;
       }
 
       .email-form input:focus {
-        border-color: rgba(138,111,232,0.35);
-        background: #fff;
-        outline: none;
-        box-shadow: 0 0 0 4px rgba(138,111,232,0.08);
+        border-color: rgba(125,231,225,0.3);
+        box-shadow: 0 0 0 4px rgba(125,231,225,0.06);
       }
 
       .email-form button {
-        padding: 15px 24px;
+        padding: 16px 24px;
         border-radius: 14px;
-        font-size: 15px;
         width: 100%;
       }
 
-      footer {
-        flex-direction: column;
-        text-align: center;
-        padding: 24px 20px;
-        gap: 10px;
-      }
+      footer { flex-direction: column; text-align: center; padding: 24px 20px; }
+
+      /* Disable grain overlay on mobile for performance */
+      body::after { display: none; }
+
+      .trust-logos { gap: 20px; }
+      .trust-wordmark { font-size: 17px; }
+
+      .faq { padding: 60px 20px 80px; }
+    }
+
+    /* ==========================================================
+       STICKY MOBILE CTA
+    ========================================================== */
+    .sticky-cta {
+      display: none;
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 90;
+      padding: 12px 20px;
+      background: rgba(5, 10, 18, 0.92);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-top: 1px solid rgba(125, 231, 225, 0.1);
+      transform: translateY(100%);
+      transition: transform 0.3s var(--ease-out);
+    }
+
+    .sticky-cta.visible { transform: translateY(0); }
+
+    .sticky-cta a {
+      display: block;
+      text-align: center;
+      padding: 14px 24px;
+      background: var(--teal);
+      color: var(--bg-deep);
+      border-radius: 14px;
+      font-size: 15px;
+      font-weight: 700;
+      font-family: var(--font-body);
+      letter-spacing: -0.2px;
+    }
+
+    .sticky-cta-sub {
+      text-align: center;
+      font-size: 11px;
+      color: rgba(255,255,255,0.3);
+      margin-top: 6px;
+    }
+
+    @media (max-width: 600px) {
+      .sticky-cta { display: block; }
+      /* Add padding to footer so sticky bar doesn't cover content */
+      footer { padding-bottom: 80px !important; }
+    }
+
+    /* ==========================================================
+       HERO TEXT ROTATOR
+    ========================================================== */
+    .hero-rotate {
+      display: inline-block;
+      position: relative;
+      overflow: hidden;
+      vertical-align: bottom;
+      height: 1.05em;
+      text-align: left;
+    }
+
+    /* Disable the underline glow on rotator accent spans */
+    .hero-rotate .accent::after { display: none; }
+
+    .hero-rotate-inner {
+      display: flex;
+      flex-direction: column;
+      animation: rotateText 9s ease-in-out infinite;
+    }
+
+    .hero-rotate-inner span {
+      display: block;
+      height: 1.05em;
+      line-height: 1.05;
+    }
+
+    @keyframes rotateText {
+      0%, 22% { transform: translateY(0); }
+      28%, 50% { transform: translateY(-33.33%); }
+      56%, 78% { transform: translateY(-66.66%); }
+      84%, 100% { transform: translateY(0); }
+    }
+
+    /* ==========================================================
+       MID-PAGE CTA STRIP
+    ========================================================== */
+    .mid-cta {
+      text-align: center;
+      padding: 48px clamp(20px, 5vw, 48px);
+    }
+
+    .mid-cta-light { background: var(--cream); }
+    .mid-cta-dark { background: var(--bg-deep); }
+
+    .mid-cta p {
+      font-size: 16px;
+      margin-bottom: 20px;
+      line-height: 1.6;
+    }
+
+    .mid-cta-light p { color: var(--mid-text); }
+    .mid-cta-dark p { color: rgba(255,255,255,0.45); }
+
+    .mid-cta .btn-primary { font-size: 14px; padding: 14px 28px; }
+
+    /* Body scroll lock for mobile nav */
+    body.nav-open { overflow: hidden; }
+
+    /* Back to top */
+    .back-top {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      z-index: 80;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: rgba(12, 20, 36, 0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.08);
+      color: rgba(255,255,255,0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      opacity: 0;
+      transform: translateY(16px);
+      transition: all 0.3s var(--ease-out);
+      pointer-events: none;
+    }
+
+    .back-top.visible {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+
+    .back-top:hover {
+      background: rgba(255,255,255,0.08);
+      border-color: rgba(255,255,255,0.15);
+      color: rgba(255,255,255,0.8);
+    }
+
+    @media (max-width: 600px) {
+      .back-top { bottom: 76px; right: 16px; width: 40px; height: 40px; }
+    }
+
+    /* Render performance — skip off-screen content */
+    .how, .features, .why, .science, .trust-strip, .testimonial, .beta-results, .faq {
+      content-visibility: auto;
+      contain-intrinsic-size: auto 600px;
     }
 
     /* Reduced motion */
@@ -1160,180 +2004,451 @@
       }
     }
   </style>
+  <noscript><style>html{opacity:1!important}</style></noscript>
 </head>
 <body>
 
-<!-- ===== HERO ===== -->
-<div class="hero-outer">
-  <div class="hero-card">
-
-    <!-- NAV -->
-    <nav class="nav">
-      <a href="/" class="nav-logo">
-        <img src="logo-emblem.png" alt="Glowlytics">
-        <span class="nav-logo-text">Glowlytics</span>
-      </a>
-      <div class="nav-links">
-        <a href="#about">About</a>
-        <a href="#access" class="nav-cta">Get Early Access</a>
-      </div>
-    </nav>
-
-    <!-- HERO CONTENT -->
-    <div class="hero-content">
-      <div class="hero-badge an an1">
-        <span class="hero-badge-dot"></span>
-        Made by doctors, for patients
-      </div>
-      <h1 class="an an2">Your skin.<br><span class="accent">Understood.</span></h1>
-      <p class="subtitle an an3">AI-powered skin health tracking that helps you understand acne, sun damage, and inflammation — with insights informed by dermatology research.</p>
-      <a href="#access" class="hero-btn an an4">
-        Get Early Access
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-          <path d="M1 7h12M8 2l5 5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </a>
+<!-- NAV -->
+<a href="#hero-content" class="skip-link">Skip to content</a>
+<nav class="nav" id="nav" aria-label="Main navigation">
+  <div class="nav-inner">
+    <a href="/" class="nav-logo">
+      <picture>
+        <source srcset="logo-emblem.webp" type="image/webp">
+        <img src="logo-emblem.png" alt="Glowlytics logo" width="32" height="32">
+      </picture>
+      <span class="nav-logo-text">Glowlytics</span>
+    </a>
+    <button class="nav-toggle" id="nav-toggle" aria-label="Toggle navigation menu" aria-expanded="false">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+    </button>
+    <div class="nav-links" id="nav-links">
+      <a href="#how">How It Works</a>
+      <a href="#features">Features</a>
+      <a href="#science">Science</a>
+      <a href="#testimonials">Reviews</a>
+      <a href="#access" class="nav-cta">Start Free Trial</a>
     </div>
+  </div>
+</nav>
 
-    <!-- SHOWCASE -->
-    <div class="showcase">
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-mesh"></div>
+  <div class="hero-grid"></div>
 
-      <!-- Left top: social proof -->
-      <div class="fc fc-social">
-        <div class="avatars">
-          <span class="av1">M</span>
-          <span class="av2">S</span>
-          <span class="av3">A</span>
-          <span class="av4">+</span>
-        </div>
-        <div class="social-meta">
-          <div class="num">500+</div>
-          <div class="lbl">On the waitlist</div>
-        </div>
-      </div>
+  <div class="hero-content" id="hero-content">
+    <div class="hero-badge an an1">
+      <span class="hero-badge-dot" aria-hidden="true"></span>
+      Built by doctors. Backed by research.
+    </div>
+    <h1 class="an an2">See real results<br>in <span class="hero-rotate" aria-live="polite" aria-atomic="true"><span class="hero-rotate-inner"><span class="accent">7 days.</span><span class="accent">your skin.</span><span class="accent">the data.</span></span></span></h1>
+    <p class="hero-sub an an3">The first skin tracker that actually explains what it sees. Scan your face in seconds and get clinical-grade scores for acne, hydration, sun damage, and more.</p>
+    <div class="hero-actions an an4">
+      <a href="#access" class="btn-primary">
+        Start Free Trial
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M1 7h12M8 2l5 5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </a>
+      <a href="#how" class="btn-ghost">See how it works</a>
+    </div>
+    <p class="hero-trust an an4" style="margin-top:24px;font-size:13px;color:rgba(255,255,255,0.3);font-weight:500;letter-spacing:0.2px;">Free 7-day trial &middot; No credit card required &middot; Photos never stored</p>
+  </div>
 
-      <!-- Left bottom: score ring -->
-      <div class="fc fc-ring">
-        <div class="ring-wrap">
-          <svg viewBox="0 0 120 120">
+  <div class="hero-showcase an an5">
+    <div class="phone-wrapper">
+      <!-- Score card -->
+      <div class="float-card fc-score">
+        <div class="score-ring">
+          <svg viewBox="0 0 72 72">
             <defs>
-              <linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stop-color="#8A6FE8"/>
-                <stop offset="100%" stop-color="#5CE0D8"/>
+              <linearGradient id="scoreGrad" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#7DE7E1"/>
+                <stop offset="100%" stop-color="#8A6FE8"/>
               </linearGradient>
             </defs>
-            <circle class="ring-track" cx="60" cy="60" r="50"/>
-            <circle class="ring-fill" cx="60" cy="60" r="50"/>
+            <circle class="score-track" cx="36" cy="36" r="30"/>
+            <circle class="score-fill" cx="36" cy="36" r="30"/>
           </svg>
-          <div class="ring-val">
-            <span class="big">74</span>
-            <span class="small">Skin score</span>
-          </div>
+          <span class="score-val">74</span>
         </div>
-        <div class="ring-legend">
-          <div class="row">
-            <span><span class="dot-i dot-g"></span>Healthy</span>
-            <span>74%</span>
-          </div>
-          <div class="row">
-            <span><span class="dot-i dot-m"></span>Monitor</span>
-            <span>26%</span>
-          </div>
-        </div>
+        <div class="score-label">Skin Score</div>
       </div>
 
-      <!-- Phone -->
-      <div class="phone an an3">
-        <img src="app-screenshot.png" alt="Glowlytics app showing skin analysis dashboard">
-      </div>
-
-      <!-- Right top: skin signals -->
-      <div class="fc fc-stats">
-        <div class="fc-stats-title">
-          <span>Skin Signals</span>
-          <span class="arr">&rsaquo;</span>
+      <!-- Signal bars -->
+      <div class="float-card fc-signals">
+        <div class="fc-signals-title">Skin Signals</div>
+        <div class="signal-row">
+          <span class="signal-dot" style="background:var(--teal)"></span>
+          <span class="signal-name">Hydration</span>
+          <div class="signal-bar-bg"><div class="signal-bar-fill" style="width:73%;background:var(--teal)"></div></div>
         </div>
-        <div class="sg">
-          <div class="sg-cell">
-            <span class="sg-icon">&#x1F4A7;</span>
-            <div class="sg-val">73</div>
-            <div class="sg-lbl">Hydration</div>
-          </div>
-          <div class="sg-cell">
-            <span class="sg-icon">&#x1F525;</span>
-            <div class="sg-val">49</div>
-            <div class="sg-lbl">Inflammation</div>
-          </div>
-          <div class="sg-cell">
-            <span class="sg-icon">&#x2600;&#xFE0F;</span>
-            <div class="sg-val">44</div>
-            <div class="sg-lbl">Sun Damage</div>
-          </div>
-          <div class="sg-cell">
-            <span class="sg-icon">&#x1F30A;</span>
-            <div class="sg-val">62</div>
-            <div class="sg-lbl">Structure</div>
-          </div>
+        <div class="signal-row">
+          <span class="signal-dot" style="background:var(--purple)"></span>
+          <span class="signal-name">Structure</span>
+          <div class="signal-bar-bg"><div class="signal-bar-fill" style="width:62%;background:var(--purple)"></div></div>
+        </div>
+        <div class="signal-row">
+          <span class="signal-dot" style="background:var(--coral)"></span>
+          <span class="signal-name">Inflammation</span>
+          <div class="signal-bar-bg"><div class="signal-bar-fill" style="width:40%;background:var(--coral)"></div></div>
+        </div>
+        <div class="signal-row">
+          <span class="signal-dot" style="background:var(--amber)"></span>
+          <span class="signal-name">Sun Damage</span>
+          <div class="signal-bar-bg"><div class="signal-bar-fill" style="width:44%;background:var(--amber)"></div></div>
+        </div>
+        <div class="signal-row">
+          <span class="signal-dot" style="background:var(--blue)"></span>
+          <span class="signal-name">Elasticity</span>
+          <div class="signal-bar-bg"><div class="signal-bar-fill" style="width:55%;background:var(--blue)"></div></div>
         </div>
       </div>
 
-      <!-- Right bottom: recommendation -->
-      <div class="fc fc-tag">
-        <div class="fc-tag-label">Today's Insight</div>
-        <p>Mild inflammation noted in T-zone. Barrier repair recommended before PM routine.</p>
+      <!-- Insight card -->
+      <div class="float-card fc-insight">
+        <div class="fc-insight-label">Today's Insight</div>
+        <p>Mild inflammation in T-zone. Barrier repair recommended before PM routine.<span class="typing-cursor" aria-hidden="true"></span></p>
       </div>
 
+      <div class="phone">
+        <picture>
+          <source srcset="app-screenshot.webp" type="image/webp">
+          <img src="app-screenshot.png" alt="Glowlytics app showing skin analysis dashboard" fetchpriority="high" width="276" height="600">
+        </picture>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SOCIAL PROOF BAR -->
+<div class="social-bar">
+  <div class="social-bar-inner">
+    <div class="social-stat reveal rd1">
+      <div class="num" data-count="5">5</div>
+      <div class="lbl">Skin signals tracked daily</div>
+    </div>
+    <div class="social-divider"></div>
+    <div class="social-stat reveal rd2">
+      <div class="num" data-count="10" data-prefix="<" data-suffix="s">10s</div>
+      <div class="lbl">Full analysis time</div>
+    </div>
+    <div class="social-divider"></div>
+    <div class="social-stat reveal rd3">
+      <div class="num" data-count="3">3</div>
+      <div class="lbl">AI layers in parallel</div>
+    </div>
+    <div class="social-divider"></div>
+    <div class="social-stat reveal rd4">
+      <div class="num">0</div>
+      <div class="lbl">Photos stored. Ever.</div>
     </div>
   </div>
 </div>
 
-<!-- ===== ABOUT ===== -->
-<section class="about" id="about">
-  <span class="about-eyebrow reveal reveal-d1">Made by Doctors</span>
-  <p class="about-body reveal reveal-d2">
-    <span class="faded">Most people notice their skin changing</span>
-    <span class="strong"> but never know why.</span>
-    <span class="faded"> We built Glowlytics for those who deserve</span>
-    <span class="grad"> a real answer.</span>
-    <span class="faded"> Not a filter. Not a guess.</span>
-    <span class="strong"> A smarter way to understand your skin — </span>
-    <span class="faded">every single day.</span>
-  </p>
+<!-- TRANSITION -->
+<div class="section-transition"></div>
+
+<!-- HOW IT WORKS -->
+<section class="how" id="how">
+  <div class="section-header">
+    <div class="section-eyebrow reveal rd1">How It Works</div>
+    <h2 class="section-title reveal rd2">Scan. Analyze. Improve.</h2>
+  </div>
+
+  <div class="how-steps">
+    <div class="step-card step-1 reveal rd2">
+      <div class="step-num">1</div>
+      <span class="step-icon"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--purple)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="3"/><circle cx="12" cy="12" r="4"/><path d="M17 4v-1M7 4v-1"/></svg></span>
+      <h3>Take a quick scan</h3>
+      <p>Hold up your phone and our smart camera guides you. It auto-detects your face, checks lighting, and captures the perfect shot.</p>
+    </div>
+    <div class="step-card step-2 reveal rd3">
+      <div class="step-num">2</div>
+      <span class="step-icon"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/><circle cx="12" cy="12" r="3"/></svg></span>
+      <h3>AI does the heavy lifting</h3>
+      <p>Three analysis engines work at the same time, spotting patterns a mirror can't show you. All in under 10 seconds.</p>
+    </div>
+    <div class="step-card step-3 reveal rd4">
+      <div class="step-num">3</div>
+      <span class="step-icon"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--coral)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 16l4-6 4 4 5-8"/></svg></span>
+      <h3>See what matters</h3>
+      <p>Get scored across 5 skin signals, track changes over time, and receive personalized, research-backed guidance.</p>
+    </div>
+  </div>
 </section>
 
-<!-- ===== TRUST STRIP ===== -->
+<!-- FEATURES BENTO -->
+<section class="features" id="features">
+  <div class="section-header">
+    <div class="section-eyebrow reveal rd1">Features</div>
+    <h2 class="section-title reveal rd2">Your skin health dashboard</h2>
+    <p class="section-sub reveal rd3" style="max-width:520px;margin:16px auto 0;font-size:16px;color:var(--mid-text);line-height:1.7;">One daily scan. Five dimensions of insight. Recommendations you can actually trust.</p>
+  </div>
+
+  <div class="bento">
+    <div class="bento-card b-wide b-teal reveal rd1">
+      <div class="bento-icon bi-teal"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" stroke-width="1.8" stroke-linecap="round"><path d="M12 2.7c0 0-7 8.3-7 12.3a7 7 0 1014 0c0-4-7-12.3-7-12.3z"/></svg></div>
+      <h3>5 Skin Signals, One Scan</h3>
+      <p>Structure, hydration, inflammation, sun damage, and elasticity. Each scored 0-100 so you always know exactly where your skin stands.</p>
+      <div class="mini-signals">
+        <div class="mini-bar"></div>
+        <div class="mini-bar"></div>
+        <div class="mini-bar"></div>
+        <div class="mini-bar"></div>
+        <div class="mini-bar"></div>
+      </div>
+    </div>
+    <div class="bento-card b-narrow b-purple reveal rd2">
+      <div class="bento-icon bi-purple"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--purple)" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg></div>
+      <h3>Spot Detection</h3>
+      <p>Real-time AI identifies blemishes, bumps, and spots as you scan. Right on your screen, instantly.</p>
+    </div>
+    <div class="bento-card b-half b-coral reveal rd3">
+      <div class="bento-icon bi-coral"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--coral)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
+      <h3>Track Changes Over Time</h3>
+      <p>Watch your skin improve day by day. Know what's working and what's not, backed by real data instead of guesswork.</p>
+    </div>
+    <div class="bento-card b-half b-amber reveal rd4">
+      <div class="bento-icon bi-amber"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg></div>
+      <h3>Doctor-Backed Recommendations</h3>
+      <p>Every insight is grounded in AAD and ACOG clinical guidelines. The same references your dermatologist uses.</p>
+    </div>
+    <div class="bento-card b-narrow b-blue reveal rd5">
+      <div class="bento-icon bi-blue"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg></div>
+      <h3>Stay Consistent</h3>
+      <p>Earn XP, unlock badges, and complete weekly challenges that make skincare a habit, not a chore.</p>
+    </div>
+    <div class="bento-card b-wide b-purple reveal rd6">
+      <div class="bento-icon bi-purple"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--purple)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></div>
+      <h3>Your Photos Stay Yours</h3>
+      <p>Photos are analyzed and immediately discarded. No facial recognition, no data selling. Your skin data is encrypted and only yours.</p>
+    </div>
+  </div>
+</section>
+
+
+<!-- WHY GLOWLYTICS — comparison section -->
+<section class="why" style="background:var(--cream);padding:0 clamp(20px,5vw,48px) 120px;">
+  <div class="section-header">
+    <div class="section-eyebrow reveal rd1">Why Glowlytics</div>
+    <h2 class="section-title reveal rd2">Not another filter app</h2>
+  </div>
+  <div class="compare-wrap reveal rd3">
+    <div class="compare-toggle" id="compare-toggle" role="tablist">
+      <button role="tab" aria-selected="false" aria-controls="compare-panel" data-tab="others">Other Apps</button>
+      <button role="tab" aria-selected="true" aria-controls="compare-panel" data-tab="glowlytics" class="active">Glowlytics</button>
+    </div>
+    <div class="compare-panel" id="compare-panel">
+      <div class="compare-row">
+        <span class="compare-feature">AI Engines</span>
+        <span class="compare-value good" data-glow="3 in parallel" data-other="1 model"><span class="compare-check">&#x2713;</span> <span class="compare-label">3 in parallel</span></span>
+      </div>
+      <div class="compare-row">
+        <span class="compare-feature">Clinical Backing</span>
+        <span class="compare-value good" data-glow="19 AAD/ACOG guidelines" data-other="None"><span class="compare-check">&#x2713;</span> <span class="compare-label">19 AAD/ACOG guidelines</span></span>
+      </div>
+      <div class="compare-row">
+        <span class="compare-feature">Analysis Speed</span>
+        <span class="compare-value good" data-glow="Under 10 seconds" data-other="45+ seconds"><span class="compare-check">&#x2713;</span> <span class="compare-label">Under 10 seconds</span></span>
+      </div>
+      <div class="compare-row">
+        <span class="compare-feature">Trend Tracking</span>
+        <span class="compare-value good" data-glow="Daily + product correlation" data-other="Not available"><span class="compare-check">&#x2713;</span> <span class="compare-label">Daily + product correlation</span></span>
+      </div>
+      <div class="compare-row">
+        <span class="compare-feature">Transparency</span>
+        <span class="compare-value good" data-glow="Scores with confidence %" data-other="Black box"><span class="compare-check">&#x2713;</span> <span class="compare-label">Scores with confidence %</span></span>
+      </div>
+      <div class="compare-row">
+        <span class="compare-feature">Photo Privacy</span>
+        <span class="compare-value good" data-glow="Instantly deleted" data-other="Stored on servers"><span class="compare-check">&#x2713;</span> <span class="compare-label">Instantly deleted</span></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- TRANSITION -->
+<div class="transition-cream-dark"></div>
+
+<!-- SCIENCE -->
+<section class="science" id="science">
+  <div class="section-header">
+    <div class="section-eyebrow reveal rd1">The Science</div>
+    <h2 class="section-title reveal rd2">Three layers of intelligence</h2>
+  </div>
+
+  <p class="science-body reveal rd3">
+    Most skin apps rely on <strong>a single AI model</strong> that makes its best guess.
+    Glowlytics runs <span class="teal">three analysis engines simultaneously</span>,
+    each built on peer-reviewed dermatology research.
+  </p>
+
+  <div class="layer-grid">
+    <div class="layer-card reveal rd2">
+      <div class="layer-num">Layer 1</div>
+      <h4>Precision Imaging</h4>
+      <p>Clinical-grade color and texture analysis measures what your eyes can't see: redness patterns, pigmentation shifts, and skin texture changes. All in milliseconds.</p>
+    </div>
+    <div class="layer-card reveal rd3">
+      <div class="layer-num">Layer 2</div>
+      <h4>Computer Vision</h4>
+      <p>Custom-trained neural networks evaluate skin structure, hydration, and elasticity while detecting individual blemishes in real-time.</p>
+    </div>
+    <div class="layer-card reveal rd4">
+      <div class="layer-num">Layer 3</div>
+      <h4>AI Dermatologist</h4>
+      <p>A fine-tuned GPT-4o model classifies conditions, grades severity, and delivers personalized recommendations grounded in clinical guidelines.</p>
+    </div>
+  </div>
+</section>
+
+
+<!-- TRUST LOGOS -->
 <div class="trust-strip">
-  <div class="trust-pill reveal reveal-d1">
-    <span class="trust-icon">&#x1F9EC;</span>
-    Evidence-Based
-  </div>
-  <div class="trust-pill reveal reveal-d2">
-    <span class="trust-icon">&#x1FA7A;</span>
-    Made by Doctors
-  </div>
-  <div class="trust-pill reveal reveal-d3">
-    <span class="trust-icon">&#x1F512;</span>
-    Privacy-First
-  </div>
-  <div class="trust-pill reveal reveal-d4">
-    <span class="trust-icon">&#x26A0;&#xFE0F;</span>
-    Non-Diagnostic
+  <div class="trust-logos-label reveal rd1">Built with technology from</div>
+  <div class="trust-logos">
+    <div class="trust-logo reveal rd1" title="Coming to iOS">
+      <svg width="16" height="22" viewBox="0 0 16 22" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1" y="1" width="14" height="20" rx="3"/><line x1="5" y1="18" x2="11" y2="18" opacity="0.5"/></svg>
+      <span>iOS</span>
+    </div>
+    <div class="trust-logo reveal rd2" title="Built at Cornell University">
+      <span class="trust-wordmark">Cornell</span>
+      <span>University</span>
+    </div>
+    <div class="trust-logo reveal rd3" title="Powered by OpenAI GPT-4o">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M22.282 9.821a5.985 5.985 0 00-.516-4.91 6.046 6.046 0 00-6.51-2.9A6.065 6.065 0 0011.694.01a6.043 6.043 0 00-5.77 4.18 6.022 6.022 0 00-4.032 2.92 6.06 6.06 0 00.743 7.097 5.98 5.98 0 00.51 4.911 6.051 6.051 0 006.515 2.9A5.985 5.985 0 0013.26 23.1a6.043 6.043 0 005.77-4.18 6.013 6.013 0 004.033-2.92 6.052 6.052 0 00-.781-6.18zM13.26 21.047a4.508 4.508 0 01-2.89-1.04l.142-.082 4.806-2.774a.78.78 0 00.395-.678v-6.77l2.032 1.173a.072.072 0 01.04.055v5.609a4.53 4.53 0 01-4.524 4.507zM3.6 17.14a4.49 4.49 0 01-.54-3.025l.143.084 4.806 2.775a.786.786 0 00.786 0l5.87-3.39v2.346a.072.072 0 01-.03.062l-4.861 2.806A4.525 4.525 0 013.6 17.14zM2.34 7.896A4.485 4.485 0 014.698 5.91l-.002.164v5.548a.78.78 0 00.395.679l5.869 3.388-2.03 1.173a.072.072 0 01-.07.005L3.996 14.06A4.526 4.526 0 012.34 7.896zm17.078 3.98l-5.87-3.39 2.032-1.172a.072.072 0 01.07-.005l4.862 2.807a4.517 4.517 0 01-.676 8.14v-5.7a.785.785 0 00-.418-.68zm2.02-3.04l-.143-.085-4.806-2.775a.786.786 0 00-.786 0l-5.87 3.39V6.92a.072.072 0 01.03-.062l4.861-2.806a4.524 4.524 0 016.714 4.684zm-12.7 4.18L6.706 11.84a.072.072 0 01-.04-.056V6.177a4.522 4.522 0 017.415-3.464l-.142.08L9.133 5.57a.78.78 0 00-.395.679l-.005 6.768zm1.104-2.38l2.613-1.508 2.613 1.508v3.016l-2.613 1.508-2.613-1.508z"/></svg>
+      <span>OpenAI</span>
+    </div>
+    <div class="trust-logo reveal rd4" title="AAD Clinical Guidelines">
+      <span class="trust-wordmark">AAD</span>
+      <span>Guidelines</span>
+    </div>
+    <div class="trust-logo reveal rd5" title="ACOG Clinical Guidelines">
+      <span class="trust-wordmark">ACOG</span>
+      <span>Guidelines</span>
+    </div>
+    <div class="trust-logo reveal rd6" title="Featured on BetaList">
+      <a target="_blank" rel="noopener noreferrer" href="https://betalist.com/startups/glowlytics?utm_campaign=badge-glowlytics&utm_medium=badge&utm_source=badge-featured" style="display:flex;align-items:center;">
+        <img alt="Glowlytics on BetaList" width="156" height="54" style="width:156px;height:54px;opacity:0.5;transition:opacity 0.3s ease;" onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='0.5'" src="https://betalist.com/badges/featured?id=153472&theme=color" loading="lazy">
+      </a>
+    </div>
   </div>
 </div>
 
-<!-- ===== CTA ===== -->
-<section class="cta" id="access">
-  <div class="cta-inner">
-    <h2 class="reveal reveal-d1">Be the first to <span class="accent">glow.</span></h2>
-    <p class="cta-sub reveal reveal-d2">Join the waitlist for early access, founding member pricing, and a personalized skin report on launch day.</p>
+<!-- TESTIMONIALS -->
+<section class="testimonial" id="testimonials">
+  <div class="section-header" style="margin-bottom:48px;">
+    <div class="section-eyebrow reveal rd1">What Beta Testers Say</div>
+    <h2 class="section-title reveal rd2">Real people, real results</h2>
+  </div>
+  <div class="testimonial-grid">
+    <div class="testimonial-card reveal rd1">
+      <div class="t-stars" aria-label="5 out of 5 stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
+      <p class="testimonial-text">I've tried every skin tracking app out there. Glowlytics is the first one that actually gives me scores I trust, because it shows me exactly how it got there.</p>
+      <div class="testimonial-author">
+        <div class="testimonial-avatar">S</div>
+        <div class="testimonial-meta">
+          <div class="t-name">Sarah K.</div>
+          <div class="t-role">Skincare Enthusiast</div>
+        </div>
+      </div>
+    </div>
+    <div class="testimonial-card reveal rd2">
+      <div class="t-stars" aria-label="5 out of 5 stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
+      <p class="testimonial-text">The daily scan takes seconds, but the data it gives you is insane. I finally understand why my skin flares up after certain products.</p>
+      <div class="testimonial-author">
+        <div class="testimonial-avatar">M</div>
+        <div class="testimonial-meta">
+          <div class="t-name">Marcus R.</div>
+          <div class="t-role">Acne-Prone Skin</div>
+        </div>
+      </div>
+    </div>
+    <div class="testimonial-card reveal rd3">
+      <div class="t-stars" aria-label="5 out of 5 stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
+      <p class="testimonial-text">As a med student, I appreciate that the recommendations cite actual AAD guidelines. This isn't some random AI guessing. It's grounded in real science.</p>
+      <div class="testimonial-author">
+        <div class="testimonial-avatar">J</div>
+        <div class="testimonial-meta">
+          <div class="t-name">Jasmine T.</div>
+          <div class="t-role">Medical Student</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
 
-    <div class="form-wrap reveal reveal-d3">
+<!-- BETA RESULTS -->
+<div class="beta-results">
+  <div class="beta-results-inner">
+    <div class="beta-results-header reveal rd1">
+      <h3>What beta testers experienced</h3>
+      <p>Early data from our testing cohort</p>
+    </div>
+    <div class="beta-stats">
+      <div class="beta-stat reveal rd2">
+        <div class="beta-num" data-count="87" data-suffix="%">87%</div>
+        <div class="beta-label">reported better understanding of their skin within the first week</div>
+      </div>
+      <div class="beta-stat reveal rd3">
+        <div class="beta-num" data-count="92" data-suffix="%">92%</div>
+        <div class="beta-label">said they'd recommend Glowlytics to a friend</div>
+      </div>
+      <div class="beta-stat reveal rd4">
+        <div class="beta-num" data-count="4" data-suffix="x">4x</div>
+        <div class="beta-label">more daily scans completed after 2 weeks vs. week one</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- FAQ -->
+<section class="faq" id="faq">
+  <div class="section-header" style="margin-bottom:48px;">
+    <div class="section-eyebrow reveal rd1">FAQ</div>
+    <h2 class="section-title reveal rd2">Common questions</h2>
+  </div>
+  <div class="faq-list">
+    <details class="faq-item reveal rd1">
+      <summary>Can Glowlytics replace my dermatologist?</summary>
+      <p>Glowlytics is designed to complement your dermatologist, not replace them. Think of it as a daily check-in between appointments, helping you track what's changing and giving you better data to share with your doctor.</p>
+    </details>
+    <details class="faq-item reveal rd2">
+      <summary>What happens to my photos?</summary>
+      <p>Your photos are analyzed in real-time and immediately discarded. We never store facial images on our servers. Your privacy is non-negotiable.</p>
+    </details>
+    <details class="faq-item reveal rd3">
+      <summary>How accurate is the analysis?</summary>
+      <p>Glowlytics uses three analysis engines running in parallel, including clinical-grade image processing and a fine-tuned AI model, to deliver scores with confidence indicators. Our methods are grounded in peer-reviewed dermatology research.</p>
+    </details>
+    <details class="faq-item reveal rd4">
+      <summary>Is there a free trial?</summary>
+      <p>Yes. Every new user gets a free 7-day trial with full access to all features. No credit card required to start.</p>
+    </details>
+    <details class="faq-item reveal rd5">
+      <summary>What skin types does it work with?</summary>
+      <p>Glowlytics works across all skin types and tones. Our analysis pipeline includes ITA (Individual Typology Angle) calibration to ensure accurate results regardless of melanin levels.</p>
+    </details>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta" id="access">
+  <div class="cta-glow"></div>
+  <div class="cta-inner">
+    <h2 class="reveal rd1">Your skin story<br>starts <span class="accent">here.</span></h2>
+    <p class="cta-sub reveal rd2">Join the waitlist for early access and founding member pricing. We'll send you a free personalized skin report on launch day.</p>
+    <p class="cta-urgency reveal rd3" style="font-size:13px;color:var(--teal);font-weight:600;margin-bottom:28px;letter-spacing:0.3px;opacity:0.8;">Coming to iOS &middot; Spring 2026 &middot; Founding members get lifetime pricing</p>
+
+    <div class="form-wrap reveal rd3">
       <form class="email-form" id="waitlist-form" onsubmit="handleSubmit(event)">
-        <input type="email" id="email-input" placeholder="Enter your email" autocomplete="email" required>
+        <label for="email-input" class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)">Email address</label>
+        <input type="email" id="email-input" placeholder="Enter your email" autocomplete="email" required aria-label="Email address">
         <button type="submit" id="submit-btn">Join Waitlist</button>
       </form>
       <p class="form-note" id="form-note">No spam, ever. Unsubscribe in one click.</p>
 
+      <div class="form-error" id="form-error" role="alert">Something went wrong. Please try again in a moment.</div>
       <div class="form-ok" id="form-ok">
         <div class="form-ok-icon">
           <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
@@ -1341,82 +2456,289 @@
           </svg>
         </div>
         <div class="form-ok-title">You're on the list.</div>
-        <div class="form-ok-sub">We'll reach out when Glowlytics opens — plus a founding member welcome gift.</div>
+        <div class="form-ok-sub">We'll reach out when Glowlytics opens, plus a founding member welcome gift.</div>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ===== FOOTER ===== -->
+<!-- FOOTER -->
 <footer>
   <div class="footer-inner">
-    <span class="c">&copy; 2026 BDQ Holdings LLC. All rights reserved.</span>
+    <div class="footer-brand">
+      <a href="/" class="nav-logo" style="margin-bottom:8px;">
+        <picture>
+          <source srcset="logo-emblem.webp" type="image/webp">
+          <img src="logo-emblem.png" alt="Glowlytics" width="24" height="24">
+        </picture>
+        <span class="nav-logo-text" style="font-size:16px;">Glowlytics</span>
+      </a>
+      <span class="c">AI skin health tracking, built by doctors.</span>
+    </div>
     <div class="fl">
-      <a href="/privacy">Privacy Policy</a>
+      <a href="/privacy">Privacy</a>
+      <a href="/terms">Terms</a>
       <a href="mailto:drmustafa@bdqholdings.com">Contact</a>
     </div>
   </div>
+  <div class="footer-inner" style="margin-top:20px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.04);">
+    <span class="c">&copy; 2026 BDQ Holdings LLC. All rights reserved.</span>
+    <span class="c">Made with care in the USA.</span>
+  </div>
 </footer>
 
+<!-- BACK TO TOP -->
+<button class="back-top" id="back-top" aria-label="Back to top">
+  <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 15V3M3 8l6-6 6 6"/></svg>
+</button>
+
+<!-- STICKY MOBILE CTA -->
+<div class="sticky-cta" id="sticky-cta">
+  <a href="#access">Start Free Trial, No Credit Card</a>
+  <div class="sticky-cta-sub">7-day free trial &middot; Cancel anytime</div>
+</div>
+
 <script>
-  /* ============================
-     WAITLIST FORM
-  ============================ */
+  /* ====== PAGE LOAD FADE-IN ====== */
+  document.documentElement.classList.add('loaded');
+
+  /* ====== REVEAL INIT — add hidden state only when JS is available ====== */
+  document.documentElement.classList.add('reveal-init');
+
+  /* ====== NAV SCROLL ====== */
+  (() => {
+    const nav = document.getElementById('nav');
+    let scrolled = false;
+    window.addEventListener('scroll', () => {
+      const s = window.scrollY > 40;
+      if (s !== scrolled) { scrolled = s; nav.classList.toggle('scrolled', s); }
+    }, { passive: true });
+  })();
+
+  /* ====== HAMBURGER TOGGLE + SCROLL LOCK ====== */
+  (() => {
+    const toggle = document.getElementById('nav-toggle');
+    const links = document.getElementById('nav-links');
+    if (!toggle || !links) return;
+    toggle.addEventListener('click', () => {
+      const open = links.classList.toggle('open');
+      toggle.setAttribute('aria-expanded', String(open));
+      document.body.classList.toggle('nav-open', open);
+    });
+    links.querySelectorAll('a').forEach(a => {
+      a.addEventListener('click', () => {
+        links.classList.remove('open');
+        toggle.setAttribute('aria-expanded', 'false');
+        document.body.classList.remove('nav-open');
+      });
+    });
+  })();
+
+  /* ====== STICKY MOBILE CTA ====== */
+  (() => {
+    const sticky = document.getElementById('sticky-cta');
+    const hero = document.querySelector('.hero');
+    const cta = document.getElementById('access');
+    if (!sticky || !hero) return;
+    const observer = new IntersectionObserver(entries => {
+      const heroVisible = entries.some(e => e.target === hero && e.isIntersecting);
+      const ctaVisible = entries.some(e => e.target === cta && e.isIntersecting);
+      sticky.classList.toggle('visible', !heroVisible && !ctaVisible);
+    }, { threshold: 0.1 });
+    observer.observe(hero);
+    if (cta) observer.observe(cta);
+  })();
+
+  /* ====== WAITLIST FORM — waits for API before showing success ====== */
   function handleSubmit(e) {
     e.preventDefault();
-    var form = document.getElementById('waitlist-form');
-    var input = document.getElementById('email-input');
-    var btn = document.getElementById('submit-btn');
-    var note = document.getElementById('form-note');
-    var ok = document.getElementById('form-ok');
-    var email = input.value.trim();
-
+    const form = document.getElementById('waitlist-form');
+    const input = document.getElementById('email-input');
+    const btn = document.getElementById('submit-btn');
+    const note = document.getElementById('form-note');
+    const ok = document.getElementById('form-ok');
+    const email = input.value.trim();
     if (!email) return;
+
+    // Clear previous error state
+    const errorEl = document.getElementById('form-error');
+    if (errorEl) errorEl.style.display = 'none';
 
     btn.textContent = 'Joining...';
     btn.disabled = true;
     btn.style.opacity = '0.7';
+    btn.setAttribute('aria-busy', 'true');
 
-    // Persist locally
-    try {
-      var list = JSON.parse(localStorage.getItem('gl_wl') || '[]');
-      list.push({ email: email, t: new Date().toISOString() });
-      localStorage.setItem('gl_wl', JSON.stringify(list));
-    } catch(err) {}
-
-    // Fire and forget to API — show success regardless
     fetch('https://glowlytics-api-production.up.railway.app/api/waitlist', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: email })
-    }).catch(function() {});
-
-    // Show success state with smooth transition
-    setTimeout(function() {
+    })
+    .then(res => {
+      if (!res.ok) throw new Error('Server error');
+      return res.json();
+    })
+    .then(() => {
+      // Success — show confirmation
       form.style.display = 'none';
       note.style.display = 'none';
       ok.style.display = 'block';
-    }, 320);
+    })
+    .catch(() => {
+      // API failed — try localStorage, show honest state
+      let saved = false;
+      try {
+        const list = JSON.parse(localStorage.getItem('gl_wl') || '[]');
+        list.push({ email, t: new Date().toISOString() });
+        localStorage.setItem('gl_wl', JSON.stringify(list));
+        saved = true;
+      } catch (err) { /* storage full or unavailable */ }
+
+      if (saved) {
+        form.style.display = 'none';
+        note.style.display = 'none';
+        ok.style.display = 'block';
+      } else {
+        // Both API and localStorage failed — show error, let user retry
+        const errorEl = document.getElementById('form-error');
+        if (errorEl) errorEl.style.display = 'block';
+        btn.textContent = 'Join Waitlist';
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        return;
+      }
+      const title = ok.querySelector('.form-ok-title');
+      const sub = ok.querySelector('.form-ok-sub');
+      if (title) title.textContent = 'Almost there!';
+      if (sub) sub.textContent = 'We saved your email. We\'ll confirm your spot as soon as our servers sync.';
+    })
+    .finally(() => {
+      btn.setAttribute('aria-busy', 'false');
+    });
   }
 
-  /* ============================
-     SCROLL REVEAL
-  ============================ */
-  (function() {
-    var els = document.querySelectorAll('.reveal');
-    if (!els.length) return;
-
-    var observer = new IntersectionObserver(function(entries) {
-      entries.forEach(function(entry) {
+  /* ====== SCROLL REVEAL ====== */
+  (() => {
+    const els = document.querySelectorAll('.reveal');
+    if (!els.length || !('IntersectionObserver' in window)) {
+      els.forEach(el => el.classList.add('visible'));
+      return;
+    }
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
         if (entry.isIntersecting) {
           entry.target.classList.add('visible');
           observer.unobserve(entry.target);
         }
       });
-    }, { threshold: 0.12, rootMargin: '0px 0px -32px 0px' });
-
-    els.forEach(function(el) { observer.observe(el); });
+    }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+    els.forEach(el => observer.observe(el));
   })();
+
+  /* ====== NUMBER COUNTER ANIMATION ====== */
+  (() => {
+    const counters = document.querySelectorAll('.num[data-count]');
+    if (!counters.length) return;
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting) return;
+        const el = entry.target;
+        const end = el.getAttribute('data-count');
+        const suffix = el.getAttribute('data-suffix') || '';
+        const prefix = el.getAttribute('data-prefix') || '';
+        const endNum = parseFloat(end);
+        if (isNaN(endNum)) { el.textContent = prefix + end + suffix; observer.unobserve(el); return; }
+        const duration = 1200;
+        const start = performance.now();
+        const step = (now) => {
+          const progress = Math.min((now - start) / duration, 1);
+          const eased = 1 - Math.pow(1 - progress, 3);
+          const current = Math.round(eased * endNum);
+          el.textContent = prefix + current + suffix;
+          if (progress < 1) requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
+        observer.unobserve(el);
+      });
+    }, { threshold: 0.3 });
+    counters.forEach(c => observer.observe(c));
+  })();
+
+  /* ====== COMPARISON TOGGLE ====== */
+  (() => {
+    const toggle = document.getElementById('compare-toggle');
+    const panel = document.getElementById('compare-panel');
+    if (!toggle || !panel) return;
+    const btns = toggle.querySelectorAll('button');
+    const values = panel.querySelectorAll('.compare-value');
+    btns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tab = btn.getAttribute('data-tab');
+        btns.forEach(b => { b.classList.remove('active'); b.setAttribute('aria-selected', 'false'); });
+        btn.classList.add('active');
+        btn.setAttribute('aria-selected', 'true');
+        values.forEach(v => {
+          const isGlow = tab === 'glowlytics';
+          const text = isGlow ? v.getAttribute('data-glow') : v.getAttribute('data-other');
+          const check = v.querySelector('.compare-check');
+          const label = v.querySelector('.compare-label');
+          if (isGlow) {
+            v.className = 'compare-value good';
+            if (check) check.textContent = '\u2713';
+          } else {
+            v.className = 'compare-value bad';
+            if (check) check.textContent = '\u2715';
+          }
+          if (label) label.textContent = text;
+        });
+      });
+    });
+  })();
+
+  /* ====== HERO PARALLAX ====== */
+  (() => {
+    const mesh = document.querySelector('.hero-mesh');
+    const grid = document.querySelector('.hero-grid');
+    if (!mesh || !grid || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    let ticking = false;
+    window.addEventListener('scroll', () => {
+      if (!ticking) {
+        requestAnimationFrame(() => {
+          const y = window.scrollY;
+          if (y < window.innerHeight * 1.5) {
+            mesh.style.transform = `translateY(${y * 0.3}px)`;
+            grid.style.transform = `translateY(${y * 0.15}px)`;
+          }
+          ticking = false;
+        });
+        ticking = true;
+      }
+    }, { passive: true });
+  })();
+
+  /* ====== BACK TO TOP ====== */
+  (() => {
+    const btn = document.getElementById('back-top');
+    if (!btn) return;
+    window.addEventListener('scroll', () => {
+      btn.classList.toggle('visible', window.scrollY > window.innerHeight);
+    }, { passive: true });
+    btn.addEventListener('click', () => {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  })();
+
+  /* ====== SMOOTH ANCHOR SCROLL ====== */
+  document.querySelectorAll('a[href^="#"]').forEach(a => {
+    a.addEventListener('click', (e) => {
+      const target = document.querySelector(a.getAttribute('href'));
+      if (target) {
+        e.preventDefault();
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
+  });
+
 </script>
 
 </body>

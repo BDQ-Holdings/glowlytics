@@ -22,7 +22,7 @@
   },
   "ageRating": "12+",
   "contentDescriptions": {
-    "medicalInfo": true,
+    "medicalInfo": false,
     "userGeneratedContent": false
   }
 }

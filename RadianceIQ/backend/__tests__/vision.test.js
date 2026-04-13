@@ -35,10 +35,12 @@ jest.mock('pg', () => {
 });
 
 const mockQueryGuidelines = jest.fn();
+const mockQueryGuidelinesMulti = jest.fn();
 
 jest.mock('../rag', () => ({
   seedGuidelines: jest.fn(),
   queryGuidelines: mockQueryGuidelines,
+  queryGuidelinesMulti: mockQueryGuidelinesMulti,
 }));
 
 const request = require('supertest');
@@ -75,6 +77,8 @@ function mockVisionResponse(jsonObj) {
 describe('POST /api/vision/analyze', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // Reset rate limiters so tests don't interfere with each other
+    if (app._resetRateLimiters) app._resetRateLimiters();
     // By default, PINECONE_API_KEY is not set so RAG is skipped
     delete process.env.PINECONE_API_KEY;
   });
@@ -428,19 +432,23 @@ describe('POST /api/vision/analyze', () => {
     };
     mockVisionResponse(modelOutput);
 
-    // Mock RAG returning guideline results
-    mockQueryGuidelines.mockResolvedValueOnce([
+    // Mock RAG returning guideline results (now uses queryGuidelinesMulti)
+    mockQueryGuidelinesMulti.mockResolvedValueOnce([
       {
         id: 'aad-acne-mgmt-01',
         score: 0.92,
         text: 'AAD Acne Management: For mild acne, topical retinoids are first-line therapy.',
         category: 'acne_management',
+        signal: 'inflammation',
+        evidence_level: 'A',
       },
       {
         id: 'aad-acne-mgmt-02',
         score: 0.87,
         text: 'AAD Acne Management: For moderate inflammatory acne, combination therapy is recommended.',
         category: 'acne_management',
+        signal: 'inflammation',
+        evidence_level: 'A',
       },
     ]);
 
@@ -454,11 +462,14 @@ describe('POST /api/vision/analyze', () => {
       text: 'AAD Acne Management: For mild acne, topical retinoids are first-line therapy.',
       category: 'acne_management',
       relevance: 0.92,
+      signal: 'inflammation',
+      evidence_level: 'A',
+      source_citation: '',
     });
     expect(res.body.rag_recommendations[1].category).toBe('acne_management');
 
-    // Verify queryGuidelines was called with the primary condition
-    expect(mockQueryGuidelines).toHaveBeenCalledWith('acne treatment recommendation', 3);
+    // Verify queryGuidelinesMulti was called
+    expect(mockQueryGuidelinesMulti).toHaveBeenCalled();
   });
 
   test('response includes empty rag_recommendations when RAG fails (graceful degradation)', async () => {
@@ -476,7 +487,7 @@ describe('POST /api/vision/analyze', () => {
     mockVisionResponse(modelOutput);
 
     // Mock RAG throwing an error
-    mockQueryGuidelines.mockRejectedValueOnce(new Error('Pinecone connection timed out'));
+    mockQueryGuidelinesMulti.mockRejectedValueOnce(new Error('Pinecone connection timed out'));
 
     const res = await request(app)
       .post('/api/vision/analyze')
@@ -509,6 +520,6 @@ describe('POST /api/vision/analyze', () => {
       .expect(200);
 
     expect(res.body.rag_recommendations).toEqual([]);
-    expect(mockQueryGuidelines).not.toHaveBeenCalled();
+    expect(mockQueryGuidelinesMulti).not.toHaveBeenCalled();
   });
 });

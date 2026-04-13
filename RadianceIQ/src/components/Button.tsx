@@ -61,9 +61,11 @@ export const Button: React.FC<Props> = ({
   const sizeConfig = sizeMap[resolvedSize];
   const textColor = disabled
     ? Colors.textMuted
-    : variant === 'ghost'
-      ? Colors.primaryLight
-      : Colors.text;
+    : variant === 'primary'
+      ? Colors.textOnDark
+      : variant === 'ghost'
+        ? Colors.primaryLight
+        : Colors.text;
 
   const content = (
     <View
@@ -127,13 +129,13 @@ const styles = StyleSheet.create({
   },
   primaryShell: {
     borderWidth: 1,
-    borderColor: 'rgba(199, 255, 250, 0.28)',
+    borderColor: 'rgba(58, 158, 143, 0.20)',
     ...Shadows.glow,
   },
   secondaryShell: {
     backgroundColor: Colors.glass,
     borderWidth: 1,
-    borderColor: 'rgba(125, 231, 225, 0.12)',
+    borderColor: 'rgba(58, 158, 143, 0.15)',
   },
   ghostShell: {
     backgroundColor: 'transparent',

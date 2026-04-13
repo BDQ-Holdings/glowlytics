@@ -1,5 +1,6 @@
 import Purchases, {
   type CustomerInfo,
+  type PurchasesOfferings,
   LOG_LEVEL,
 } from 'react-native-purchases';
 import RevenueCatUI, { PAYWALL_RESULT } from 'react-native-purchases-ui';
@@ -7,7 +8,11 @@ import { env } from '../config/env';
 import type { SubscriptionState } from '../types';
 
 const ENTITLEMENT_ID = 'Glow Pro';
-const FREE_SCAN_LIMIT = 3;
+const TRIAL_DAYS = 7;
+
+/** Tracks whether RevenueCat is ready to present a paywall */
+let _paywallReady = false;
+export function isPaywallReady(): boolean { return _paywallReady; }
 
 export const defaultSubscription = (): SubscriptionState => ({
   tier: 'free',
@@ -15,17 +20,57 @@ export const defaultSubscription = (): SubscriptionState => ({
   expires_at: null,
   product_id: null,
   free_scans_used: 0,
+  trial_start_date: null,
+  trial_end_date: null,
 });
 
+const TAG = '[RevenueCat]';
+const log = (...args: unknown[]) => { if (__DEV__) console.log(...args); };
+const warn = (...args: unknown[]) => { if (__DEV__) console.warn(...args); };
+let revenueCatConfigured = false;
+
 export async function initRevenueCat(): Promise<void> {
-  if (!env.REVENUECAT_API_KEY) return;
-  Purchases.setLogLevel(LOG_LEVEL.ERROR);
+  if (!env.REVENUECAT_API_KEY) {
+    log(TAG, 'No API key — skipping init');
+    return;
+  }
+  if (revenueCatConfigured) {
+    log(TAG, 'Already configured — skipping');
+    return;
+  }
+  log(TAG, 'Configuring SDK...');
+  Purchases.setLogLevel(LOG_LEVEL.VERBOSE);
   Purchases.configure({ apiKey: env.REVENUECAT_API_KEY });
+  revenueCatConfigured = true;
+  log(TAG, 'SDK configured successfully');
+
+  // Check offerings to validate paywall readiness
+  try {
+    const offerings = await Purchases.getOfferings();
+    const current = offerings.current;
+    log(TAG, 'Offerings loaded:', {
+      hasCurrent: !!current,
+      currentId: current?.identifier ?? 'NONE',
+      packageCount: current?.availablePackages?.length ?? 0,
+      allOfferingIds: Object.keys(offerings.all),
+    });
+    if (current && current.availablePackages.length > 0) {
+      _paywallReady = true;
+      log(TAG, 'Paywall READY — offerings available');
+    } else {
+      warn(TAG, 'Paywall NOT READY — no current offering or no packages. Check RevenueCat dashboard → Offerings.');
+    }
+  } catch (e: any) {
+    warn(TAG, 'Failed to fetch offerings:', e?.message || e);
+  }
 }
 
-export async function identifyUser(userId: string): Promise<void> {
-  if (!env.REVENUECAT_API_KEY) return;
-  await Purchases.logIn(userId);
+export async function identifyUser(userId: string): Promise<CustomerInfo | null> {
+  if (!env.REVENUECAT_API_KEY) return null;
+  log(TAG, 'Identifying user:', userId);
+  const { customerInfo } = await Purchases.logIn(userId);
+  log(TAG, 'User identified');
+  return customerInfo;
 }
 
 export function subscriptionFromCustomerInfo(
@@ -40,6 +85,8 @@ export function subscriptionFromCustomerInfo(
       expires_at: entitlement.expirationDate,
       product_id: entitlement.productIdentifier,
       free_scans_used: current.free_scans_used,
+      trial_start_date: current.trial_start_date,
+      trial_end_date: current.trial_end_date,
     };
   }
   return {
@@ -55,8 +102,11 @@ export async function checkSubscriptionStatus(
   current: SubscriptionState,
 ): Promise<SubscriptionState> {
   if (!env.REVENUECAT_API_KEY) return current;
+  log(TAG, 'Checking subscription status...');
   const info = await Purchases.getCustomerInfo();
-  return subscriptionFromCustomerInfo(info, current);
+  const result = subscriptionFromCustomerInfo(info, current);
+  log(TAG, 'Subscription status:', result.tier, result.is_active ? '(active)' : '(inactive)');
+  return result;
 }
 
 /**
@@ -66,9 +116,11 @@ export async function checkSubscriptionStatus(
  */
 export async function presentPaywall(): Promise<boolean> {
   if (!env.REVENUECAT_API_KEY) return false;
+  log(TAG, 'Presenting paywall...');
   const result = await RevenueCatUI.presentPaywallIfNeeded({
     requiredEntitlementIdentifier: ENTITLEMENT_ID,
   });
+  log(TAG, 'Paywall result:', result);
   return result === PAYWALL_RESULT.PURCHASED || result === PAYWALL_RESULT.RESTORED;
 }
 
@@ -84,18 +136,98 @@ export async function restorePurchases(
   current: SubscriptionState,
 ): Promise<SubscriptionState> {
   if (!env.REVENUECAT_API_KEY) return current;
+  log(TAG, 'Restoring purchases...');
   const info = await Purchases.restorePurchases();
-  return subscriptionFromCustomerInfo(info, current);
+  const result = subscriptionFromCustomerInfo(info, current);
+  log(TAG, 'Restore result:', result.tier, result.is_active ? '(active)' : '(inactive)');
+  return result;
+}
+
+/** Start a 7-day free trial */
+export function startTrial(): Partial<SubscriptionState> {
+  const now = new Date();
+  const end = new Date(now);
+  end.setDate(end.getDate() + TRIAL_DAYS);
+  log(TAG, 'Starting trial — expires:', end.toISOString());
+  return {
+    trial_start_date: now.toISOString(),
+    trial_end_date: end.toISOString(),
+  };
+}
+
+/** Is the trial still active? */
+export function isTrialActive(sub: SubscriptionState): boolean {
+  if (!sub.trial_end_date) return false;
+  return new Date(sub.trial_end_date) > new Date();
+}
+
+/** Days remaining in trial (0 if expired) */
+export function trialDaysRemaining(sub: SubscriptionState): number {
+  if (!sub.trial_end_date) return 0;
+  const diff = new Date(sub.trial_end_date).getTime() - Date.now();
+  return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
 }
 
 /** Pure — can the user start a scan? */
 export function canScan(subscription: SubscriptionState): boolean {
   if (subscription.is_active) return true;
-  return subscription.free_scans_used < FREE_SCAN_LIMIT;
+  return isTrialActive(subscription);
 }
 
-/** Pure — how many free scans remain? */
-export function remainingFreeScans(subscription: SubscriptionState): number {
-  if (subscription.is_active) return Infinity;
-  return Math.max(0, FREE_SCAN_LIMIT - subscription.free_scans_used);
+/**
+ * Gate an action behind paywall. Presents paywall if needed, refreshes subscription,
+ * returns true if the user can proceed (subscribed or trial active).
+ *
+ * Defensive: if the user has no entitlement AND no trial dates at all, auto-start the
+ * trial before showing the paywall. Fix layer 3 of 3 for the paywall gap — guarantees
+ * no path can lock a user out without having ever offered them the trial.
+ */
+export async function gateWithPaywall(): Promise<boolean> {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { useStore } = require('../store/useStore');
+  if (useStore.getState().canPerformScan()) return true;
+
+  // Defensive: grant trial if the user has never had one
+  const sub = useStore.getState().subscription;
+  if (!sub.is_active && sub.trial_start_date === null && sub.trial_end_date === null) {
+    useStore.getState().startTrial();
+    if (useStore.getState().canPerformScan()) return true;
+  }
+
+  try {
+    const purchased = await presentPaywall();
+    if (purchased) {
+      const refreshed = await checkSubscriptionStatus(useStore.getState().subscription);
+      useStore.getState().setSubscription(refreshed);
+    }
+  } catch {
+    // RevenueCat config error — non-fatal
+  }
+  return useStore.getState().canPerformScan();
+}
+
+/**
+ * Listen for server-side subscription changes (e.g. renewal, expiry, family sharing)
+ * and auto-update Zustand state. Returns an unsubscribe function for cleanup.
+ * Uses lazy require to avoid circular dependency (hoisted outside callback).
+ */
+export function setupCustomerInfoListener(): () => void {
+  if (!env.REVENUECAT_API_KEY) return () => {};
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { useStore } = require('../store/useStore');
+  const listener = (info: CustomerInfo) => {
+    const state = useStore.getState();
+    const current = state.subscription;
+    const updated = subscriptionFromCustomerInfo(info, current);
+    // Skip no-op updates to avoid redundant persists
+    if (
+      updated.tier === current.tier &&
+      updated.is_active === current.is_active &&
+      updated.expires_at === current.expires_at &&
+      updated.product_id === current.product_id
+    ) return;
+    state.setSubscription(updated);
+  };
+  Purchases.addCustomerInfoUpdateListener(listener);
+  return () => Purchases.removeCustomerInfoUpdateListener(listener);
 }

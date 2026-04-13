@@ -10,42 +10,13 @@ import {
   FontSize,
   Spacing,
 } from '../src/constants/theme';
+import { METRIC_GUIDE } from '../src/constants/signals';
 import {
   buildOverallSkinInsight,
   getLatestDailyForOutput,
-  type SkinMetricKey,
 } from '../src/services/skinInsights';
 import { useStore } from '../src/store/useStore';
-
-const metricGuide: {
-  key: SkinMetricKey;
-  title: string;
-  subtitle: string;
-  detail: string;
-  color: string;
-}[] = [
-  {
-    key: 'acne',
-    title: 'Acne',
-    subtitle: 'Inflammation + congestion signal',
-    detail: 'Combines breakout trend, inflammation index, and confounders like new products.',
-    color: Colors.acne,
-  },
-  {
-    key: 'sun_damage',
-    title: 'Sun Damage',
-    subtitle: 'UV and pigmentation load',
-    detail: 'Tracks photodamage risk using pigmentation index and sun-protection consistency.',
-    color: Colors.sunDamage,
-  },
-  {
-    key: 'skin_age',
-    title: 'Skin Age',
-    subtitle: 'Texture + elasticity drift',
-    detail: 'Reflects visible texture and firmness trend relative to your baseline scan.',
-    color: Colors.skinAge,
-  },
-];
+import { gateWithPaywall } from '../src/services/subscription';
 
 export default function SkinMetricsScreen() {
   const router = useRouter();
@@ -55,6 +26,7 @@ export default function SkinMetricsScreen() {
   const latestOutput = modelOutputs.length > 0 ? modelOutputs[modelOutputs.length - 1] : null;
   const baselineOutput = modelOutputs.length > 0 ? modelOutputs[0] : null;
   const latestDaily = getLatestDailyForOutput(latestOutput, dailyRecords);
+  const baselineDaily = getLatestDailyForOutput(baselineOutput, dailyRecords);
 
   const overallInsight = useMemo(
     () =>
@@ -62,8 +34,13 @@ export default function SkinMetricsScreen() {
         latestOutput,
         baselineOutput,
         latestDaily,
+        baselineDaily,
+        serverSignalScores: latestOutput?.signal_scores,
+        serverSignalFeatures: latestOutput?.signal_features,
+        serverSignalConfidence: latestOutput?.signal_confidence,
+        serverLesions: latestOutput?.lesions,
       }),
-    [latestOutput, baselineOutput, latestDaily]
+    [latestOutput, baselineOutput, latestDaily, baselineDaily]
   );
 
   return (
@@ -97,12 +74,15 @@ export default function SkinMetricsScreen() {
           <Text style={styles.emptyCopy}>
             Run your first scan to unlock acne, sun damage, and skin age assessments.
           </Text>
-          <Button title="Start first scan" onPress={() => router.push('/scan/camera')} />
+          <Button title="Start first scan" onPress={async () => {
+            if (!(await gateWithPaywall())) return;
+            router.push('/scan/camera');
+          }} />
         </View>
       )}
 
       <View style={styles.metricStack}>
-        {metricGuide.map((metric) => {
+        {METRIC_GUIDE.map((metric) => {
           const score =
             metric.key === 'acne'
               ? latestOutput?.acne_score

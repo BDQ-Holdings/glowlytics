@@ -1,72 +1,70 @@
-import { useEffect, useRef, useState, RefObject } from 'react';
-import { CameraView } from 'expo-camera';
-import * as FileSystemLegacy from 'expo-file-system/legacy';
-import { analyzeFrame, FaceTrackingState } from '../services/faceTracking';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { analyzeAlignment, FaceTrackingState } from '../services/faceTracking';
+import type { DetectedFace } from '../services/faceTracking';
 
-const TRACKING_INTERVAL = 200; // ms (~5 FPS)
-
+/**
+ * Face tracking hook — receives face detection results from VisionCamera
+ * frame processor and computes alignment state.
+ *
+ * The camera screen is responsible for running the frame processor and
+ * calling `onFacesDetected` with mapped face data. This hook is pure
+ * React state management + alignment math.
+ */
 export function useFaceTracking(
-  cameraRef: RefObject<CameraView | null>,
   enabled: boolean,
   frameWidth: number = 720,
   frameHeight: number = 1280,
-): { trackingState: FaceTrackingState; lastFrame: string | null } {
+): {
+  trackingState: FaceTrackingState;
+  onFacesDetected: (faces: DetectedFace[], w: number, h: number) => void;
+  lastFrameWidth: number;
+  lastFrameHeight: number;
+} {
   const [trackingState, setTrackingState] = useState<FaceTrackingState>({
     status: 'no_face',
     issues: [],
     lightingOk: false,
   });
-  const [lastFrame, setLastFrame] = useState<string | null>(null);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const isProcessing = useRef(false);
-  const prevUriRef = useRef<string | null>(null);
+  const [frameDims, setFrameDims] = useState({ w: 0, h: 0 });
+  const warmupDone = useRef(false);
 
   useEffect(() => {
-    if (!enabled) {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-      return;
+    if (enabled) {
+      const t = setTimeout(() => { warmupDone.current = true; }, 800);
+      return () => { clearTimeout(t); warmupDone.current = false; };
     }
+    warmupDone.current = false;
+    setTrackingState({ status: 'no_face', issues: [], lightingOk: false });
+  }, [enabled]);
 
-    intervalRef.current = setInterval(async () => {
-      if (isProcessing.current || !cameraRef.current) return;
-      isProcessing.current = true;
+  const onFacesDetected = useCallback((faces: DetectedFace[], w: number, h: number) => {
+    if (!enabled || !warmupDone.current) return;
+    if (w > 0 && h > 0) setFrameDims((prev) => (prev.w === w && prev.h === h ? prev : { w, h }));
+    // Use actual camera frame dimensions (not screen dims) since MLKit
+    // returns face coords in camera-frame pixel space.
+    const fw = w > 0 ? w : frameWidth;
+    const fh = h > 0 ? h : frameHeight;
+    // Mirror face X for front camera — the preview is mirrored so direction
+    // hints need to match what the user sees, not raw camera coordinates.
+    const mirrored = fw > 0 ? faces.map((f) => ({
+      ...f,
+      x: fw - f.x - f.width,
+    })) : faces;
+    const next = analyzeAlignment(mirrored, fw, fh);
+    setTrackingState((prev) => {
+      if (prev.status !== next.status) return next;
+      if (prev.lightingOk !== next.lightingOk) return next;
+      if (prev.issues.length !== next.issues.length) return next;
+      // Compare actual issue strings — count match isn't enough
+      if (prev.issues.some((iss, idx) => iss !== next.issues[idx])) return next;
+      return prev;
+    });
+  }, [enabled, frameWidth, frameHeight]);
 
-      try {
-        const photo = await cameraRef.current.takePictureAsync({
-          quality: 0.1,
-          skipProcessing: true,
-        });
-
-        if (photo?.uri) {
-          if (prevUriRef.current) {
-            FileSystemLegacy.deleteAsync(prevUriRef.current, { idempotent: true }).catch((e) => console.debug('Frame cleanup:', e));
-          }
-          prevUriRef.current = photo.uri;
-          setLastFrame(photo.uri);
-          const state = await analyzeFrame(photo.uri, frameWidth, frameHeight);
-          setTrackingState(state);
-        }
-      } catch {
-        // Frame capture failed, skip this cycle
-      } finally {
-        isProcessing.current = false;
-      }
-    }, TRACKING_INTERVAL);
-
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-      if (prevUriRef.current) {
-        FileSystemLegacy.deleteAsync(prevUriRef.current, { idempotent: true }).catch((e) => console.debug('Frame cleanup:', e));
-        prevUriRef.current = null;
-      }
-    };
-  }, [enabled, cameraRef, frameWidth, frameHeight]);
-
-  return { trackingState, lastFrame };
+  return {
+    trackingState,
+    onFacesDetected,
+    lastFrameWidth: frameDims.w,
+    lastFrameHeight: frameDims.h,
+  };
 }

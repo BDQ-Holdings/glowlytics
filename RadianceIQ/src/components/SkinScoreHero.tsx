@@ -1,50 +1,34 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
-import Svg, { Defs, LinearGradient, Path, Stop } from 'react-native-svg';
-import { Button } from './Button';
+import { Animated, Easing, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import {
-  BorderRadius,
   Colors,
   FontFamily,
   FontSize,
-  Shadows,
   Spacing,
+  scoreColor,
 } from '../constants/theme';
-import type { CompositeSignals } from '../services/skinInsights';
 
 interface Props {
   score: number;
   statusLabel: string;
   actionStatement: string;
   trendDelta: number;
-  signals: CompositeSignals;
-  onLearnMore: () => void;
-  onPrimaryAction: () => void;
-  primaryActionLabel: string;
+  onViewResults: () => void;
 }
-
-const scoreColor = (score: number) => {
-  if (score >= 85) return Colors.success;
-  if (score >= 70) return Colors.primary;
-  if (score >= 55) return Colors.warning;
-  return Colors.error;
-};
 
 export const SkinScoreHero: React.FC<Props> = ({
   score,
   statusLabel,
   actionStatement,
   trendDelta,
-  signals,
-  onLearnMore,
-  onPrimaryAction,
-  primaryActionLabel,
+  onViewResults,
 }) => {
-  const radius = 98;
   const [animatedScore, setAnimatedScore] = useState(0);
   const previousScore = useRef(0);
-  const revealMotion = useRef(new Animated.Value(0)).current;
+  const barWidth = useRef(new Animated.Value(0)).current;
 
+  // Animated score counter
   useEffect(() => {
     const from = previousScore.current;
     const to = score;
@@ -56,8 +40,7 @@ export const SkinScoreHero: React.FC<Props> = ({
       const elapsed = Date.now() - startAt;
       const progress = Math.min(1, elapsed / duration);
       const eased = 1 - Math.pow(1 - progress, 3);
-      const value = from + (to - from) * eased;
-      setAnimatedScore(value);
+      setAnimatedScore(from + (to - from) * eased);
 
       if (progress < 1) {
         frame = requestAnimationFrame(run);
@@ -70,149 +53,117 @@ export const SkinScoreHero: React.FC<Props> = ({
     return () => cancelAnimationFrame(frame);
   }, [score]);
 
+  // Accent bar animation
   useEffect(() => {
-    revealMotion.setValue(0);
-    Animated.timing(revealMotion, {
-      toValue: 1,
-      duration: 320,
+    const safe = Number.isFinite(score) ? Math.max(0, Math.min(100, score)) : 0;
+    barWidth.setValue(0);
+    Animated.timing(barWidth, {
+      toValue: safe,
+      duration: 800,
       easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
+      useNativeDriver: false,
     }).start();
-  }, [score, revealMotion]);
+  }, [score]);
 
-  const accent = scoreColor(score);
-  const displayScore = Math.round(animatedScore);
-  const progressRatio = Math.max(0, Math.min(100, animatedScore)) / 100;
-  const arcLength = Math.PI * radius;
-  const progressLength = arcLength * progressRatio;
-  const gaugeCenterX = 120;
-  const gaugeCenterY = 120;
-  const gaugePath = `M ${gaugeCenterX - radius} ${gaugeCenterY} A ${radius} ${radius} 0 0 1 ${gaugeCenterX + radius} ${gaugeCenterY}`;
+  const safeScore = Number.isFinite(score) ? score : 0;
+  const accent = scoreColor(safeScore);
+  const displayScore = Number.isFinite(animatedScore) ? Math.round(animatedScore) : 0;
 
-  const trendColor = trendDelta >= 0 ? Colors.success : Colors.error;
-  const trendCopy = trendDelta === 0 ? 'No change' : `${trendDelta > 0 ? '+' : ''}${trendDelta} vs baseline`;
-  const revealStyle = {
-    opacity: revealMotion,
-    transform: [
-      {
-        translateY: revealMotion.interpolate({
-          inputRange: [0, 1],
-          outputRange: [10, 0],
-        }),
-      },
-    ],
-  };
+  const safeDelta = Number.isFinite(trendDelta) ? trendDelta : 0;
+  const trendColor = safeDelta >= 0 ? Colors.success : Colors.error;
+  const trendIcon: React.ComponentProps<typeof Feather>['name'] = safeDelta >= 0 ? 'trending-up' : 'trending-down';
+  const trendText = safeDelta === 0 ? 'Stable' : `${safeDelta > 0 ? '+' : ''}${safeDelta}`;
+
+  const barInterp = barWidth.interpolate({
+    inputRange: [0, 100],
+    outputRange: ['0%', '100%'],
+  });
 
   return (
-    <View style={styles.card}>
-      <View style={styles.glow} />
-      <Text style={styles.eyebrow}>Overall Skin Score</Text>
-      <View style={styles.gaugeWrap}>
-        <Svg width={240} height={132}>
-          <Defs>
-            <LinearGradient id="skinGauge" x1="0%" y1="0%" x2="100%" y2="0%">
-              <Stop offset="0%" stopColor={Colors.primaryLight} />
-              <Stop offset="100%" stopColor={accent} />
-            </LinearGradient>
-          </Defs>
-          <Path
-            d={gaugePath}
-            stroke={Colors.divider}
-            strokeWidth={14}
-            strokeLinecap="round"
-            fill="none"
-          />
-          <Path
-            d={gaugePath}
-            stroke="url(#skinGauge)"
-            strokeWidth={14}
-            strokeLinecap="round"
-            strokeDasharray={`${progressLength} ${arcLength}`}
-            fill="none"
-          />
-        </Svg>
-        <View style={styles.centerScore}>
-          <Text style={styles.score}>{displayScore}</Text>
-          <Text style={styles.scoreLabel}>{statusLabel}</Text>
-          <Text style={[styles.trend, { color: trendColor }]}>{trendCopy}</Text>
+    <TouchableOpacity
+      style={styles.container}
+      onPress={onViewResults}
+      activeOpacity={0.8}
+      accessibilityRole="button"
+      accessibilityLabel={`Overall skin score ${displayScore}, ${statusLabel}. Tap for details.`}
+    >
+      {/* Score row: big number + trend badge */}
+      <View style={styles.scoreRow}>
+        <Text style={[styles.score, { color: accent }]}>{displayScore}</Text>
+        <View style={styles.trendBadge}>
+          <Feather name={trendIcon} size={16} color={trendColor} />
+          <Text style={[styles.trendText, { color: trendColor }]}>{trendText}</Text>
         </View>
       </View>
 
-      <Text style={styles.actionStatement}>{actionStatement}</Text>
+      {/* Animated accent bar */}
+      <View style={styles.barTrack}>
+        <Animated.View style={[styles.barFill, { width: barInterp, backgroundColor: accent }]} />
+      </View>
 
-      <Animated.View style={[styles.actions, revealStyle]}>
-        <Button title="Learn more" variant="secondary" onPress={onLearnMore} />
-        <Button title={primaryActionLabel} onPress={onPrimaryAction} />
-      </Animated.View>
+      {/* Action statement — the coaching line */}
+      <Text style={styles.action} numberOfLines={3}>{actionStatement}</Text>
 
-    </View>
+      {/* Subtle tap hint */}
+      <View style={styles.hintRow}>
+        <Text style={styles.hint}>View full results</Text>
+        <Feather name="chevron-right" size={16} color={Colors.textDim} />
+      </View>
+    </TouchableOpacity>
   );
 };
 
 const styles = StyleSheet.create({
-  card: {
-    position: 'relative',
-    overflow: 'hidden',
-    borderRadius: BorderRadius.xxl,
-    borderWidth: 1,
-    borderColor: Colors.borderStrong,
-    padding: Spacing.lg,
-    backgroundColor: Colors.glassStrong,
-    marginBottom: Spacing.lg,
+  container: {
+    marginBottom: Spacing.xl,
     gap: Spacing.md,
-    ...Shadows.card,
+    paddingVertical: Spacing.md,
   },
-  glow: {
-    position: 'absolute',
-    top: -42,
-    right: -28,
-    width: 220,
-    height: 200,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.glowPrimary,
-    opacity: 0.45,
-  },
-  eyebrow: {
-    color: Colors.secondaryLight,
-    fontFamily: FontFamily.sansSemiBold,
-    fontSize: FontSize.xs,
-    textTransform: 'uppercase',
-    letterSpacing: 1.2,
-  },
-  gaugeWrap: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 176,
-  },
-  centerScore: {
-    position: 'absolute',
-    bottom: 0,
-    alignItems: 'center',
-    gap: Spacing.xs,
+  scoreRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: Spacing.lg,
   },
   score: {
-    color: Colors.text,
     fontFamily: FontFamily.sansBold,
-    fontSize: FontSize.display,
-    lineHeight: 52,
+    fontSize: 104,
+    lineHeight: 100,
+    letterSpacing: -3,
   },
-  scoreLabel: {
-    color: Colors.textSecondary,
+  trendBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    paddingBottom: 18,
+  },
+  trendText: {
     fontFamily: FontFamily.sansSemiBold,
     fontSize: FontSize.md,
   },
-  trend: {
-    fontFamily: FontFamily.sansMedium,
-    fontSize: FontSize.xs,
-    letterSpacing: 0.3,
+  barTrack: {
+    height: 6,
+    backgroundColor: Colors.divider,
+    borderRadius: 3,
+    overflow: 'hidden',
   },
-  actionStatement: {
+  barFill: {
+    height: 6,
+    borderRadius: 3,
+  },
+  action: {
     color: Colors.text,
-    fontFamily: FontFamily.sansSemiBold,
+    fontFamily: FontFamily.sansMedium,
     fontSize: FontSize.lg,
-    lineHeight: 24,
+    lineHeight: 26,
   },
-  actions: {
-    gap: Spacing.sm,
+  hintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  hint: {
+    color: Colors.textDim,
+    fontFamily: FontFamily.sansMedium,
+    fontSize: FontSize.sm,
   },
 });

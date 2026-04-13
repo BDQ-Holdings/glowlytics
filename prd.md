@@ -22,8 +22,12 @@ Glowlytics is a skin health tracking app that enables users to gain insights int
 - **PostgreSQL** database
 - **Open Beauty Facts API** - skincare product ingredients lookup via barcode (waterfall: Open Beauty Facts → Open Food Facts → UPCitemdb → NIH DailyMed)
 - **Vision LLM API** — Fine-tuned GPT-4o for skin image analysis with condition detection (9 types × 8 facial zones), personalized feedback, local fallback
-- **RAG pipeline** — Pinecone vector DB + OpenAI text-embedding-3-small, 19 curated AAD/ACOG guideline chunks, auto-queried on each scan for evidence-based recommendations
-- **On-device photo quality** — expo-face-detector for real face detection (fill %, centering, angle validation)
+- **3-layer parallel vision pipeline** — Layer 1: deterministic features (CIELAB, ITA, GLCM, LBP, Gabor, Frangi) + Layer 2: ONNX CV models (structure MobileNetV3, hydration/elasticity EfficientNet-B0, YOLOv8 lesion detector) + Layer 3: fine-tuned GPT-4o. Score merging: L2 overrides > L1+L3 blend.
+- **On-device lesion detection** — YOLOv8 ONNX model via onnxruntime-react-native, CoreML on iOS. Downloads from HuggingFace on first use, cached locally. Real-time inference during camera scan.
+- **RAG pipeline** — Pinecone vector DB + OpenAI text-embedding-3-small, 77 curated guideline chunks (AAD, ACOG, EADV, BAD, NICE, Cochrane, WHO, AFP), signal-filtered queries with evidence level badges and source citations
+- **Routine builder** — Smart product ordering (cleanser→SPF), ingredient conflict detection (4 rules with resolutions), signal-driven adjustment tips referencing user's actual products
+- **Real-time face tracking** — react-native-vision-camera with MLKit face detection frame processor (GPU-accelerated, zero disk I/O, ~15-30ms per frame). Replaced expo-face-detector (deprecated).
+- **On-device photo quality** — MLKit face detection for fill %, centering, angle validation (via react-native-vision-camera frame processor)
 - Scanner data: **deterministic simulation** with seeded PRNG for reproducible readings
 - **Gamification engine** — XP system (6 levels), 15 achievement badges, weekly challenges, personal bests tracking
 
@@ -111,10 +115,22 @@ Glowlytics is a skin health tracking app that enables users to gain insights int
 - Trust signal card explaining photo privacy
 - CTA: **Enable camera access** (triggers system dialog)
 
+#### Screen 12.5 — Scan Reminder (NEW)
+- "When is your daily skin routine?"
+- "We'll send a gentle reminder so you never miss a scan."
+- Native scrollable time picker (default 8:00 AM)
+- CTA: **Set reminder** (requests notification permissions, schedules daily) / **Skip**
+
 #### Screen 13 — Ready
 - "You're ready to start tracking."
 - Luminous orb animation
-- CTA: **Take my baseline scan** / **Explore first** → Home
+- CTA: **Continue** → Paywall
+
+#### Screen 14 — Paywall (NEW)
+- Inline RevenueCatUI.Paywall component
+- On purchase/restore → set onboarding_complete, navigate to tabs
+- On dismiss/skip → start 7-day free trial, set onboarding_complete, navigate to tabs
+- Tracks: `onboarding_paywall_purchased`, `onboarding_paywall_skipped`, `onboarding_paywall_restored`
 
 ---
 
@@ -127,25 +143,26 @@ Glowlytics is a skin health tracking app that enables users to gain insights int
 
 #### Step 2 - Scan
 - "Scan the same region: [region name]"
-- Scanner reading (simulated, quick)
-- Photo capture with baseline overlay + live quality check
+- Photo capture with face mesh overlay + live quality check
+- **Real-time on-device lesion detection** via YOLOv8 ONNX model (onnxruntime-react-native)
+  - Sci-fi corner bracket bounding boxes with teal (#7DE7E1) aesthetic
+  - Scanning line + glow pulse animations
+  - Runs every 1.2s when face aligned, filtered to detected face region only
+  - 6 lesion classes: comedone, papule, pustule, nodule, macule, patch
+  - Crop-aware coordinate mapping (accounts for CameraView center-crop)
+  - On-device confidence threshold: 0.1, server threshold: 0.25
+- Auto-capture after 2s continuous face alignment
+- After capture, navigates directly to analysis (no checkin step)
 
-#### Step 3 - Daily Quick Check-in (ultra minimal)
-Always ask:
-- Sunscreen today? Yes/No
-- Any new product since yesterday? Yes/No
-- Period status: auto-estimated ("Day 18") -> user taps **Accurate / Not accurate**
+#### Step 2.5 - Analysis Progress
+- Staged progress screen between capture and results
+- 9 stages with timed advancement tied to 3-layer pipeline
+- Stages 0-5 advance on timers (~4.1s), stage 6 holds until API resolves
+- Dual-track timing: timer + API fire in parallel, handshake when both ready
+- XP/badge overlay before navigation to results
+- **Known limitation:** dailyContext (sunscreen, new product, sleep, stress) is hardcoded to defaults since checkin was removed. Needs future fix.
 
-Optional context (non-blocking):
-- If device connected: show sleep + stress proxy auto-filled with "edit" option
-- If not connected: expandable "Add context (optional)":
-  - Sleep: Poor/OK/Great
-  - Stress: Low/Med/High
-  - Drinks yesterday: 0 / 1-2 / 3+
-
-CTA: **See results**
-
-#### Step 4 - Results + 1 Best Next Step
+#### Step 3 - Results + 1 Best Next Step
 - 3 scores with: today value, delta vs baseline, 7-day sparkline
 - Confidence indicator (low/med/high)
 - One action card (never more than one):
@@ -201,7 +218,7 @@ Since no physical scanner is available, the device connection flow will be **sim
 ### 1) User Profile (one-time + editable)
 | Field | Type | Required |
 |-------|------|----------|
-| user_id | UUID | Yes |
+| user_id | TEXT (Clerk ID) | Yes |
 | age_range | string | Yes |
 | location_coarse | string (ZIP3/city) | Yes |
 | period_applicable | enum (yes/no/prefer_not) | Yes |
@@ -380,7 +397,7 @@ Score merging: Layer 2 overrides > Layer 1 + Layer 3 weighted blend (0.6/0.4 for
 
 ### Human Interface Guidelines (HIG)
 - All screens use SafeAreaView for proper inset handling
-- Dark mode as primary with proper contrast ratios (WCAG AA minimum 4.5:1)
+- Light mode as primary (warm cream #FAFAF7) with WCAG AAA contrast ratios (7:1 target)
 - Minimum touch target: 44x44pt per Apple HIG
 - Native navigation patterns: back gestures, sheet presentations for modals
 - Haptic feedback on key interactions (scan complete, score reveal)
@@ -417,7 +434,7 @@ Score merging: Layer 2 overrides > Layer 1 + Layer 3 weighted blend (0.6/0.4 for
 
 ---
 
-## Implementation Status (as of 2026-03-15)
+## Implementation Status (as of 2026-03-25)
 
 ### Completed (Ship-Ready)
 - All 3 user journeys fully implemented (onboarding, daily scan, report)
@@ -425,8 +442,10 @@ Score merging: Layer 2 overrides > Layer 1 + Layer 3 weighted blend (0.6/0.4 for
 - **Auth token wiring** — Clerk getToken() injected into API client on app startup
 - **Animated auth screens** with Headspace-inspired staggered entrances, error shake, success haptics
 - **Clerk authentication** with Sign in with Apple, Google, and Email/Password
-- **RevenueCat subscription** — "Glow Pro" entitlement, 3-free-scan trial, monthly/yearly/lifetime products, native paywall UI via RevenueCatUI, Customer Center for subscription management
-- **Scan gating** — camera tab, camera screen, home scan buttons redirect to paywall when free scans exhausted
+- **RevenueCat subscription** — "Glow Pro" entitlement, 7-day free trial (started on onboarding paywall skip), monthly/yearly/lifetime products, native paywall UI via RevenueCatUI, Customer Center for subscription management. Error 23 (CONFIGURATION_ERROR) silenced.
+- **Scan gating** — camera tab, camera screen, home scan buttons redirect to paywall when trial expired and not subscribed
+- **Daily scan notifications** — expo-notifications with configurable time picker in onboarding + profile settings
+- **Products tab** — full product management screen replacing Trend tab, with routine score ring, product cards with effectiveness rings, add via search/barcode/manual entry
 - **Report gating** — clinician reports require active "Glow Pro" subscription
 - **PostHog analytics** — 20 events tracked across auth, onboarding, scans, paywall conversion, engagement, and sign-out; user identification via Clerk userId
 - **Vision API** — fine-tuned GPT-4o (`ft:gpt-4o-2024-08-06:personal:radianceiq-skin:DHBaOo20`) via backend proxy; API key server-side only
@@ -446,9 +465,9 @@ Score merging: Layer 2 overrides > Layer 1 + Layer 3 weighted blend (0.6/0.4 for
 - **App Store metadata** — description, keywords, screenshot specs for iPhone 15 Pro Max
 - **Demo script** — 7-minute structured walkthrough with talking points
 - **Production build submitted** — v1.0.0 build #3 uploaded to App Store Connect
-- **286 unit tests** across 20 suites (scoring, insights, scanner, subscription, analytics, product lookup, ingredient DB, signal history, signal-models)
-- 49 screen files, 20+ components, 16 services, 7 backend files, Zustand store
-- EAS dev client + production builds succeeding
+- **412 tests** (24 suites), 0 TypeScript errors
+- 48 screen files, 24 components, 20 services, 7 backend modules, Zustand store
+- EAS dev client + production builds succeeding (latest on TestFlight)
 
 ### SDK Migration (SDK 55 → 54)
 - Downgraded to Expo SDK 54 (`expo ~54.0.0`, `react 19.1.0`, `react-native 0.81.5`)
@@ -471,7 +490,7 @@ Score merging: Layer 2 overrides > Layer 1 + Layer 3 weighted blend (0.6/0.4 for
 - **Screenshots**: capture 5 screens on iPhone 15 Pro Max (1290x2796)
 - **Privacy policy URL**: host privacy-policy content at https://glowlytics.ai/privacy
 - **App Store Connect metadata**: paste description/keywords from app-store-metadata.json
-- **Content rating questionnaire**: complete in App Store Connect (12+, medical info: yes)
+- **Content rating questionnaire**: complete in App Store Connect (12+, medical info: no)
 - **Seed Pinecone on production**: POST /api/rag/seed
 - **TestFlight**: smoke test all 3 journeys + subscription flow
 - **Submit for App Review**
@@ -479,39 +498,78 @@ Score merging: Layer 2 overrides > Layer 1 + Layer 3 weighted blend (0.6/0.4 for
 ### Completed (2026-03-16): Signal-Specific Analysis Pipeline
 - **3-layer parallel pipeline** in `/api/vision/analyze` — deterministic image processing + ONNX CV models + GPT-4o
 - **Layer 1**: CIELAB a*, ITA variance, GLCM, LBP, specular analysis via `sharp` (~100ms)
-- **Layer 2**: ONNX model inference for structure/hydration/elasticity + YOLOv8 lesion detection (placeholder until models trained)
+- **Layer 2**: ONNX model inference for structure/hydration/elasticity + YOLOv8 lesion detection
 - **Layer 3**: Existing fine-tuned GPT-4o (unchanged)
 - **Frontend**: Signal Breakdown section on results screen (per-signal bars + confidence badges), lesion bounding boxes on FacialMesh
+
+### Completed (2026-03-17): HuggingFace Models + Real-Time Lesion Detection + Security Hardening
+- **ONNX models wired**: All 4 model runners (`runStructureModel`, `runHydrationModel`, `runElasticityModel`, `runLesionDetector`) now perform real inference via `onnxruntime-node`
+- **Handcrafted features**: Gabor filter bank (24-dim), LBP-uniform (18-dim), Frangi vesselness (9-dim), landmark geometry (5-dim) computed in `image-processing.js`
+- **Feature builders**: `buildHydrationFeatures()` (44-dim) and `buildElasticityFeatures()` (14-dim) assembled for Layer 2 models
+- **NMS post-processing**: YOLOv8 output transposed, confidence-filtered, NMS with IoU 0.45, mapped to 6 lesion classes + zones
+- **Model download script**: `backend/scripts/download-models.sh` fetches from HuggingFace (`mufasabrownie/glowlytics-skin-models`)
+- **Fast detection endpoint**: `POST /api/vision/detect-lesions` — public, rate-limited (10/10s), runs only YOLOv8
+- **On-device detection**: `onDeviceLesionDetection.ts` service runs YOLOv8 on camera frames during alignment
+- **Real-time overlay**: `LesionOverlay.tsx` — teal sci-fi corner brackets with scanning line, glow pulse, crop-aware coordinate mapping, face-rect filtering
+- **Camera integration**: Detection every 1.2s while face aligned, clears on un-align, Hermes-compatible AbortController
+- **Scan flow simplified**: Camera → Analyzing → Results (checkin screen removed)
+- **Security hardening**: Authorization checks on all user-data endpoints, CORS restriction, rate limiting, safe error messages, SQL field validation, production auth guard
+- **Codebase audit**: 4 critical + 8 high + 9 medium bugs identified; 11 critical/high fixed, 8 medium documented
+- **Build #18** submitted to TestFlight with all fixes
 - **DB schema**: Added signal_scores, signal_features, lesions JSONB columns to model_outputs
 - **ML pipeline**: 5 new training notebooks (05-09) for structure, hydration, elasticity, lesion detection, evaluation
 - **Tests**: 53 new tests (image processing unit, signal model merging, endpoint integration)
 - **Dependencies**: sharp (backend), onnxruntime-node (optional), 6 new ML Python packages
 
+### Completed (2026-03-17): RevenueCat Fix + Trial + Notifications + Products Tab
+- **RevenueCat Error 23 fix**: `initRevenueCat()` catches CONFIGURATION_ERROR silently
+- **7-day free trial**: `startTrial()`, `isTrialActive()`, `trialDaysRemaining()`, `canScan()` in subscription service
+- **Onboarding paywall**: `app/onboarding/paywall.tsx` — inline RevenueCatUI, skip starts trial, purchase completes onboarding
+- **Daily scan notifications**: `src/services/notifications.ts` + `app/onboarding/scan-reminder.tsx` — time picker, schedule/cancel daily reminders
+- **Products tab**: replaced Trend tab with full product management — routine score ring, ProductCard with effectiveness rings, AddProductSheet (search/barcode/manual), FAB
+- **Profile updates**: trial days remaining, notification settings section (enable/disable daily reminder)
+- **New components**: `ProductCard.tsx`, `AddProductSheet.tsx`
+- **Dependencies added**: `expo-notifications`, `@react-native-community/datetimepicker`
+- **Build #24** submitted to TestFlight with all changes
+
+### Completed (2026-03-22): UI Polish — Tab Bar, Splash Screen, Onboarding
+- **Floating tab bar redesign**: SVG notch cutout path (10px depth, 74px width), camera button absolutely positioned above bar with teal glow shadow, glass fill `rgba(255,255,255,0.93)`, no scene padding/background so bar truly floats over content
+- **Splash screen redesigned**: "Find your glow" DancingScript cursive handwriting reveal with left-to-right clip mask + teal ink glow. Minimum 1.5s display via `Promise.all` with app init. Old `index.tsx` landing page replaced with minimal bridge screen.
+- **Onboarding trimmed**: 7-9 active screens (welcome, age-range, sex, skin-goal, [menstrual], [cycle-details], camera-permission, preview, paywall). Deferred screens (location, products, supplements, exercise, shower-frequency, hand-washing, scan-reminder) moved to post-first-scan collection.
+- **Skin metric detail**: bolder metric cards, FaceAssessmentMap with metric-colored ambient glow
+- **Analyzing screen**: fluid infinity loop animation
+- **SkinScoreHero**: animated score counter with accent bar and coaching action statement
+- **Analyzing screen**: Now waits for backend response before navigating to results
+- **Backend refactoring**: `app.js` route organization cleanup, `rag.js` pipeline expansion (improved chunking/retrieval), `signal-models.js` improvements
+- **Lesion constants**: New `src/constants/lesions.ts` module (6 classes with descriptions, colors, zone definitions)
+- **Vision API service**: Expanded response parsing and error handling in `visionAPI.ts`
+- **Results screen**: Enhanced signal display and lesion visualization
+- **Latest build** submitted to TestFlight via local EAS build + `eas submit`
+
 ### Deferred (post-launch)
+- **Fix dailyContext in analyzing**: sunscreen_used/new_product_added hardcoded to `false` since checkin removal — need to collect these before analysis
 - HealthKit/Health Connect native integration (requires EAS bare workflow)
-- Push notifications for scan reminders
-- PDF export for clinician reports (currently stub)
+- PDF export for clinician reports (client-side generation works via expo-print; backend endpoint is DB-reference only)
 - Session replay via PostHog (currently disabled)
-- On-device YOLOv8-nano lesion detection (CoreML/TFLite export from notebook 08)
+- Deploy ONNX models to Railway (115MB total, needs LFS or external hosting)
+- Remaining medium-priority bugs: streak duplication, TodayScreen dead code, duplicate DB schema (see memory/bugs_audit_20260317.md)
 
 ---
 
 ## Onboarding Implementation (Current)
 
-### Onboarding flow (13 screens, progressive disclosure)
+### Onboarding flow (7-9 active screens, trimmed from 16)
 1. Welcome
 2. Age Range (2×3 grid)
-3. Biological Sex (branching: female → menstrual screens)
-4. Location (geolocation or ZIP)
-5. Skin Goal (3 cards with dynamic illustration)
-6. Menstrual Cycle (female only)
-7. Cycle Details (if yes to #6: date, length, birth control)
-8. Supplements & HRT (multi-select chips)
-9. Exercise Frequency
-10. Shower Frequency
-11. Hand Washing
-12. Camera Permission (pre-permission screen + system dialog)
-13. Ready (luminous orb animation → home)
+3. Biological Sex (branching: female → inserts menstrual screens)
+4. Skin Goal (3 cards with dynamic illustration)
+5. Menstrual Cycle (female only)
+6. Cycle Details (if yes to #5: date, length, birth control)
+7. Camera Permission (pre-permission screen + system dialog)
+8. Preview (shows what user gets after first scan)
+9. Paywall (RevenueCatUI inline, skip starts 7-day trial)
+
+**Deferred screens** (collected post-first-scan): location, products, supplements, exercise, shower-frequency, hand-washing, scan-reminder. Files still exist in `app/onboarding/`.
 
 ### Flow architecture
 - Dynamic flow array via `buildOnboardingFlow(sex, menstrualStatus)` in `src/services/onboardingFlow.ts`
@@ -542,7 +600,7 @@ Score merging: Layer 2 overrides > Layer 1 + Layer 3 weighted blend (0.6/0.4 for
 ### Redirect Logic
 - **Root layout** (`app/_layout.tsx`) contains `AuthRedirector` component that returns only `<Redirect>` components or `null` — never its own navigator
 - When Clerk is configured:
-  - `!isLoaded` → animated splash (index.tsx)
+  - `!appReady` → animated `SplashScreen` ("Find your glow" handwriting reveal, 1.5s min) in `_layout.tsx`
   - `!isSignedIn` → redirect to `/auth/sign-in`
   - `isSignedIn` + `!onboarding_complete` → redirect to `/onboarding/welcome`
   - `isSignedIn` + `onboarding_complete` → render normal tab navigation
@@ -610,6 +668,45 @@ Score merging: Layer 2 overrides > Layer 1 + Layer 3 weighted blend (0.6/0.4 for
 ### Home Integration
 - Signal rings on home screen are tappable → navigate to signal detail
 - Tap any ring to see full breakdown, history, and recommendations
+
+---
+
+## Launch Readiness Milestones
+
+### Milestone 1: Security & Compliance (DONE — 2026-03-23)
+- [x] IDOR fix: all POST routes use req.auth.userId
+- [x] Account deletion endpoint (Apple 5.1.1(v))
+- [x] Input validation on user creation
+- [x] Rate limiting on vision/analyze (10 req/min/user)
+- [x] RAG seed endpoint admin-only (timing-safe secret)
+- [x] Auth bypass hardened (NODE_ENV denylist)
+- [x] Cascading delete wrapped in transaction
+- [x] Android RECORD_AUDIO permission removed
+- [x] Localhost API guard in production builds
+- [x] Demo data hidden in production
+- [x] Console.log gated behind __DEV__
+
+### Milestone 2: Camera Pipeline Upgrade (DONE — 2026-03-23)
+- [x] Replace expo-face-detector with react-native-vision-camera + MLKit
+- [x] Frame processor for real-time face detection (~15ms vs ~200ms)
+- [x] Remove takePictureAsync polling loop (useFaceTracking)
+- [x] Update photoQuality to use VisionCamera face data
+- [x] Integrate lesion detection with frame processor pipeline
+- [x] Update tests for new camera module (23 face/photo tests rewritten as pure function tests)
+
+### Milestone 3: Remaining Launch Blockers
+- [ ] Clerk pk_live_ key in production EAS profile
+- [ ] CORS_ORIGINS set on Railway
+- [ ] SSL rejectUnauthorized: true with CA cert
+- [ ] Sunscreen/product context collection before scan
+- [x] Report generation — client-side via expo-print + buildReportHtml (backend endpoint is DB-reference only)
+- [x] Backend log masking in production (safeErrorMessage + 9 error/warn sites masked)
+
+### Milestone 4: App Store Submission
+- [ ] EAS production build (iOS)
+- [ ] TestFlight distribution
+- [ ] App Store Connect metadata + screenshots
+- [ ] App Review submission
 
 ---
 

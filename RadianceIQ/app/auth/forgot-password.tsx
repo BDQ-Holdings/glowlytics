@@ -22,6 +22,7 @@ import {
   BorderRadius,
 } from '../../src/constants/theme';
 import { useStaggeredEntrance, useShakeAnimation } from '../../src/utils/animations';
+import { trackEvent } from '../../src/services/analytics';
 
 export default function ForgotPasswordScreen() {
   const router = useRouter();
@@ -55,6 +56,7 @@ export default function ForgotPasswordScreen() {
         strategy: 'reset_password_email_code',
         identifier: trimmed,
       });
+      trackEvent('forgot_password_requested');
       setStep('reset');
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Unable to send reset code.';
@@ -92,6 +94,7 @@ export default function ForgotPasswordScreen() {
 
       if (result.status === 'complete' && result.createdSessionId) {
         await setActive({ session: result.createdSessionId });
+        trackEvent('forgot_password_completed');
         setSuccess(true);
         setTimeout(() => router.replace('/auth/sign-in'), 1500);
       } else {
@@ -269,10 +272,10 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   errorContainer: {
-    backgroundColor: 'rgba(255, 122, 120, 0.12)',
+    backgroundColor: 'rgba(209, 67, 67, 0.08)',
     borderRadius: BorderRadius.sm,
     borderWidth: 1,
-    borderColor: 'rgba(255, 122, 120, 0.3)',
+    borderColor: 'rgba(209, 67, 67, 0.18)',
     padding: Spacing.md,
   },
   errorText: {
@@ -320,7 +323,7 @@ const styles = StyleSheet.create({
   submitButton: {
     backgroundColor: Colors.primary,
     height: 56,
-    borderRadius: 16,
+    borderRadius: BorderRadius.md,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: Spacing.sm,
@@ -342,8 +345,8 @@ const styles = StyleSheet.create({
   checkCircle: {
     width: 80,
     height: 80,
-    borderRadius: 40,
-    backgroundColor: 'rgba(95, 211, 172, 0.15)',
+    borderRadius: BorderRadius.full,
+    backgroundColor: 'rgba(52, 167, 123, 0.12)',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: Spacing.md,

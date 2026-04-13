@@ -7,6 +7,7 @@ interface OnboardingOptionCardProps {
   description?: string;
   selected: boolean;
   onPress: () => void;
+  multiSelect?: boolean;
 }
 
 export const OnboardingOptionCard: React.FC<OnboardingOptionCardProps> = ({
@@ -14,12 +15,16 @@ export const OnboardingOptionCard: React.FC<OnboardingOptionCardProps> = ({
   description,
   selected,
   onPress,
+  multiSelect,
 }) => {
   return (
     <TouchableOpacity
       style={[styles.card, selected && styles.cardSelected]}
       onPress={onPress}
       activeOpacity={0.7}
+      accessibilityRole={multiSelect ? 'checkbox' : 'radio'}
+      accessibilityState={{ selected }}
+      accessibilityLabel={label}
     >
       <View style={styles.content}>
         <Text style={[styles.label, selected && styles.labelSelected]}>{label}</Text>
@@ -27,9 +32,15 @@ export const OnboardingOptionCard: React.FC<OnboardingOptionCardProps> = ({
           <Text style={styles.description}>{description}</Text>
         )}
       </View>
-      <View style={[styles.radio, selected && styles.radioSelected]}>
-        {selected && <View style={styles.radioInner} />}
-      </View>
+      {multiSelect ? (
+        <View style={[styles.checkbox, selected && styles.checkboxSelected]}>
+          {selected && <Text style={styles.checkmark}>&#10003;</Text>}
+        </View>
+      ) : (
+        <View style={[styles.radio, selected && styles.radioSelected]}>
+          {selected && <View style={styles.radioInner} />}
+        </View>
+      )}
     </TouchableOpacity>
   );
 };
@@ -50,6 +61,9 @@ export const OnboardingChip: React.FC<OnboardingChipProps> = ({
       style={[styles.chip, selected && styles.chipSelected]}
       onPress={onPress}
       activeOpacity={0.7}
+      accessibilityRole="checkbox"
+      accessibilityState={{ selected }}
+      accessibilityLabel={label}
     >
       <Text style={[styles.chipLabel, selected && styles.chipLabelSelected]}>{label}</Text>
     </TouchableOpacity>
@@ -72,6 +86,9 @@ export const OnboardingGridOption: React.FC<OnboardingGridOptionProps> = ({
       style={[styles.gridOption, selected && styles.gridOptionSelected]}
       onPress={onPress}
       activeOpacity={0.7}
+      accessibilityRole="radio"
+      accessibilityState={{ selected }}
+      accessibilityLabel={label}
     >
       <Text style={[styles.gridLabel, selected && styles.gridLabelSelected]}>{label}</Text>
     </TouchableOpacity>
@@ -92,8 +109,12 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
   },
   cardSelected: {
-    borderColor: Colors.primary,
-    backgroundColor: Colors.surfaceOverlay,
+    borderColor: '#3A9E8F',
+    backgroundColor: 'rgba(58, 158, 143, 0.08)',
+    shadowColor: '#3A9E8F',
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
   },
   content: {
     flex: 1,
@@ -105,7 +126,7 @@ const styles = StyleSheet.create({
     fontSize: FontSize.lg,
   },
   labelSelected: {
-    color: Colors.primaryLight,
+    color: '#2B7D70',
   },
   description: {
     color: Colors.textSecondary,
@@ -123,13 +144,32 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   radioSelected: {
-    borderColor: Colors.primary,
+    borderColor: '#3A9E8F',
   },
   radioInner: {
     width: 12,
     height: 12,
     borderRadius: 6,
-    backgroundColor: Colors.primary,
+    backgroundColor: '#3A9E8F',
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: Colors.textDim,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxSelected: {
+    borderColor: '#3A9E8F',
+    backgroundColor: '#3A9E8F',
+  },
+  checkmark: {
+    color: Colors.textOnDark,
+    fontSize: FontSize.md,
+    fontWeight: '700',
+    lineHeight: 16,
   },
 
   // Chip (multi-select)
@@ -142,8 +182,12 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surfaceLight,
   },
   chipSelected: {
-    borderColor: Colors.primary,
-    backgroundColor: Colors.surfaceOverlay,
+    borderColor: '#3A9E8F',
+    backgroundColor: 'rgba(58, 158, 143, 0.08)',
+    shadowColor: '#3A9E8F',
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
   },
   chipLabel: {
     color: Colors.text,
@@ -152,7 +196,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   chipLabelSelected: {
-    color: Colors.primaryLight,
+    color: '#2B7D70',
   },
 
   // Grid option (2-column)
@@ -169,8 +213,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.sm,
   },
   gridOptionSelected: {
-    borderColor: Colors.primary,
-    backgroundColor: Colors.surfaceOverlay,
+    borderColor: '#3A9E8F',
+    backgroundColor: 'rgba(58, 158, 143, 0.08)',
+    shadowColor: '#3A9E8F',
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
   },
   gridLabel: {
     color: Colors.text,
@@ -179,6 +227,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   gridLabelSelected: {
-    color: Colors.primaryLight,
+    color: '#2B7D70',
   },
 });

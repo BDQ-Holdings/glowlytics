@@ -28,42 +28,26 @@ describe('FacialMesh', () => {
     expect(getByText('Facial Analysis')).toBeTruthy();
   });
 
-  it('shows hot zones for elevated acne scores', () => {
+  it('shows All clear when no conditions are provided (regardless of scores)', () => {
     const { getByText } = render(
-      <FacialMesh acneScore={60} sunDamageScore={20} skinAgeScore={20} />
+      <FacialMesh acneScore={80} sunDamageScore={80} skinAgeScore={80} />
     );
-    // Acne > 40 should show "Acne activity" legend item
-    expect(getByText('Acne activity')).toBeTruthy();
+    // Without condition data from the backend, we don't fabricate zone positions
+    expect(getByText('All clear')).toBeTruthy();
   });
 
-  it('shows breakout zone for high acne', () => {
+  it('shows All clear when conditions is an empty array', () => {
     const { getByText } = render(
-      <FacialMesh acneScore={70} sunDamageScore={20} skinAgeScore={20} />
-    );
-    expect(getByText('Breakout zone')).toBeTruthy();
-  });
-
-  it('shows sun exposure for elevated sun damage', () => {
-    const { getByText } = render(
-      <FacialMesh acneScore={20} sunDamageScore={60} skinAgeScore={20} />
-    );
-    expect(getByText('Sun exposure')).toBeTruthy();
-  });
-
-  it('shows All clear when all scores are low', () => {
-    const { getByText } = render(
-      <FacialMesh acneScore={20} sunDamageScore={20} skinAgeScore={20} />
+      <FacialMesh acneScore={60} sunDamageScore={20} skinAgeScore={20} conditions={[]} />
     );
     expect(getByText('All clear')).toBeTruthy();
   });
 
-  it('shows severity labels', () => {
-    const { getAllByText } = render(
-      <FacialMesh acneScore={80} sunDamageScore={20} skinAgeScore={20} />
+  it('shows All clear when conditions is undefined', () => {
+    const { getByText } = render(
+      <FacialMesh acneScore={20} sunDamageScore={60} skinAgeScore={20} conditions={undefined} />
     );
-    // acneScore 80 -> both "Acne activity" (elevated) and "Breakout zone" (elevated)
-    const elevatedLabels = getAllByText('elevated');
-    expect(elevatedLabels.length).toBeGreaterThanOrEqual(1);
+    expect(getByText('All clear')).toBeTruthy();
   });
 
   // --- Condition-driven rendering tests ---
@@ -88,25 +72,8 @@ describe('FacialMesh', () => {
       <FacialMesh acneScore={80} sunDamageScore={80} skinAgeScore={80} conditions={conditions} />
     );
 
-    // Condition names should appear in the legend (underscores replaced with spaces)
     expect(getByText('Rosacea')).toBeTruthy();
     expect(getByText('Dark circles')).toBeTruthy();
-  });
-
-  it('falls back to threshold behavior when conditions is an empty array', () => {
-    const { getByText } = render(
-      <FacialMesh acneScore={60} sunDamageScore={20} skinAgeScore={20} conditions={[]} />
-    );
-    // Should use threshold-based logic (acne > 40 -> "Acne activity")
-    expect(getByText('Acne activity')).toBeTruthy();
-  });
-
-  it('falls back to threshold behavior when conditions is undefined', () => {
-    const { getByText } = render(
-      <FacialMesh acneScore={20} sunDamageScore={60} skinAgeScore={20} conditions={undefined} />
-    );
-    // Should use threshold-based logic (sun > 45 -> "Sun exposure")
-    expect(getByText('Sun exposure')).toBeTruthy();
   });
 
   it('shows severity badges for condition-driven zones', () => {
@@ -126,7 +93,6 @@ describe('FacialMesh', () => {
       <FacialMesh acneScore={20} sunDamageScore={20} skinAgeScore={20} conditions={conditions} />
     );
 
-    // Severe maps to "elevated", moderate stays "moderate"
     expect(getAllByText('elevated').length).toBe(1);
     expect(getAllByText('moderate').length).toBe(1);
   });
@@ -146,5 +112,19 @@ describe('FacialMesh', () => {
     );
 
     expect(getByText('All clear')).toBeTruthy();
+  });
+
+  it('shows lesion count in legend when lesions are present', () => {
+    const lesions = [
+      { class: 'papule' as const, confidence: 0.8, bbox: [0.3, 0.4, 0.05, 0.05] as [number, number, number, number], zone: 'left_cheek' as const, tier: 'confirmed' as const },
+      { class: 'comedone' as const, confidence: 0.6, bbox: [0.5, 0.3, 0.04, 0.04] as [number, number, number, number], zone: 'nose' as const, tier: 'possible' as const },
+    ];
+
+    const { getByText } = render(
+      <FacialMesh acneScore={50} sunDamageScore={20} skinAgeScore={20} lesions={lesions} />
+    );
+
+    expect(getByText('2 lesions detected')).toBeTruthy();
+    expect(getByText('1 confirmed')).toBeTruthy();
   });
 });

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Animated, {
@@ -20,31 +20,37 @@ export const CoachingTooltip: React.FC<Props> = ({ visible }) => {
   const [shouldShow, setShouldShow] = useState(false);
   const opacity = useSharedValue(0);
   const translateY = useSharedValue(8);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!visible) return;
 
+    let cancelled = false;
+
     (async () => {
       const shown = await AsyncStorage.getItem(STORAGE_KEY);
-      if (shown) return;
+      if (shown || cancelled) return;
 
       setShouldShow(true);
       opacity.value = withDelay(500, withTiming(1, { duration: 400, easing: Easing.out(Easing.cubic) }));
       translateY.value = withDelay(500, withTiming(0, { duration: 400, easing: Easing.out(Easing.cubic) }));
 
-      // Auto-dismiss after 5 seconds
-      const timer = setTimeout(() => {
-        dismiss();
+      timerRef.current = setTimeout(() => {
+        if (!cancelled) dismiss();
       }, 5000);
-
-      return () => clearTimeout(timer);
     })();
+
+    return () => {
+      cancelled = true;
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
   }, [visible]);
 
   const dismiss = () => {
     opacity.value = withTiming(0, { duration: 200 });
     translateY.value = withTiming(8, { duration: 200 });
-    setTimeout(() => setShouldShow(false), 200);
+    const t = setTimeout(() => setShouldShow(false), 200);
+    timerRef.current = t;
     AsyncStorage.setItem(STORAGE_KEY, 'true');
   };
 
@@ -70,12 +76,12 @@ export const CoachingTooltip: React.FC<Props> = ({ visible }) => {
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    bottom: 90,
+    bottom: 105,
     alignSelf: 'center',
     zIndex: 10,
   },
   tooltip: {
-    backgroundColor: 'rgba(17, 28, 43, 0.92)',
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
     borderRadius: BorderRadius.md,
     borderWidth: 1,
     borderColor: Colors.primary + '30',
@@ -88,7 +94,7 @@ const styles = StyleSheet.create({
     bottom: -6,
     width: 12,
     height: 12,
-    backgroundColor: 'rgba(17, 28, 43, 0.92)',
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
     borderRightWidth: 1,
     borderBottomWidth: 1,
     borderColor: Colors.primary + '30',

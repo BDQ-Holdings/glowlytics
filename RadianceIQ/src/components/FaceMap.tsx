@@ -147,7 +147,7 @@ const styles = StyleSheet.create({
   },
   recommended: {
     color: Colors.accent,
-    fontSize: 9,
-    marginTop: 2,
+    fontSize: FontSize.xxs,
+    marginTop: Spacing.xxs,
   },
 });

@@ -181,6 +181,9 @@ describe('rag.js', () => {
         score: 0.95,
         text: 'Acne management guideline text',
         category: 'acne_management',
+        signal: 'general',
+        evidence_level: 'C',
+        source_citation: '',
       });
 
       delete process.env.PINECONE_API_KEY;

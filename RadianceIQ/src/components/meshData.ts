@@ -273,3 +273,164 @@ function buildEdges(tris: [number, number, number][]): [number, number][] {
 }
 
 export const edges = buildEdges(T);
+
+// ─── Smooth SVG Paths — Marquardt-Inspired Face Mask ─────────────────
+// Replaces jagged line-segment rendering with smooth cubic bezier curves.
+// Designed in the same 300×320 coordinate space as vertices.
+// Each path is a clean, elegant curve for one facial feature.
+
+export const FACE_PATHS = {
+  // Face contour — smooth oval with cheekbone prominence and defined jaw
+  // 16-segment bezier for maximum smoothness. Widest at y≈155 (cheekbones).
+  contour:
+    'M 150 8 ' +
+    'C 128 9, 108 16, 88 28 ' +      // skull → left temple
+    'C 66 42, 50 60, 40 82 ' +       // left temple curve
+    'C 31 102, 26 124, 24 148 ' +    // temple → cheekbone (widening)
+    'C 23 160, 24 172, 28 186 ' +    // CHEEKBONE PEAK → sub-zygomatic
+    'C 32 204, 38 220, 50 238 ' +    // cheek → jaw angle
+    'C 62 256, 78 272, 100 286 ' +   // jaw body
+    'C 118 296, 136 304, 150 308 ' + // jaw → chin
+    'C 164 304, 182 296, 200 286 ' + // chin → right jaw
+    'C 222 272, 238 256, 250 238 ' + // right jaw body
+    'C 262 220, 268 204, 272 186 ' + // right jaw angle
+    'C 276 172, 277 160, 276 148 ' + // sub-zygomatic → CHEEKBONE
+    'C 274 124, 269 102, 260 82 ' +  // cheekbone → right temple
+    'C 250 60, 234 42, 212 28 ' +    // right temple curve
+    'C 192 16, 172 9, 150 8 Z',      // skull top
+
+  // Left brow — natural arch with peak at outer third
+  leftBrow:
+    'M 41 92 ' +
+    'C 50 87, 66 83, 84 83 ' +
+    'C 102 83, 118 86, 136 96',
+
+  // Right brow — mirror
+  rightBrow:
+    'M 259 92 ' +
+    'C 250 87, 234 83, 216 83 ' +
+    'C 198 83, 182 86, 164 96',
+
+  // Left eye — almond with positive canthal tilt, seamless closure
+  leftEye:
+    'M 60 110 ' +
+    'C 62 102, 74 96, 94 98 ' +      // outer corner → upper lid
+    'C 110 96, 120 102, 123 108 ' +   // upper lid → inner corner
+    'C 120 112, 110 116, 94 116 ' +   // inner → lower lid
+    'C 76 116, 62 114, 60 110 Z',     // lower lid → outer (smooth close)
+
+  // Right eye — mirror
+  rightEye:
+    'M 240 110 ' +
+    'C 238 102, 226 96, 206 98 ' +
+    'C 190 96, 180 102, 177 108 ' +
+    'C 180 112, 190 116, 206 116 ' +
+    'C 224 116, 238 114, 240 110 Z',
+
+  // Left iris ring
+  leftIris: 'M 88 108 A 6 6 0 1 1 100 108 A 6 6 0 1 1 88 108 Z',
+
+  // Right iris ring
+  rightIris: 'M 200 108 A 6 6 0 1 1 212 108 A 6 6 0 1 1 200 108 Z',
+
+  // Nose bridge — smooth curved taper (not straight lines)
+  noseBridge:
+    'M 144 100 C 142 108, 140 116, 138 128 C 136 136, 132 144, 128 150 ' +
+    'M 156 100 C 158 108, 160 116, 162 128 C 164 136, 168 144, 172 150',
+
+  // Nose base — smooth nostril curves
+  noseBase:
+    'M 116 166 ' +
+    'C 122 170, 130 168, 136 164 ' +
+    'C 140 162, 146 166, 150 168 ' +
+    'C 154 166, 160 162, 164 164 ' +
+    'C 170 168, 178 170, 184 166',
+
+  // Nose center ridge — subtle dashed
+  noseRidge:
+    'M 150 100 C 150 112, 150 130, 150 148 C 150 156, 150 164, 150 168',
+
+  // Upper lip — defined cupid's bow with smooth curves
+  upperLip:
+    'M 104 202 ' +
+    'C 114 196, 128 194, 138 198 ' +
+    'C 143 200, 147 196, 150 194 ' +
+    'C 153 196, 157 200, 162 198 ' +
+    'C 172 194, 186 196, 196 202',
+
+  // Lower lip — full smooth curve
+  lowerLip:
+    'M 114 222 ' +
+    'C 124 228, 138 232, 150 228 ' +
+    'C 162 232, 176 228, 186 222',
+
+  // Mouth line — gentle inner seam
+  mouthLine:
+    'M 109 212 ' +
+    'C 122 209, 138 210, 150 212 ' +
+    'C 162 210, 178 209, 191 212',
+
+  // Lip corners — connect upper to lower
+  lipCornerLeft: 'M 104 202 C 106 206, 108 214, 114 222',
+  lipCornerRight: 'M 196 202 C 194 206, 192 214, 186 222',
+
+  // Philtrum — nose to lip
+  philtrum:
+    'M 142 166 C 140 174, 138 184, 138 198 ' +
+    'M 158 166 C 160 174, 162 184, 162 198',
+
+  // Nasolabial folds — nose wing to mouth corner
+  leftNasolabial:
+    'M 116 166 C 112 174, 108 186, 104 202',
+  rightNasolabial:
+    'M 184 166 C 188 174, 192 186, 196 202',
+
+  // Under-eye crease — adds dimension
+  leftUnderEye:
+    'M 58 116 C 68 120, 82 122, 100 122 C 112 122, 120 120, 124 116',
+  rightUnderEye:
+    'M 242 116 C 232 120, 218 122, 200 122 C 188 122, 180 120, 176 116',
+
+  // Cheekbone highlight — subtle structural line showing zygomatic arch
+  leftCheekbone:
+    'M 30 140 C 44 136, 62 134, 86 136',
+  rightCheekbone:
+    'M 270 140 C 256 136, 238 134, 214 136',
+
+  // Jaw line — defined mandible with gonial angle
+  jawLine:
+    'M 48 230 ' +
+    'C 60 228, 80 230, 100 232 ' +
+    'C 126 234, 140 236, 150 236 ' +
+    'C 160 236, 174 234, 200 232 ' +
+    'C 220 230, 240 228, 252 230',
+
+  // Chin crease
+  chinCrease:
+    'M 126 282 C 138 286, 150 288, 150 288 C 150 288, 162 286, 174 282',
+};
+
+// Key landmark vertex indices for rendering dots
+export const LANDMARK_INDICES = [
+  // Contour — face shape anchors
+  0, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 23,
+  // Brows
+  40, 42, 44, 45, 47, 49,
+  // Eye corners + pupils
+  50, 54, 59, 60, 64, 69,
+  // Nose
+  70, 74, 77, 79, 81, 83,
+  // Lip corners + cupid's bow
+  111, 114, 117,
+  // Cheek structure
+  92, 93, 100, 101,
+];
+
+// Golden ratio proportion line y-coordinates (within 320-height mesh space)
+export const PROPORTION_LINES = {
+  browLine: 90,
+  eyeLine: 108,
+  noseBase: 166,
+  mouthLine: 210,
+  chinLine: 286,
+};

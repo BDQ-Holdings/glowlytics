@@ -1,26 +1,34 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { router as globalRouter } from 'expo-router';
+import Animated, { FadeIn, FadeInDown, FadeInUp, ZoomIn } from 'react-native-reanimated';
 import Svg, { Circle } from 'react-native-svg';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { AtmosphereScreen } from '../src/components/AtmosphereScreen';
 import { Button } from '../src/components/Button';
-import { GamificationCard } from '../src/components/GamificationCard';
-import { ScoreTile } from '../src/components/ScoreTile';
+import { PatternCarousel } from '../src/components/PatternCarousel';
+import { PatternProgressBar } from '../src/components/PatternProgressBar';
 import { SkinScoreHero } from '../src/components/SkinScoreHero';
 import {
   BorderRadius,
   Colors,
   FontFamily,
   FontSize,
+  Surfaces,
   Spacing,
 } from '../src/constants/theme';
+import { signalColorByRouteKey, SIGNAL_LABELS, SIGNAL_GLOWS, toSignalKey } from '../src/constants/signals';
 import {
   buildOverallSkinInsight,
   getLatestDailyForOutput,
 } from '../src/services/skinInsights';
 import { useStore } from '../src/store/useStore';
-import { presentPaywall, checkSubscriptionStatus } from '../src/services/subscription';
+import { gateWithPaywall } from '../src/services/subscription';
+import { PatternExportCard } from '../src/components/PatternExportCard';
+import { exportAndSharePattern } from '../src/services/patternExport';
+import type { CompositeSignals } from '../src/services/skinInsights';
+import { safeClamp } from '../src/utils/safeClamp';
+import type { Pattern } from '../src/types';
 
 interface TopStat {
   key: string;
@@ -30,14 +38,12 @@ interface TopStat {
   icon: string;
 }
 
-const clampScore = (value: number) => Math.max(0, Math.min(100, Math.round(value)));
+const ringSize = 72;
+const ringStroke = 4.5;
 
-const ringSize = 78;
-const ringStroke = 5;
-
-const TopStatRing: React.FC<{ value: number | null; color: string; icon: string }> = ({ value, color, icon }) => {
-  const hasData = value !== null;
-  const displayValue = hasData ? clampScore(value) : 0;
+const TopStatRing: React.FC<{ value: number | null; color: string; icon: string; signalKey?: string; delta?: number }> = ({ value, color, icon, signalKey, delta = 0 }) => {
+  const hasData = value !== null && Number.isFinite(value);
+  const displayValue = hasData ? safeClamp(value) : 0;
   const radius = (ringSize - ringStroke) / 2;
   const circumference = 2 * Math.PI * radius;
   const ringSpan = circumference * 0.84;
@@ -46,49 +52,34 @@ const TopStatRing: React.FC<{ value: number | null; color: string; icon: string 
   const center = ringSize / 2;
   const rotation = `rotate(128 ${center} ${center})`;
 
+  const glowColor = signalKey ? SIGNAL_GLOWS[toSignalKey(signalKey) as keyof typeof SIGNAL_GLOWS] : undefined;
+
+  // Number color only: red if dropped 10+, green if gained 5+, otherwise default text
+  const valueColor = delta <= -10 ? Colors.error : delta >= 5 ? Colors.success : Colors.text;
+
   return (
     <View style={styles.statRingWrap}>
       <Svg width={ringSize} height={ringSize}>
         <Circle
-          cx={center}
-          cy={center}
-          r={radius}
-          fill="none"
-          stroke={Colors.borderStrong}
-          strokeWidth={ringStroke}
-          strokeLinecap="round"
-          strokeDasharray={`${ringSpan} ${gap}`}
-          transform={rotation}
+          cx={center} cy={center} r={radius}
+          fill="none" stroke={Colors.borderStrong} strokeWidth={ringStroke}
+          strokeLinecap="round" strokeDasharray={`${ringSpan} ${gap}`} transform={rotation}
         />
         {hasData && (
           <Circle
-            cx={center}
-            cy={center}
-            r={radius}
-            fill="none"
-            stroke={color}
-            strokeWidth={ringStroke}
-            strokeLinecap="round"
-            strokeDasharray={`${progressSpan} ${circumference}`}
-            transform={rotation}
+            cx={center} cy={center} r={radius}
+            fill="none" stroke={color} strokeWidth={ringStroke}
+            strokeLinecap="round" strokeDasharray={`${progressSpan} ${circumference}`} transform={rotation}
           />
         )}
       </Svg>
       <View style={styles.statRingCenter} pointerEvents="none">
-        <Text style={[styles.statValue, !hasData && { color: Colors.textDim }]}>
+        <Text style={[styles.statValue, { color: hasData ? valueColor : Colors.textDim }]}>
           {hasData ? displayValue : '--'}
         </Text>
-        <MaterialCommunityIcons name={icon as any} size={18} color={hasData ? color : Colors.textDim} />
       </View>
     </View>
   );
-};
-
-const formatMetricStatus = (value: number) => {
-  if (value <= 25) return 'Calm';
-  if (value <= 50) return 'Stable';
-  if (value <= 75) return 'Elevated';
-  return 'Watch';
 };
 
 export default function Home() {
@@ -96,62 +87,33 @@ export default function Home() {
   const protocol = useStore((s) => s.protocol);
   const dailyRecords = useStore((s) => s.dailyRecords);
   const modelOutputs = useStore((s) => s.modelOutputs);
-  const gamification = useStore((s) => s.gamification);
-  const canPerformScan = useStore((s) => s.canPerformScan);
+  const patterns = useStore((s) => s.patterns);
+
+  const [sharingPattern, setSharingPattern] = useState<Pattern | null>(null);
+  const exportRef = useRef<View | null>(null);
+
+  useEffect(() => {
+    if (!sharingPattern) return;
+    const t = setTimeout(() => {
+      exportAndSharePattern(sharingPattern, exportRef).finally(() => {
+        setSharingPattern(null);
+      });
+    }, 100);
+    return () => clearTimeout(t);
+  }, [sharingPattern]);
 
   const handleScanPress = async (path: string) => {
-    if (!canPerformScan()) {
-      const purchased = await presentPaywall();
-      if (purchased) {
-        const sub = await checkSubscriptionStatus(useStore.getState().subscription);
-        useStore.getState().setSubscription(sub);
-      }
-      if (!useStore.getState().canPerformScan()) return;
-    }
+    if (!(await gateWithPaywall())) return;
     router.push(path as any);
   };
 
   const latestOutput = modelOutputs.length > 0 ? modelOutputs[modelOutputs.length - 1] : null;
   const baseline = modelOutputs.length > 0 ? modelOutputs[0] : null;
   const latestDaily = getLatestDailyForOutput(latestOutput, dailyRecords);
+  const baselineDaily = getLatestDailyForOutput(baseline, dailyRecords);
 
-  const streak = useMemo(() => {
-    const sorted = [...dailyRecords].sort((a, b) => b.date.localeCompare(a.date));
-    if (sorted.length === 0) return 0;
-
-    let value = 0;
-    const today = new Date();
-
-    for (let i = 0; i < sorted.length; i++) {
-      const expected = new Date(today);
-      expected.setDate(expected.getDate() - i);
-      const expectedStr = expected.toISOString().split('T')[0];
-      if (sorted.find((record) => record.date === expectedStr)) {
-        value += 1;
-      } else {
-        break;
-      }
-    }
-
-    return value;
-  }, [dailyRecords]);
-
-  const outputHistory = useMemo(() => {
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - 7);
-    const cutoffStr = cutoff.toISOString().split('T')[0];
-    const records = dailyRecords.filter((record) => record.date >= cutoffStr);
-    const ids = new Set(records.map((record) => record.daily_id));
-    return modelOutputs.filter((output) => ids.has(output.daily_id));
-  }, [dailyRecords, modelOutputs]);
-
-  const todayStr = new Date().toISOString().split('T')[0];
-  const scannedToday = dailyRecords.some((record) => record.date === todayStr);
-  const primaryAction = scannedToday && latestOutput ? '/scan/results' : '/scan/camera';
-
-  const acneHistory = outputHistory.map((output) => output.acne_score);
-  const sunHistory = outputHistory.map((output) => output.sun_damage_score);
-  const ageHistory = outputHistory.map((output) => output.skin_age_score);
+  const getStreak = useStore((s) => s.getStreak);
+  const streak = useMemo(() => getStreak(), [dailyRecords, getStreak]);
 
   const overallInsight = useMemo(
     () =>
@@ -159,35 +121,72 @@ export default function Home() {
         latestOutput,
         baselineOutput: baseline,
         latestDaily,
+        baselineDaily,
+        serverSignalScores: latestOutput?.signal_scores,
+        serverSignalFeatures: latestOutput?.signal_features,
+        serverSignalConfidence: latestOutput?.signal_confidence,
+        serverLesions: latestOutput?.lesions,
       }),
-    [latestOutput, baseline, latestDaily]
+    [latestOutput, baseline, latestDaily, baselineDaily]
   );
 
   const topStats = useMemo<TopStat[]>(() => {
-    if (!overallInsight) {
-      return [
-        { key: 'hydration', label: 'Hydration', value: null, color: Colors.primary, icon: 'water-outline' },
-        { key: 'elasticity', label: 'Elasticity', value: null, color: Colors.secondary, icon: 'arrow-expand-horizontal' },
-        { key: 'inflammation', label: 'Inflammation', value: null, color: Colors.error, icon: 'fire' },
-        { key: 'sun_damage', label: 'Sun Damage', value: null, color: Colors.warning, icon: 'weather-sunny' },
-        { key: 'structure', label: 'Structure', value: null, color: Colors.info, icon: 'waves' },
-      ];
-    }
-
-    const s = overallInsight.signals;
+    const s = overallInsight?.signals;
     return [
-      { key: 'hydration', label: 'Hydration', value: s.hydration, color: Colors.primary, icon: 'water-outline' },
-      { key: 'elasticity', label: 'Elasticity', value: s.elasticity, color: Colors.secondary, icon: 'arrow-expand-horizontal' },
-      { key: 'inflammation', label: 'Inflammation', value: s.inflammation, color: Colors.error, icon: 'fire' },
-      { key: 'sun_damage', label: 'Sun Damage', value: s.sunDamage, color: Colors.warning, icon: 'weather-sunny' },
-      { key: 'structure', label: 'Structure', value: s.structure, color: Colors.info, icon: 'waves' },
+      { key: 'hydration', label: 'Hydration', value: s?.hydration ?? null, color: signalColorByRouteKey('hydration'), icon: 'water-outline' },
+      { key: 'elasticity', label: 'Elasticity', value: s?.elasticity ?? null, color: signalColorByRouteKey('elasticity'), icon: 'arrow-expand-horizontal' },
+      { key: 'inflammation', label: 'Inflammation', value: s?.inflammation ?? null, color: signalColorByRouteKey('inflammation'), icon: 'fire' },
+      { key: 'sun_damage', label: 'Sun Damage', value: s?.sunDamage ?? null, color: signalColorByRouteKey('sun_damage'), icon: 'weather-sunny' },
+      { key: 'structure', label: 'Structure', value: s?.structure ?? null, color: signalColorByRouteKey('structure'), icon: 'waves' },
     ];
   }, [overallInsight]);
 
+  const baselineInsight = useMemo(
+    () =>
+      baseline
+        ? buildOverallSkinInsight({
+            latestOutput: baseline,
+            baselineOutput: baseline,
+            latestDaily: baselineDaily,
+            baselineDaily,
+            serverSignalScores: baseline.signal_scores,
+            serverSignalFeatures: baseline.signal_features,
+            serverSignalConfidence: baseline.signal_confidence,
+            serverLesions: baseline.lesions,
+          })
+        : null,
+    [baseline, baselineDaily],
+  );
+
+  const signalMovers = useMemo(() => {
+    if (!overallInsight?.signals || !baselineInsight?.signals) return [];
+    const keys: (keyof CompositeSignals)[] = ['hydration', 'elasticity', 'inflammation', 'sunDamage', 'structure'];
+    const routeKeys: Record<string, string> = { sunDamage: 'sun_damage' };
+    return keys
+      .map((k) => {
+        const rawCurrent = overallInsight.signals[k];
+        const rawBase = baselineInsight.signals[k];
+        const current = Number.isFinite(rawCurrent) ? Math.round(rawCurrent) : 0;
+        const base = Number.isFinite(rawBase) ? Math.round(rawBase) : 0;
+        const delta = current - base;
+        const routeKey = routeKeys[k] || k;
+        return {
+          key: routeKey,
+          label: SIGNAL_LABELS[toSignalKey(routeKey) as keyof typeof SIGNAL_LABELS] || k,
+          delta,
+          color: signalColorByRouteKey(routeKey),
+        };
+      })
+      .filter((m) => m.delta !== 0)
+      .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+      .slice(0, 3);
+  }, [overallInsight, baselineInsight]);
+
   return (
     <AtmosphereScreen>
-      <View style={styles.header}>
-        <Text style={styles.eyebrow}>Today</Text>
+      {/* ── 1. Header ── */}
+      <Animated.View entering={FadeIn.duration(400)} style={styles.header}>
+        <Text style={styles.greeting}>Today</Text>
         <Text style={styles.date}>
           {new Date().toLocaleDateString('en-US', {
             weekday: 'long',
@@ -195,192 +194,184 @@ export default function Home() {
             day: 'numeric',
           })}
         </Text>
-      </View>
+      </Animated.View>
 
-      <View style={styles.summaryRow}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.summaryRowContent}>
-          {topStats.map((stat) => (
-            <TouchableOpacity
-              key={stat.key}
-              style={styles.summaryStat}
-              activeOpacity={0.7}
-              onPress={() => router.push({ pathname: '/signal/[key]', params: { key: stat.key } })}
-            >
-              <TopStatRing value={stat.value} color={stat.color} icon={stat.icon} />
-              <Text style={styles.summaryLabel}>{stat.label}</Text>
-            </TouchableOpacity>
-          ))}
+      {/* ── 2. Signal Rings (top, no title) ── */}
+      <Animated.View entering={FadeInDown.duration(400).delay(50)} style={styles.signalSection}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.signalRowContent}>
+          {topStats.map((stat) => {
+            const delta = overallInsight && baselineInsight
+              ? Math.round((overallInsight.signals[toSignalKey(stat.key) as keyof CompositeSignals] ?? 0) - (baselineInsight.signals[toSignalKey(stat.key) as keyof CompositeSignals] ?? 0))
+              : 0;
+            return (
+              <TouchableOpacity
+                key={stat.key}
+                style={styles.signalStat}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={`${stat.label} signal, score ${stat.value ?? 'no data'}${delta <= -10 ? ', declining' : delta >= 5 ? ', improving' : ''}`}
+                onPress={() => router.push({ pathname: '/signal/[key]', params: { key: stat.key } })}
+              >
+                <TopStatRing value={stat.value} color={stat.color} icon={stat.icon} signalKey={stat.key} delta={delta} />
+                <Text style={styles.signalLabel}>{stat.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
-      </View>
+      </Animated.View>
 
+      {/* ── 3. HERO: Overall Score + Streak ── */}
       {overallInsight ? (
-        <SkinScoreHero
-          score={overallInsight.score}
-          statusLabel={overallInsight.statusLabel}
-          actionStatement={overallInsight.actionStatement}
-          trendDelta={overallInsight.trendDelta}
-          signals={overallInsight.signals}
-          onLearnMore={() => router.push('/skin-metrics')}
-          onPrimaryAction={() => {
-            if (primaryAction === '/scan/camera') {
-              handleScanPress(primaryAction);
-            } else {
-              router.push(primaryAction);
-            }
-          }}
-          primaryActionLabel={scannedToday && latestOutput ? "View today's results" : "Start today's scan"}
-        />
+        <Animated.View entering={FadeInDown.duration(500).delay(150)}>
+          <View style={styles.heroStreakRow}>
+            <View style={{ flex: 1 }}>
+              <SkinScoreHero
+                score={overallInsight.score}
+                statusLabel={overallInsight.statusLabel}
+                actionStatement={overallInsight.actionStatement}
+                trendDelta={overallInsight.trendDelta}
+                onViewResults={() => router.push('/scan/results')}
+              />
+            </View>
+            {streak > 0 && (
+              <View style={styles.streakBadge}>
+                <MaterialCommunityIcons
+                  name="fire"
+                  size={22}
+                  color={streak >= 7 ? Colors.warning : Colors.primary}
+                />
+                <Text style={[styles.streakBadgeValue, {
+                  color: streak >= 7 ? Colors.warning : Colors.primary,
+                }]}>
+                  {streak}
+                </Text>
+                <Text style={styles.streakBadgeLabel}>day streak</Text>
+              </View>
+            )}
+          </View>
+        </Animated.View>
       ) : (
-        <View style={styles.emptyHero}>
+        <Animated.View entering={FadeInDown.duration(500).delay(150)} style={styles.emptyHero}>
           <Text style={styles.emptyHeroTitle}>Build your first baseline</Text>
           <Text style={styles.emptyHeroCopy}>
-            Your overall skin score unlocks after your first scan. Start now to track structure, hydration, inflammation, sun damage, and elasticity.
+            Your skin score appears here after your first scan.
           </Text>
-          <View style={styles.emptyHeroActions}>
-            <Button title="Start first scan" onPress={() => handleScanPress('/scan/camera')} />
-            <Button title="Learn more" variant="secondary" onPress={() => router.push('/skin-metrics')} />
-          </View>
-        </View>
+          <Button title="Start first scan" onPress={() => handleScanPress('/scan/camera')} />
+        </Animated.View>
       )}
 
-      <View style={styles.infoCard}>
-        <Text style={styles.infoEyebrow}>Cadence</Text>
-        <Text style={styles.infoValue}>{streak} day streak</Text>
-        <Text style={styles.infoCopy}>
-          {protocol?.scan_region
-            ? `Same-region scans on ${protocol.scan_region.replace(/_/g, ' ')} keep the trend cleaner.`
-            : 'Choose a consistent region for cleaner signal tracking.'}
-        </Text>
-      </View>
+      {/* ── 4. Pattern progress + carousel ── */}
+      <PatternProgressBar />
+      <PatternCarousel patterns={patterns} onShare={(p) => setSharingPattern(p)} />
 
-      <GamificationCard gamification={gamification} streak={streak} />
 
-      {latestOutput ? (
-        <View style={styles.metricStack}>
-          <ScoreTile
-            label="Acne"
-            score={latestOutput.acne_score}
-            delta={baseline ? latestOutput.acne_score - baseline.acne_score : undefined}
-            color={Colors.acne}
-            sparklineData={acneHistory}
-            compact
-            lowLabel="Baseline"
-            highLabel="Today"
-            statusLabel={formatMetricStatus(latestOutput.acne_score)}
-          />
-          <ScoreTile
-            label="Sun Damage"
-            score={latestOutput.sun_damage_score}
-            delta={baseline ? latestOutput.sun_damage_score - baseline.sun_damage_score : undefined}
-            color={Colors.sunDamage}
-            sparklineData={sunHistory}
-            compact
-            lowLabel="Baseline"
-            highLabel="Today"
-            statusLabel={formatMetricStatus(latestOutput.sun_damage_score)}
-          />
-          <ScoreTile
-            label="Skin Age"
-            score={latestOutput.skin_age_score}
-            delta={baseline ? latestOutput.skin_age_score - baseline.skin_age_score : undefined}
-            color={Colors.skinAge}
-            sparklineData={ageHistory}
-            compact
-            lowLabel="Baseline"
-            highLabel="Today"
-            statusLabel={formatMetricStatus(latestOutput.skin_age_score)}
-          />
-        </View>
-      ) : (
+      {/* ── 5. Signal Movers ── */}
+      {latestOutput && baseline && signalMovers.length > 0 && (
+        <Animated.View entering={FadeInDown.duration(400).delay(350)} style={styles.moversSection}>
+          <Text style={styles.sectionLabel}>Since your baseline</Text>
+          <View style={styles.moversRow}>
+            {signalMovers.map((m) => {
+              const isUp = m.delta >= 0;
+              return (
+                <TouchableOpacity
+                  key={m.key}
+                  style={[styles.moverCard, { borderColor: m.color + '20' }]}
+                  activeOpacity={0.7}
+                  onPress={() => router.push({ pathname: '/signal/[key]', params: { key: m.key } })}
+                >
+                  <View style={[styles.moverDot, { backgroundColor: m.color }]} />
+                  <Text style={[styles.moverDelta, { color: isUp ? Colors.success : Colors.error }]}>
+                    {isUp ? '+' : ''}{m.delta}
+                  </Text>
+                  <Text style={styles.moverLabel} numberOfLines={1}>{m.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </Animated.View>
+      )}
+
+      {/* ── 6. Latest Insight ── */}
+      {latestOutput?.generated_insights?.overall_summary && (
+        <Animated.View entering={FadeIn.duration(400).delay(450)} style={styles.insightCard}>
+          <View style={styles.insightHeader}>
+            <Feather name="message-circle" size={13} color={Colors.primary} />
+            <Text style={styles.insightLabel}>Latest insight</Text>
+          </View>
+          <Text style={styles.insightText} numberOfLines={3}>
+            {latestOutput.generated_insights.overall_summary}
+          </Text>
+          {latestOutput.generated_insights.action_plan?.[0] && (
+            <View style={styles.insightActionRow}>
+              <Feather name="arrow-right" size={11} color={Colors.primaryLight} />
+              <Text style={styles.insightAction} numberOfLines={2}>
+                {latestOutput.generated_insights.action_plan[0]}
+              </Text>
+            </View>
+          )}
+        </Animated.View>
+      )}
+
+      {!latestOutput && (
         <View style={styles.emptyState}>
           <Text style={styles.emptyTitle}>No scan data yet</Text>
           <Text style={styles.emptyCopy}>
-            Your first baseline will unlock this dashboard and the detailed assessment flow.
+            Your first scan will unlock trends and detailed assessments.
           </Text>
         </View>
       )}
 
-
-      <View style={styles.utilityStrip}>
-        <TouchableOpacity style={styles.utilityAction} onPress={() => router.push('/report/generate')}>
-          <Text style={styles.utilityLabel}>Share report</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.utilityAction} onPress={() => router.push('/onboarding/products')}>
-          <Text style={styles.utilityLabel}>Products</Text>
-        </TouchableOpacity>
-      </View>
+      {sharingPattern && (
+        <View
+          pointerEvents="none"
+          collapsable={false}
+          style={{
+            position: 'absolute',
+            left: -10000,
+            top: 0,
+            width: 1080,
+            height: 1920,
+          }}
+        >
+          <View ref={exportRef as any} collapsable={false}>
+            <PatternExportCard pattern={sharingPattern} />
+          </View>
+        </View>
+      )}
     </AtmosphereScreen>
   );
 }
 
 const styles = StyleSheet.create({
+  // ── Header ──
   header: {
     marginBottom: Spacing.lg,
   },
-  eyebrow: {
+  greeting: {
     color: Colors.primaryLight,
     fontFamily: FontFamily.sansSemiBold,
     fontSize: FontSize.xs,
     textTransform: 'uppercase',
-    letterSpacing: 1.2,
+    letterSpacing: 1.4,
   },
   date: {
     marginTop: Spacing.xs,
     color: Colors.text,
     fontFamily: FontFamily.sansBold,
     fontSize: FontSize.xxl,
+    lineHeight: 34,
   },
-  summaryRow: {
-    marginBottom: Spacing.lg,
-    marginHorizontal: -Spacing.lg,
-  },
-  summaryRowContent: {
-    paddingHorizontal: Spacing.lg,
-    gap: Spacing.sm,
-  },
-  summaryStat: {
-    width: 86,
-    alignItems: 'center',
-    gap: Spacing.xs,
-  },
-  statRingWrap: {
-    width: ringSize,
-    height: ringSize,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  statRingCenter: {
-    position: 'absolute',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 1,
-  },
-  statValue: {
-    color: Colors.text,
-    fontFamily: FontFamily.sansBold,
-    fontSize: FontSize.xl,
-    lineHeight: 24,
-    marginBottom: 1,
-  },
-  summaryLabel: {
-    color: Colors.textSecondary,
-    fontFamily: FontFamily.sansMedium,
-    fontSize: FontSize.xs,
-    letterSpacing: 0.4,
-    textAlign: 'center',
-  },
+
+  // ── Empty hero ──
   emptyHero: {
-    backgroundColor: Colors.glassStrong,
-    borderRadius: BorderRadius.xxl,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    padding: Spacing.lg,
+    ...Surfaces.hero,
+    padding: Spacing.xl,
     gap: Spacing.md,
-    marginBottom: Spacing.lg,
+    marginBottom: Spacing.xl,
   },
   emptyHeroTitle: {
     color: Colors.text,
-    fontFamily: FontFamily.serifBold,
+    fontFamily: FontFamily.sansBold,
     fontSize: FontSize.xxl,
   },
   emptyHeroCopy: {
@@ -389,46 +380,161 @@ const styles = StyleSheet.create({
     fontSize: FontSize.md,
     lineHeight: 24,
   },
-  emptyHeroActions: {
-    gap: Spacing.sm,
-  },
-  infoCard: {
-    backgroundColor: Colors.glass,
-    marginBottom: Spacing.lg,
-    borderRadius: BorderRadius.lg,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    padding: Spacing.md,
-    gap: Spacing.sm,
-  },
-  infoEyebrow: {
+
+  // ── Section label (shared) ──
+  sectionLabel: {
     color: Colors.textMuted,
     fontFamily: FontFamily.sansSemiBold,
-    fontSize: FontSize.xs,
+    fontSize: FontSize.xxs,
     textTransform: 'uppercase',
-    letterSpacing: 0.8,
+    letterSpacing: 1,
+    marginBottom: Spacing.sm,
   },
-  infoValue: {
+
+  // ── Signal rings ──
+  // Break out of AtmosphereScreen's paddingHorizontal so the scroll goes edge-to-edge
+  signalSection: {
+    marginBottom: Spacing.xl,
+    marginHorizontal: -Spacing.lg,
+  },
+  signalRowContent: {
+    gap: Spacing.md,
+    paddingLeft: Spacing.lg,   // align first ring with screen content margin
+    paddingRight: Spacing.lg,  // breathing room after last ring
+  },
+  signalStat: {
+    width: 84,
+    alignItems: 'center',
+    gap: Spacing.xxs,
+  },
+  statRingWrap: {
+    width: ringSize,
+    height: ringSize,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ringGlow: {
+    position: 'absolute',
+    width: Math.round(ringSize * 0.85),
+    height: Math.round(ringSize * 0.85),
+    borderRadius: Math.round(ringSize * 0.85) / 2,
+  },
+  statRingCenter: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statValue: {
     color: Colors.text,
     fontFamily: FontFamily.sansBold,
-    fontSize: FontSize.lg,
-    textTransform: 'capitalize',
+    fontSize: FontSize.xl,
+    lineHeight: 26,
   },
-  infoCopy: {
+  signalLabel: {
     color: Colors.textSecondary,
-    fontFamily: FontFamily.sans,
-    fontSize: FontSize.sm,
-    lineHeight: 20,
+    fontFamily: FontFamily.sansMedium,
+    fontSize: FontSize.xxs,
+    letterSpacing: 0.3,
+    textAlign: 'center',
   },
-  metricStack: {
+
+  // ── Hero + Streak inline ──
+  heroStreakRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  streakBadge: {
+    alignItems: 'center',
+    paddingTop: Spacing.md,
+    paddingLeft: Spacing.sm,
+    gap: 2,
+  },
+  streakBadgeValue: {
+    fontFamily: FontFamily.sansBold,
+    fontSize: FontSize.xl,
+    lineHeight: 26,
+  },
+  streakBadgeLabel: {
+    fontFamily: FontFamily.sansMedium,
+    fontSize: FontSize.xxs,
+    color: Colors.textMuted,
+  },
+
+  // ── Signal movers ──
+  moversSection: {
+    marginBottom: Spacing.xl,
+  },
+  moversRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  moverCard: {
+    flex: 1,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    backgroundColor: Colors.surfaceOverlay,
+    padding: Spacing.md,
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  moverDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginBottom: 2,
+  },
+  moverDelta: {
+    fontFamily: FontFamily.sansBold,
+    fontSize: FontSize.xl,
+    letterSpacing: -0.5,
+  },
+  moverLabel: {
+    color: Colors.textMuted,
+    fontFamily: FontFamily.sansMedium,
+    fontSize: FontSize.xxs,
+  },
+
+  // ── Insight card ──
+  insightCard: {
+    backgroundColor: Colors.surfaceOverlay,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
     gap: Spacing.sm,
     marginBottom: Spacing.lg,
   },
+  insightHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  insightLabel: {
+    color: Colors.primary,
+    fontFamily: FontFamily.sansSemiBold,
+    fontSize: FontSize.xxs,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  insightText: {
+    color: Colors.text,
+    fontFamily: FontFamily.sans,
+    fontSize: FontSize.md,
+    lineHeight: 23,
+  },
+  insightActionRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.xs,
+  },
+  insightAction: {
+    flex: 1,
+    color: Colors.primaryLight,
+    fontFamily: FontFamily.sansSemiBold,
+    fontSize: FontSize.xs,
+    lineHeight: 18,
+  },
+
+  // ── Empty state ──
   emptyState: {
-    backgroundColor: Colors.glass,
-    borderRadius: BorderRadius.xl,
-    borderWidth: 1,
-    borderColor: Colors.border,
     padding: Spacing.lg,
     gap: Spacing.sm,
     marginBottom: Spacing.lg,
@@ -443,25 +549,5 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.sans,
     fontSize: FontSize.md,
     lineHeight: 23,
-  },
-  utilityStrip: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-    marginTop: Spacing.lg,
-  },
-  utilityAction: {
-    flex: 1,
-    backgroundColor: Colors.glass,
-    borderRadius: BorderRadius.full,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.md,
-    alignItems: 'center',
-  },
-  utilityLabel: {
-    color: Colors.textSecondary,
-    fontFamily: FontFamily.sansMedium,
-    fontSize: FontSize.sm,
   },
 });

@@ -146,4 +146,93 @@ describe('ingredientDB', () => {
       expect(tips).toEqual([]);
     });
   });
+
+  describe('new ingredient profiles', () => {
+    it('matches tranexamic acid', () => {
+      const result = matchIngredient('Tranexamic Acid');
+      expect(result).not.toBeNull();
+      expect(result!.canonicalName).toBe('Tranexamic Acid');
+      expect(result!.goalRelevance.sun_damage).toBeGreaterThan(0);
+    });
+
+    it('matches alpha-arbutin', () => {
+      const result = matchIngredient('Alpha-Arbutin');
+      expect(result).not.toBeNull();
+      expect(result!.canonicalName).toBe('Alpha-Arbutin');
+    });
+
+    it('matches arbutin alias', () => {
+      const result = matchIngredient('arbutin');
+      expect(result).not.toBeNull();
+      expect(result!.canonicalName).toBe('Alpha-Arbutin');
+    });
+
+    it('matches kojic acid', () => {
+      const result = matchIngredient('Kojic Acid');
+      expect(result).not.toBeNull();
+      expect(result!.canonicalName).toBe('Kojic Acid');
+    });
+
+    it('matches snail mucin / snail secretion filtrate', () => {
+      const result1 = matchIngredient('Snail Mucin');
+      expect(result1).not.toBeNull();
+      expect(result1!.canonicalName).toBe('Snail Mucin');
+
+      const result2 = matchIngredient('Snail Secretion Filtrate');
+      expect(result2).not.toBeNull();
+      expect(result2!.canonicalName).toBe('Snail Mucin');
+    });
+
+    it('matches aloe vera variants', () => {
+      const result = matchIngredient('Aloe Barbadensis Leaf Juice');
+      expect(result).not.toBeNull();
+      expect(result!.canonicalName).toBe('Aloe Vera');
+    });
+
+    it('matches caffeine', () => {
+      const result = matchIngredient('Caffeine');
+      expect(result).not.toBeNull();
+      expect(result!.canonicalName).toBe('Caffeine');
+    });
+
+    it('matches shea butter', () => {
+      const result = matchIngredient('Butyrospermum Parkii Butter');
+      expect(result).not.toBeNull();
+      expect(result!.canonicalName).toBe('Shea Butter');
+    });
+
+    it('matches urea', () => {
+      const result = matchIngredient('Urea');
+      expect(result).not.toBeNull();
+      expect(result!.canonicalName).toBe('Urea');
+    });
+
+    it('matches mandelic acid', () => {
+      const result = matchIngredient('Mandelic Acid');
+      expect(result).not.toBeNull();
+      expect(result!.canonicalName).toBe('Mandelic Acid');
+      expect(result!.category).toBe('aha');
+    });
+
+    it('matches colloidal oatmeal', () => {
+      const result = matchIngredient('Colloidal Oatmeal');
+      expect(result).not.toBeNull();
+      expect(result!.canonicalName).toBe('Colloidal Oatmeal');
+    });
+
+    it('matches camphor', () => {
+      const result = matchIngredient('Camphor');
+      expect(result).not.toBeNull();
+      expect(result!.canonicalName).toBe('Camphor');
+    });
+
+    it('scores a Byoma product correctly with new ceramide + tranexamic matches', () => {
+      const product = makeProduct('Byoma Brightening Serum', [
+        'Niacinamide', 'Tranexamic Acid', 'Ceramide NP', 'Alpha-Arbutin', 'Ascorbyl Glucoside',
+      ]);
+      const result = computeProductEffectiveness(product, 'sun_damage');
+      expect(result.score).toBeGreaterThanOrEqual(55);
+      expect(result.matchedIngredients.length).toBeGreaterThanOrEqual(3);
+    });
+  });
 });
