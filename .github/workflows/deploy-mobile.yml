@@ -16,7 +16,7 @@ on:
       profile:
         description: 'EAS build profile'
         required: true
-        default: 'preview'
+        default: 'production'
         type: choice
         options:
           - development
@@ -25,7 +25,7 @@ on:
       platform:
         description: 'Target platform'
         required: true
-        default: 'all'
+        default: 'ios'
         type: choice
         options:
           - ios
@@ -34,11 +34,11 @@ on:
       submit:
         description: 'Submit to app stores after build'
         required: false
-        default: false
+        default: true
         type: boolean
 
 concurrency:
-  group: deploy-mobile-${{ github.event.inputs.profile || 'preview' }}
+  group: deploy-mobile-${{ github.event.inputs.profile || 'production' }}
   cancel-in-progress: false
 
 jobs:
@@ -67,7 +67,7 @@ jobs:
     needs: test
     if: always() && (needs.test.result == 'success' || needs.test.result == 'skipped')
     runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.profile || 'preview' }}
+    environment: production
     strategy:
       matrix:
         platform: ${{ github.event.inputs.platform == 'all' && fromJSON('["ios", "android"]') || fromJSON(format('["{0}"]', github.event.inputs.platform || 'ios')) }}
@@ -87,10 +87,10 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Build (blocks until complete)
+      - name: Build
         working-directory: RadianceIQ
         run: |
-          PROFILE="${{ github.event.inputs.profile || 'preview' }}"
+          PROFILE="${{ github.event.inputs.profile || 'production' }}"
           PLATFORM="${{ matrix.platform }}"
           echo "Building $PLATFORM with profile $PROFILE"
           eas build \
@@ -101,7 +101,10 @@ jobs:
   submit:
     name: Submit to Store (${{ matrix.platform }})
     needs: build
-    if: github.event.inputs.submit == 'true'
+    # Auto-submit on push to main (production builds) or when manually requested
+    if: >-
+      always() && needs.build.result == 'success' &&
+      (github.event_name == 'push' || github.event.inputs.submit == 'true')
     runs-on: ubuntu-latest
     environment: production
     strategy:
@@ -123,15 +126,13 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Submit latest build
+      - name: Submit latest build to TestFlight / Play Store
         working-directory: RadianceIQ
         env:
-          # iOS App Store Connect credentials
           APPLE_ID: ${{ secrets.APPLE_ID }}
           ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
           ASC_API_KEY_ISSUER_ID: ${{ secrets.ASC_API_KEY_ISSUER_ID }}
           ASC_API_KEY: ${{ secrets.ASC_API_KEY }}
-          # Android Play Store credentials
           GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
         run: |
           eas submit \
