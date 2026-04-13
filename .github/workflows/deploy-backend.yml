@@ -1,0 +1,79 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'RadianceIQ/backend/**'
+      - '.github/workflows/deploy-backend.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-backend
+  cancel-in-progress: false  # never cancel an in-flight deploy
+
+jobs:
+  test:
+    name: Backend · Pre-deploy Test
+    # On push, CI workflow already runs these tests in parallel.
+    # Only run here for manual workflow_dispatch triggers.
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: RadianceIQ/backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: RadianceIQ/backend/package-lock.json
+      - run: npm ci
+      - run: npm test -- --ci
+
+  deploy:
+    name: Deploy to Railway
+    # Wait for test job when it runs (workflow_dispatch); skip wait on push
+    # (CI workflow gates main branch via required status checks).
+    needs: test
+    if: always() && (needs.test.result == 'success' || needs.test.result == 'skipped')
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Deploy
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        working-directory: RadianceIQ/backend
+        run: railway up --detach
+
+      - name: Health check (wait up to 120s)
+        env:
+          API_URL: ${{ vars.PRODUCTION_API_URL }}
+        run: |
+          URL="${API_URL:-https://glowlytics-api-production.up.railway.app}/health"
+          echo "Polling $URL ..."
+          for i in $(seq 1 12); do
+            STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$URL" || true)
+            echo "  Attempt $i: HTTP $STATUS"
+            [ "$STATUS" = "200" ] && echo "Health check passed" && exit 0
+            sleep 10
+          done
+          echo "Health check failed after 120s"
+          exit 1
+
+      - name: Verify API is serving correctly
+        env:
+          API_URL: ${{ vars.PRODUCTION_API_URL }}
+        run: |
+          URL="${API_URL:-https://glowlytics-api-production.up.railway.app}/health"
+          BODY=$(curl -sf "$URL")
+          echo "Health response: $BODY"
+          # Server only starts listening after initSchema() + initModels() succeed,
+          # so a 200 with status=ok confirms DB migrations and model loading completed.
+          echo "$BODY" | grep -q '"status":"ok"' || { echo "Unexpected health response"; exit 1; }

@@ -1,0 +1,81 @@
+name: PR Preview Build
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'RadianceIQ/app/**'
+      - 'RadianceIQ/src/**'
+      - 'RadianceIQ/assets/**'
+      - 'RadianceIQ/app.json'
+      - 'RadianceIQ/eas.json'
+      - 'RadianceIQ/package.json'
+
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Frontend · Pre-preview Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: RadianceIQ
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: RadianceIQ/package-lock.json
+      - run: npm ci --legacy-peer-deps
+      - run: npx tsc --noEmit
+      - run: npm test -- --ci
+
+  preview:
+    name: EAS Preview Build
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: RadianceIQ/package-lock.json
+      - run: npm ci --legacy-peer-deps
+        working-directory: RadianceIQ
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Build preview
+        working-directory: RadianceIQ
+        run: |
+          eas build \
+            --platform all \
+            --profile preview \
+            --non-interactive \
+            --no-wait
+
+      - name: Find existing bot comment
+        uses: peter-evans/find-comment@v3
+        id: find-comment
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-author: 'github-actions[bot]'
+          body-includes: 'Preview build triggered on EAS'
+
+      - name: Upsert PR comment
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          comment-id: ${{ steps.find-comment.outputs.comment-id }}
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            **Preview build triggered on EAS** for ${{ github.sha }}.
+            Check [Expo dashboard](https://expo.dev/accounts/mufasabrownie/projects/glowlytics/builds) for status.
+          edit-mode: replace
