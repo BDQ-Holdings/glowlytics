@@ -3,6 +3,7 @@
  */
 
 process.env.NODE_ENV = 'development';
+process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY || 'test-key-for-ci';
 
 const mockCreate = jest.fn();
 
