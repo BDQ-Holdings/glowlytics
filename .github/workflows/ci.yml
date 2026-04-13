@@ -17,7 +17,9 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: RadianceIQ/package-lock.json
+          cache-dependency-path: |
+            RadianceIQ/package-lock.json
+            RadianceIQ/backend/package-lock.json
       - run: npm ci --legacy-peer-deps
       - run: cd backend && npm ci --ignore-scripts
       - run: npx tsc --noEmit
