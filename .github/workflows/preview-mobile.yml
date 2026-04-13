@@ -30,6 +30,7 @@ jobs:
           cache: npm
           cache-dependency-path: RadianceIQ/package-lock.json
       - run: npm ci --legacy-peer-deps
+      - run: cd backend && npm ci --ignore-scripts
       - run: npx tsc --noEmit
       - run: npm test -- --ci
 
