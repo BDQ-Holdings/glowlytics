@@ -50,7 +50,7 @@ jobs:
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         working-directory: RadianceIQ/backend
-        run: railway up --detach
+        run: railway up --detach --service "${{ vars.RAILWAY_SERVICE_NAME || 'glowlytics-api' }}"
 
       - name: Health check (wait up to 120s)
         env:
