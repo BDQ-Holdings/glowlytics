@@ -1,12 +1,19 @@
 name: CI
+
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  typecheck-and-test:
+  # ─── Frontend: TypeScript + Jest ───────────────────────────────
+  frontend-check:
+    name: Frontend · Typecheck & Test
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -22,3 +29,56 @@ jobs:
       - run: cd backend && npm ci --ignore-scripts
       - run: npx tsc --noEmit
       - run: npm test -- --ci --coverage
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: RadianceIQ/coverage/
+          retention-days: 7
+
+  # ─── Backend: Jest + Supertest ─────────────────────────────────
+  backend-check:
+    name: Backend · Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: RadianceIQ/backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: RadianceIQ/backend/package-lock.json
+      - run: npm ci
+      - run: npm test -- --ci --coverage
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: RadianceIQ/backend/coverage/
+          retention-days: 7
+
+  # ─── Backend ONNX Model Availability ───────────────────────────
+  # The backend auto-downloads these at startup (signal-models.js).
+  # Mobile models (acne_detector, lesion_detector) are bundled in the
+  # IPA/APK via assets/models/ and the expo-asset plugin — no runtime
+  # download needed on the client side.
+  backend-model-check:
+    name: Backend · Verify ONNX Model URLs
+    runs-on: ubuntu-latest
+    env:
+      GH_BASE: https://raw.githubusercontent.com/RadianceIQ/glowlytics/18966b9/RadianceIQ/backend/models
+    steps:
+      - name: Check skin_signals_v2.onnx
+        run: |
+          HTTP_CODE=$(curl -sL -o /dev/null -w '%{http_code}' "${GH_BASE}/skin_signals_v2.onnx")
+          echo "skin_signals_v2.onnx → HTTP $HTTP_CODE"
+          [ "$HTTP_CODE" = "200" ]
+      - name: Check acne_detector.onnx
+        run: |
+          HTTP_CODE=$(curl -sL -o /dev/null -w '%{http_code}' "${GH_BASE}/acne_detector.onnx")
+          echo "acne_detector.onnx → HTTP $HTTP_CODE"
+          [ "$HTTP_CODE" = "200" ]

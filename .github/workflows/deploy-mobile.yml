@@ -1,0 +1,141 @@
+name: Deploy Mobile App
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'RadianceIQ/app/**'
+      - 'RadianceIQ/src/**'
+      - 'RadianceIQ/assets/**'
+      - 'RadianceIQ/app.json'
+      - 'RadianceIQ/eas.json'
+      - 'RadianceIQ/package.json'
+      - '.github/workflows/deploy-mobile.yml'
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: 'EAS build profile'
+        required: true
+        default: 'preview'
+        type: choice
+        options:
+          - development
+          - preview
+          - production
+      platform:
+        description: 'Target platform'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - ios
+          - android
+          - all
+      submit:
+        description: 'Submit to app stores after build'
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: deploy-mobile-${{ github.event.inputs.profile || 'preview' }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Frontend · Pre-build Test
+    # On push, CI workflow already runs these tests in parallel.
+    # Only run here for manual workflow_dispatch triggers.
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: RadianceIQ
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: RadianceIQ/package-lock.json
+      - run: npm ci --legacy-peer-deps
+      - run: npx tsc --noEmit
+      - run: npm test -- --ci
+
+  build:
+    name: EAS Build (${{ matrix.platform }})
+    needs: test
+    if: always() && (needs.test.result == 'success' || needs.test.result == 'skipped')
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.profile || 'preview' }}
+    strategy:
+      matrix:
+        platform: ${{ github.event.inputs.platform == 'all' && fromJSON('["ios", "android"]') || fromJSON(format('["{0}"]', github.event.inputs.platform || 'ios')) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: RadianceIQ/package-lock.json
+      - run: npm ci --legacy-peer-deps
+        working-directory: RadianceIQ
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Build (blocks until complete)
+        working-directory: RadianceIQ
+        run: |
+          PROFILE="${{ github.event.inputs.profile || 'preview' }}"
+          PLATFORM="${{ matrix.platform }}"
+          echo "Building $PLATFORM with profile $PROFILE"
+          eas build \
+            --platform "$PLATFORM" \
+            --profile "$PROFILE" \
+            --non-interactive
+
+  submit:
+    name: Submit to Store (${{ matrix.platform }})
+    needs: build
+    if: github.event.inputs.submit == 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    strategy:
+      matrix:
+        platform: ${{ github.event.inputs.platform == 'all' && fromJSON('["ios", "android"]') || fromJSON(format('["{0}"]', github.event.inputs.platform || 'ios')) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: RadianceIQ/package-lock.json
+      - run: npm ci --legacy-peer-deps
+        working-directory: RadianceIQ
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Submit latest build
+        working-directory: RadianceIQ
+        env:
+          # iOS App Store Connect credentials
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_KEY_ISSUER_ID: ${{ secrets.ASC_API_KEY_ISSUER_ID }}
+          ASC_API_KEY: ${{ secrets.ASC_API_KEY }}
+          # Android Play Store credentials
+          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+        run: |
+          eas submit \
+            --platform "${{ matrix.platform }}" \
+            --profile production \
+            --latest \
+            --non-interactive
