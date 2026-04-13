@@ -1,0 +1,8 @@
+# Glowlytics Acne/Lesion Detection Dataset
+path: /root/cornell-hackathon/ml/data/lesion
+train: train/images
+val: val/images
+test: test/images
+
+nc: 6
+names: ['comedone', 'papule', 'pustule', 'nodule', 'macule', 'patch']

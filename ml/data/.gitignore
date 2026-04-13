@@ -1,0 +1,14 @@
+# Dataset images and large files (download via scripts/)
+*/images/
+*/raw/
+*/train/
+*/val/
+*/test/
+*.jpg
+*.png
+*.tar.gz
+
+# Keep annotation JSONs and dataset.yaml
+!*/annotations/
+!*/annotations/*.json
+!*/dataset.yaml
