@@ -210,6 +210,11 @@ export default function Preview() {
           ))}
         </View>
       </View>
+
+      {/* Medical disclaimer */}
+      <Text style={styles.disclaimer}>
+        Glowlytics provides wellness insights only and is not a medical device. It does not diagnose, treat, or prevent any condition. Consult a dermatologist for medical concerns.
+      </Text>
     </OnboardingTransition>
   );
 }
@@ -271,5 +276,13 @@ const styles = StyleSheet.create({
     color: Colors.text,
     fontFamily: FontFamily.sans,
     fontSize: FontSize.md,
+  },
+  disclaimer: {
+    color: Colors.textMuted,
+    fontFamily: FontFamily.sans,
+    fontSize: FontSize.xxs,
+    lineHeight: 16,
+    textAlign: 'center',
+    marginTop: Spacing.sm,
   },
 });

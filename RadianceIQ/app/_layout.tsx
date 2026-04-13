@@ -5,7 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { AppState, Image, StyleSheet, Text, View } from 'react-native';
 import { useFonts } from 'expo-font';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { ClerkProvider, ClerkLoaded, useAuth } from '@clerk/clerk-expo';
+import { ClerkProvider, useAuth } from '@clerk/clerk-expo';
 import Animated, {
   Easing,
   useSharedValue,
@@ -18,13 +18,14 @@ import { env } from '../src/config/env';
 import { Colors, FontFamily, FontSize, Spacing } from '../src/constants/theme';
 import { useStore } from '../src/store/useStore';
 import { setAuthTokenProvider } from '../src/services/api';
-import { initRevenueCat, identifyUser, checkSubscriptionStatus, setupCustomerInfoListener } from '../src/services/subscription';
+import { initRevenueCat, identifyUser, subscriptionFromCustomerInfo, setupCustomerInfoListener } from '../src/services/subscription';
 import { initAnalytics, identifyUser as identifyAnalyticsUser, trackEvent } from '../src/services/analytics';
 // Lazy import — onnxruntime-react-native crashes in Expo Go
 const initLesionDetection = () =>
   import('../src/services/onDeviceLesionDetection').then((m) => m.initLesionDetection());
 
-const SPLASH_MIN_MS = 1500;
+const SPLASH_MIN_MS = 800;
+const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 // ─── Splash Screen ───────────────────────────────────────────────
 // Logo fade-in, then "Find your glow" in cursive revealed left-to-right
@@ -114,6 +115,45 @@ const splash = StyleSheet.create({
   },
 });
 
+// ─── Demo Seeder — loads demo data for the test@test.com reviewer account ───
+const DEMO_EMAIL = 'test@test.com';
+
+function DemoSeeder() {
+  let clerkEmail: string | undefined;
+  try {
+    const { useUser } = require('@clerk/clerk-expo');
+    const { user } = useUser();
+    clerkEmail = user?.primaryEmailAddress?.emailAddress;
+  } catch {}
+
+  const dailyRecords = useStore((s) => s.dailyRecords);
+  const seeded = useRef(false);
+
+  useEffect(() => {
+    if (seeded.current) return;
+    if (clerkEmail !== DEMO_EMAIL) return;
+    if (dailyRecords.length > 0) return; // Already has data
+
+    seeded.current = true;
+    const { createDemoSeed } = require('../src/services/demoData');
+    const demo = createDemoSeed();
+    const store = useStore.getState();
+
+    store.createUser(demo.user);
+    for (const p of demo.products) store.addProduct(p);
+    useStore.setState({
+      protocol: demo.protocol,
+      dailyRecords: demo.records,
+      modelOutputs: demo.outputs,
+      gamification: demo.gamification,
+    });
+    store.persistData();
+    console.log('[DemoSeeder] Loaded demo data for test@test.com');
+  }, [clerkEmail, dailyRecords.length]);
+
+  return null;
+}
+
 // ─── Auth Redirector ─────────────────────────────────────────────
 function AuthRedirector() {
   const { isSignedIn, isLoaded } = useAuth();
@@ -144,67 +184,98 @@ function AuthRedirector() {
 
 // ─── Clerk-Gated App ─────────────────────────────────────────────
 function ClerkGatedApp() {
-  const { getToken, userId } = useAuth();
+  const { getToken, userId, isLoaded: clerkLoaded } = useAuth();
   const loadPersistedData = useStore((s) => s.loadPersistedData);
+  const reconcileAuthUserId = useStore((s) => s.reconcileAuthUserId);
   const setSubscription = useStore((s) => s.setSubscription);
-  const subscription = useStore((s) => s.subscription);
-  const loaded = useRef(false);
+  const initStarted = useRef(false);
+  const clerkInitStartedAt = useRef(Date.now());
   const listenerCleanup = useRef<() => void>(() => {});
   const [appReady, setAppReady] = useState(false);
 
   useEffect(() => {
-    if (!loaded.current) {
-      loaded.current = true;
-      setAuthTokenProvider(() => getToken());
+    if (clerkLoaded) {
+      if (__DEV__) {
+        console.log(`[Auth] Clerk loaded in ${Date.now() - clerkInitStartedAt.current}ms (${env.CLERK_KEY_ENV}:${env.CLERK_INSTANCE_HOST})`);
+      }
+      return;
+    }
+    const t = setTimeout(() => {
+      if (__DEV__) {
+        console.warn(`[Auth] Clerk still loading after ${Date.now() - clerkInitStartedAt.current}ms (${env.CLERK_KEY_ENV}:${env.CLERK_INSTANCE_HOST})`);
+      }
+    }, 5000);
+    return () => clearTimeout(t);
+  }, [clerkLoaded]);
 
-      const initApp = async () => {
-        await loadPersistedData();
+  // Start init only after Clerk SDK is loaded — splash shows immediately during Clerk init
+  useEffect(() => {
+    if (!clerkLoaded || initStarted.current) return;
+    initStarted.current = true;
+    setAuthTokenProvider(() => getToken());
 
-        try {
-          if (__DEV__) console.log('[App] Initializing analytics...');
-          await initAnalytics();
-          try {
-            if (__DEV__) console.log('[App] Initializing RevenueCat...');
-            await initRevenueCat();
-            listenerCleanup.current = setupCustomerInfoListener();
-            if (userId) await identifyUser(userId);
-            const currentSub = useStore.getState().subscription;
-            const sub = await checkSubscriptionStatus(currentSub);
-            setSubscription(sub);
-            if (__DEV__) console.log('[App] RevenueCat ready');
-          } catch (e: any) {
-            if (__DEV__) console.warn('[App] RevenueCat init failed:', e?.message || e);
-          }
-        } catch (e: any) {
-          if (__DEV__) console.warn('[App] Analytics init failed:', e?.message || e);
-        }
+    const initCritical = async () => {
+      const t0 = Date.now();
+      await loadPersistedData();
+      if (userId) {
+        useStore.getState().reconcileAuthUserId(userId);
+      }
+      if (__DEV__) console.log(`[App] Critical init ready in ${Date.now() - t0}ms`);
+    };
 
-        if (__DEV__) console.log('[App] Init complete');
+    const initDeferred = async () => {
+      try {
+        if (__DEV__) console.log('[App] Initializing analytics...');
+        await initAnalytics();
         identifyAnalyticsUser(userId || 'anonymous');
         trackEvent('app_init_complete', {
           has_revenuecat_key: !!env.REVENUECAT_API_KEY,
           has_posthog_key: !!env.POSTHOG_API_KEY,
           has_api_url: !!env.API_BASE_URL,
         });
-
-        initLesionDetection().catch(() => {});
-      };
-
-      Promise.all([
-        initApp(),
-        new Promise<void>((r) => setTimeout(r, SPLASH_MIN_MS)),
-      ]).then(() => {
-        setAppReady(true);
-      }).catch((err) => {
-        if (__DEV__) console.error('[App] Init failed:', err);
-        setAppReady(true);
-      });
-    }
-
-    return () => {
-      listenerCleanup.current();
+        try {
+          if (__DEV__) console.log('[App] Initializing RevenueCat...');
+          await initRevenueCat();
+          listenerCleanup.current = setupCustomerInfoListener();
+          if (userId) {
+            const customerInfo = await identifyUser(userId);
+            if (customerInfo) {
+              const currentSub = useStore.getState().subscription;
+              setSubscription(subscriptionFromCustomerInfo(customerInfo, currentSub));
+            }
+          }
+          if (__DEV__) console.log('[App] RevenueCat ready');
+        } catch (e: any) {
+          if (__DEV__) console.warn('[App] RevenueCat init failed:', e?.message || e);
+        }
+      } catch (e: any) {
+        if (__DEV__) console.warn('[App] Analytics init failed:', e?.message || e);
+      }
+      if (__DEV__) console.log('[App] Deferred init complete');
+      initLesionDetection().catch(() => {});
     };
+
+    Promise.all([
+      initCritical(),
+      delay(SPLASH_MIN_MS),
+    ]).then(() => {
+      setAppReady(true);
+    }).catch((err) => {
+      if (__DEV__) console.error('[App] Init failed:', err);
+      setAppReady(true);
+    }).finally(() => {
+      void initDeferred();
+    });
+  }, [clerkLoaded]);
+
+  useEffect(() => {
+    return () => { listenerCleanup.current(); };
   }, []);
+
+  useEffect(() => {
+    if (!userId) return;
+    reconcileAuthUserId(userId);
+  }, [userId, reconcileAuthUserId]);
 
   // Health sync on app foreground:
   // Re-sync at most once every 6 hours, only during waking hours (7am-midnight local) —
@@ -256,6 +327,7 @@ function ClerkGatedApp() {
           <Stack.Screen name="pattern" options={{ animation: 'slide_from_right' }} />
         </Stack>
         <AuthRedirector />
+        <DemoSeeder />
       </View>
     </SafeAreaProvider>
   );
@@ -279,9 +351,7 @@ export default function RootLayout() {
       publishableKey={env.CLERK_PUBLISHABLE_KEY}
       tokenCache={tokenCache}
     >
-      <ClerkLoaded>
         <ClerkGatedApp />
-      </ClerkLoaded>
     </ClerkProvider>
   );
 }

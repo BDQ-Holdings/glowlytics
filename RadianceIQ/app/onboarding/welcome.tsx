@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { useRouter } from 'expo-router';
+import { useAuth } from '@clerk/clerk-expo';
 import Svg, { Defs, RadialGradient, Stop, Circle } from 'react-native-svg';
 import Animated, {
   useSharedValue,
@@ -112,13 +113,14 @@ function WelcomeIllustration() {
 
 export default function Welcome() {
   const router = useRouter();
+  const { userId } = useAuth();
   const createUser = useStore((s) => s.createUser);
   const setOnboardingFlow = useStore((s) => s.setOnboardingFlow);
   const setOnboardingFlowIndex = useStore((s) => s.setOnboardingFlowIndex);
 
   const handleStart = () => {
     trackEvent('onboarding_started');
-    createUser({});
+    createUser({ user_id: userId ?? undefined });
     const flow = buildOnboardingFlow();
     setOnboardingFlow(flow);
     setOnboardingFlowIndex(1);
@@ -131,7 +133,7 @@ export default function Welcome() {
     if (existing) {
       useStore.getState().updateUser({ onboarding_complete: true });
     } else {
-      createUser({ onboarding_complete: true });
+      createUser({ user_id: userId ?? undefined, onboarding_complete: true });
     }
     router.replace('/(tabs)/today' as any);
   };

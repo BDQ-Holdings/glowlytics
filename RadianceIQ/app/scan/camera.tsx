@@ -44,6 +44,15 @@ const loadLesionModule = async (): Promise<Awaited<LesionModule> | null> => {
   }
 };
 
+const persistCaptureForAnalysis = async (sourceUri: string): Promise<string> => {
+  const photosDir = `${FileSystemLegacy.documentDirectory}scan_photos/`;
+  await FileSystemLegacy.makeDirectoryAsync(photosDir, { intermediates: true });
+  const filename = `scan_${Date.now()}.jpg`;
+  const destUri = `${photosDir}${filename}`;
+  await FileSystemLegacy.copyAsync({ from: sourceUri, to: destUri });
+  return destUri;
+};
+
 export default function CameraScreen() {
   const { width: SCREEN_W, height: SCREEN_H } = useWindowDimensions();
   const router = useRouter();
@@ -91,12 +100,31 @@ export default function CameraScreen() {
   const detectionTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const alignedStartRef = useRef<number | null>(null);
   const lesionTrackerRef = useRef(new LesionTracker());
+  const backendWarmupStarted = useRef(false);
 
   const { trackingState, onFacesDetected, lastFrameWidth, lastFrameHeight } = useFaceTracking(
     cameraReady && !capturing && !paywallVisible,
     SCREEN_W,
     SCREEN_H,
   );
+
+  // Warm backend on camera open so the first analysis request is less likely to hit cold-start latency.
+  useEffect(() => {
+    if (backendWarmupStarted.current || !env.API_BASE_URL) return;
+    backendWarmupStarted.current = true;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12_000);
+
+    fetch(`${env.API_BASE_URL}/api/health`, { signal: controller.signal })
+      .then(() => {
+        if (__DEV__) console.log('[Camera] Backend warmup ping completed');
+      })
+      .catch((err) => {
+        if (__DEV__) console.warn('[Camera] Backend warmup ping failed:', err?.message || err);
+      })
+      .finally(() => clearTimeout(timeout));
+  }, []);
 
   // Keep refs in sync
   useEffect(() => { detectedLesionsRef.current = detectedLesions; }, [detectedLesions]);
@@ -376,15 +404,27 @@ export default function CameraScreen() {
       // Quality check (passthrough — real detection handled by frame processor)
       const quality = await checkPhotoQuality(photoUri, photo.width, photo.height);
       if (quality.overallPass || quality.issues.length === 0) {
+        let analysisPhotoUri = photoUri;
+        try {
+          // Stabilize file handoff across navigation: VisionCamera temp files can be brittle.
+          analysisPhotoUri = await persistCaptureForAnalysis(photoUri);
+          if (analysisPhotoUri !== photoUri) {
+            FileSystemLegacy.deleteAsync(photoUri, { idempotent: true }).catch(() => {});
+          }
+        } catch (err) {
+          if (__DEV__) console.warn('[Camera] Failed to persist capture for analysis:', err);
+        }
+
         const currentLesions = detectedLesionsRef.current;
         if (currentLesions.length > 0) {
           useStore.getState().setPendingLesions(currentLesions);
         }
         router.push({
           pathname: '/scan/analyzing',
-          params: { photoUri },
+          params: { photoUri: analysisPhotoUri },
         });
       } else {
+        FileSystemLegacy.deleteAsync(photoUri, { idempotent: true }).catch(() => {});
         setQualityFailed(true);
         setQualityIssues(quality.issues);
         setCapturing(false);

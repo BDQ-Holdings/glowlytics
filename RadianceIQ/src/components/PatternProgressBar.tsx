@@ -40,17 +40,21 @@ export const PatternProgressBar: React.FC = () => {
         })}
       </View>
       <View style={styles.labelsRow}>
-        {MILESTONES.map((m) => (
-          <Text
-            key={m.day}
-            style={[
-              styles.label,
-              dataDays >= m.day && styles.labelReached,
-            ]}
-          >
-            {m.label}
-          </Text>
-        ))}
+        {MILESTONES.map((m) => {
+          const x = (m.day / maxDay) * 100;
+          return (
+            <Text
+              key={m.day}
+              style={[
+                styles.label,
+                { position: 'absolute', left: `${x}%`, transform: [{ translateX: -20 }], width: 40, textAlign: 'center' },
+                dataDays >= m.day && styles.labelReached,
+              ]}
+            >
+              {m.label}
+            </Text>
+          );
+        })}
       </View>
       <Text style={styles.footer}>
         {dataDays >= 14
@@ -93,8 +97,8 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
   },
   labelsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    position: 'relative',
+    height: 16,
     marginTop: Spacing.xs,
   },
   label: {

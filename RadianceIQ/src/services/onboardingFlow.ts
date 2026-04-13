@@ -6,7 +6,7 @@ import type { BiologicalSex, MenstrualStatus, OnboardingScreenName } from '../ty
  * Flow order:
  *   welcome → age-range → sex → skin-goal → camera-permission → health-permission
  *     → [menstrual → cycle-details]? (female AND !healthSyncedCycleDetected)
- *     → preview → paywall
+ *     → scan-reminder → preview → paywall
  *
  * The third argument `healthSyncedCycleDetected` is set by the health-permission
  * screen after granting HealthKit access. When true AND user is female, the manual
@@ -35,7 +35,7 @@ export function buildOnboardingFlow(
     }
   }
 
-  flow.push('preview', 'paywall');
+  flow.push('scan-reminder', 'preview', 'paywall');
 
   return flow;
 }

@@ -220,8 +220,8 @@ export default function HealthPermission() {
           updateHealthConnection({ status: 'unavailable', sync_skipped: true });
           advance();
         }
-      } catch {
-        // Non-fatal — show the screen anyway.
+      } catch (e: unknown) {
+        console.warn('[Health onboarding] availability check failed:', e);
       }
     };
     if (Platform.OS === 'ios' && user?.health_connection?.status !== 'granted') {
@@ -313,9 +313,9 @@ export default function HealthPermission() {
       const { added, errors } = await Promise.race([syncPromise, timeoutPromise]);
       if (!mountedRef.current) return;
 
-      // Suppress unused variable lint — errors are intentionally ignored here;
-      // the timeout race makes partial errors expected.
-      void errors;
+      if (errors.length > 0) {
+        console.warn('[Health onboarding] bootstrap sync warning:', errors[0]);
+      }
 
       // Count populated metrics on the most recent record.
       const records = useStore.getState().healthDailyRecords;
@@ -363,14 +363,21 @@ export default function HealthPermission() {
           advance();
         }
       }, metricsPopulated >= 3 ? 1500 : 2000);
-    } catch (_e: unknown) {
+    } catch (e: unknown) {
       if (!mountedRef.current) return;
+      const message = e instanceof Error ? e.message : String(e ?? 'unknown error');
+      console.warn('[Health onboarding] connect failed:', message);
+      updateHealthConnection({
+        status: 'denied',
+        availability_note: message,
+      });
       setScreenState('denied');
       trackEvent('health_permission_result', {
         result: 'error',
         days_synced: 0,
         cycle_detected: false,
         metrics_populated: 0,
+        error: message,
       });
     }
   };
@@ -497,7 +504,7 @@ export default function HealthPermission() {
   return (
     <OnboardingTransition
       illustration={<HealthIllustration />}
-      heading="See what\u2019s really affecting your skin."
+      heading="See what's really affecting your skin."
       subtext="Connect Apple Health to spot patterns like:"
       primaryLabel={primaryLabel}
       primaryOnPress={primaryOnPress}

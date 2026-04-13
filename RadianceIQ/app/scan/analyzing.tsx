@@ -5,6 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
 import * as FileSystemLegacy from 'expo-file-system/legacy';
 import Svg, { Path } from 'react-native-svg';
+import { v4 as uuidv4 } from 'uuid';
 import Animated, {
   type SharedValue,
   useSharedValue,
@@ -246,6 +247,10 @@ export default function AnalyzingScreen() {
     try {
       const photosDir = `${FileSystemLegacy.documentDirectory}scan_photos/`;
       await FileSystemLegacy.makeDirectoryAsync(photosDir, { intermediates: true });
+      // If the capture was already persisted by the camera screen, reuse it directly.
+      if (tempUri.startsWith(photosDir)) {
+        return tempUri;
+      }
       const filename = `scan_${Date.now()}.jpg`;
       const destUri = `${photosDir}${filename}`;
       await FileSystemLegacy.copyAsync({ from: tempUri, to: destUri });
@@ -334,7 +339,7 @@ export default function AnalyzingScreen() {
       const hasNewProduct = useStore.getState().products.some((p) => p.start_date === scanDate);
       const dailyRecord = addDailyRecord({
         date: scanDate,
-        scanner_reading_id: `scan_${Date.now()}`,
+        scanner_reading_id: uuidv4(),
         scanner_indices: scannerDataRef.current,
         scanner_quality_flag: 'pass',
         scan_region: currentProtocol?.scan_region || 'whole_face',
@@ -614,10 +619,22 @@ export default function AnalyzingScreen() {
       })
       .catch((err) => {
         if (__DEV__) console.error('[Glowlytics] Analysis failed:', err?.message || err);
+        const rawPhotoParam = Array.isArray(params.photoUri) ? params.photoUri[0] : params.photoUri;
+        const photoUriForLog = typeof rawPhotoParam === 'string' ? rawPhotoParam : '';
         trackEvent('scan_analysis_failed', {
           error: String(err?.message || err),
           analysis_time_ms: Date.now() - analysisStartTime.current,
+          has_photo_uri: !!photoUriForLog,
+          photo_uri_prefix: photoUriForLog ? photoUriForLog.slice(0, 16) : 'none',
+          has_protocol: !!protocol,
         });
+        if (__DEV__) {
+          console.warn('[Glowlytics] Analysis context:', {
+            hasPhotoUri: !!photoUriForLog,
+            photoPrefix: photoUriForLog ? photoUriForLog.slice(0, 32) : 'none',
+            hasProtocol: !!protocol,
+          });
+        }
         clearPendingPhotoBase64();
         setError(err?.message || 'Something went wrong. Please try again.');
       });

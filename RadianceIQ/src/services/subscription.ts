@@ -38,16 +38,6 @@ export async function initRevenueCat(): Promise<void> {
     log(TAG, 'Already configured — skipping');
     return;
   }
-  try {
-    // Check if SDK is already configured (e.g. hot reload, double mount)
-    await Purchases.getCustomerInfo();
-    // If that didn't throw, SDK is already configured
-    revenueCatConfigured = true;
-    log(TAG, 'SDK was already configured (hot reload or double mount)');
-    return;
-  } catch {
-    // Not configured yet — proceed
-  }
   log(TAG, 'Configuring SDK...');
   Purchases.setLogLevel(LOG_LEVEL.VERBOSE);
   Purchases.configure({ apiKey: env.REVENUECAT_API_KEY });
@@ -75,11 +65,12 @@ export async function initRevenueCat(): Promise<void> {
   }
 }
 
-export async function identifyUser(userId: string): Promise<void> {
-  if (!env.REVENUECAT_API_KEY) return;
+export async function identifyUser(userId: string): Promise<CustomerInfo | null> {
+  if (!env.REVENUECAT_API_KEY) return null;
   log(TAG, 'Identifying user:', userId);
-  await Purchases.logIn(userId);
+  const { customerInfo } = await Purchases.logIn(userId);
   log(TAG, 'User identified');
+  return customerInfo;
 }
 
 export function subscriptionFromCustomerInfo(

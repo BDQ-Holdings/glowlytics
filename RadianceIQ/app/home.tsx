@@ -220,16 +220,35 @@ export default function Home() {
         </ScrollView>
       </Animated.View>
 
-      {/* ── 3. HERO: Overall Score (or empty state) ── */}
+      {/* ── 3. HERO: Overall Score + Streak ── */}
       {overallInsight ? (
         <Animated.View entering={FadeInDown.duration(500).delay(150)}>
-          <SkinScoreHero
-            score={overallInsight.score}
-            statusLabel={overallInsight.statusLabel}
-            actionStatement={overallInsight.actionStatement}
-            trendDelta={overallInsight.trendDelta}
-            onViewResults={() => router.push('/scan/results')}
-          />
+          <View style={styles.heroStreakRow}>
+            <View style={{ flex: 1 }}>
+              <SkinScoreHero
+                score={overallInsight.score}
+                statusLabel={overallInsight.statusLabel}
+                actionStatement={overallInsight.actionStatement}
+                trendDelta={overallInsight.trendDelta}
+                onViewResults={() => router.push('/scan/results')}
+              />
+            </View>
+            {streak > 0 && (
+              <View style={styles.streakBadge}>
+                <MaterialCommunityIcons
+                  name="fire"
+                  size={22}
+                  color={streak >= 7 ? Colors.warning : Colors.primary}
+                />
+                <Text style={[styles.streakBadgeValue, {
+                  color: streak >= 7 ? Colors.warning : Colors.primary,
+                }]}>
+                  {streak}
+                </Text>
+                <Text style={styles.streakBadgeLabel}>day streak</Text>
+              </View>
+            )}
+          </View>
         </Animated.View>
       ) : (
         <Animated.View entering={FadeInDown.duration(500).delay(150)} style={styles.emptyHero}>
@@ -245,23 +264,6 @@ export default function Home() {
       <PatternProgressBar />
       <PatternCarousel patterns={patterns} onShare={(p) => setSharingPattern(p)} />
 
-      {/* ── 5. Streak ── */}
-      {streak > 0 && (
-        <View style={styles.streakRow}>
-          <Animated.View entering={ZoomIn.duration(400).springify().damping(14)}>
-            <MaterialCommunityIcons
-              name="fire"
-              size={28}
-              color={streak >= 7 ? Colors.warning : Colors.primary}
-            />
-          </Animated.View>
-          <Text style={[styles.streakValue, {
-            color: streak >= 7 ? Colors.warning : Colors.primary,
-          }]}>
-            {streak}
-          </Text>
-        </View>
-      )}
 
       {/* ── 5. Signal Movers ── */}
       {latestOutput && baseline && signalMovers.length > 0 && (
@@ -436,18 +438,26 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  // ── Streak (compact inline row) ──
-  streakRow: {
+  // ── Hero + Streak inline ──
+  heroStreakRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-    marginBottom: Spacing.xl,
-    paddingVertical: Spacing.sm,
+    alignItems: 'flex-start',
   },
-  streakValue: {
+  streakBadge: {
+    alignItems: 'center',
+    paddingTop: Spacing.md,
+    paddingLeft: Spacing.sm,
+    gap: 2,
+  },
+  streakBadgeValue: {
     fontFamily: FontFamily.sansBold,
-    fontSize: FontSize.xxl,
-    lineHeight: 34,
+    fontSize: FontSize.xl,
+    lineHeight: 26,
+  },
+  streakBadgeLabel: {
+    fontFamily: FontFamily.sansMedium,
+    fontSize: FontSize.xxs,
+    color: Colors.textMuted,
   },
 
   // ── Signal movers ──

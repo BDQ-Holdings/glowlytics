@@ -68,6 +68,7 @@ interface AppState {
   setOnboardingStep: (step: number) => void;
   setOnboardingFlow: (flow: OnboardingScreenName[]) => void;
   setOnboardingFlowIndex: (index: number) => void;
+  reconcileAuthUserId: (authUserId: string) => void;
   createUser: (data: Partial<UserProfile>) => void;
   updateUser: (data: Partial<UserProfile>) => void;
   updateHealthConnection: (data: Partial<HealthConnectionState>) => void;
@@ -107,12 +108,20 @@ interface AppState {
   setFirstUnlockNotifSent: (sent: boolean) => void;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const randomHex = (length: number) =>
+  Array.from({ length }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+
 const generateId = () => {
   try {
-    return uuidv4();
+    const id = uuidv4();
+    if (UUID_RE.test(id)) return id;
   } catch {
-    return `id_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    // fall through
   }
+  // UUID-safe fallback for native/runtime edge cases
+  return `${randomHex(8)}-${randomHex(4)}-4${randomHex(3)}-a${randomHex(3)}-${randomHex(12)}`;
 };
 
 const defaultHealthConnection = (): HealthConnectionState => ({
@@ -172,9 +181,29 @@ const normalizeUser = (user?: Partial<UserProfile> | null): UserProfile | null =
   };
 };
 
+const isApiStatus = (err: unknown, status: number) =>
+  err instanceof Error && err.message.startsWith(`API ${status}:`);
+
+const toBackendUserProfilePayload = (user: UserProfile): Partial<UserProfile> => ({
+  ...user,
+  age_range: user.age_range && user.age_range.trim().length > 0 ? user.age_range : '25-34',
+  location_coarse:
+    user.location_coarse && user.location_coarse.trim().length > 0
+      ? user.location_coarse
+      : 'Unknown',
+});
+
+const toApiDailyRecordPayload = (record: DailyRecord): Omit<DailyRecord, 'daily_id'> => ({
+  ...record,
+  // Backends expect UUID in scanner_reading_id; sanitize legacy/non-UUID local IDs.
+  scanner_reading_id: UUID_RE.test(record.scanner_reading_id)
+    ? record.scanner_reading_id
+    : generateId(),
+});
+
 /** Fire-and-forget backend sync — never blocks the UI */
-const syncToBackend = (fn: () => Promise<unknown>) => {
-  fn().catch((err) => console.warn('[Sync] Backend sync failed:', err.message));
+const syncToBackend = (label: string, fn: () => Promise<unknown>) => {
+  fn().catch((err) => console.warn(`[Sync] ${label} failed:`, err.message));
 };
 
 /** Debounced persist — collapses rapid successive calls into one AsyncStorage write */
@@ -216,10 +245,35 @@ export const useStore = create<AppState>((set, get) => ({
   setOnboardingStep: (step) => set({ onboardingStep: step }),
   setOnboardingFlow: (flow) => set({ onboardingFlow: flow }),
   setOnboardingFlowIndex: (index) => set({ onboardingFlowIndex: index }),
+  reconcileAuthUserId: (authUserId) => {
+    const state = get();
+    const user = state.user;
+    if (!authUserId || !user || user.user_id === authUserId) return;
+
+    const migratedUser = normalizeUser({ ...user, user_id: authUserId });
+    if (!migratedUser) return;
+
+    set({
+      user: migratedUser,
+      protocol: state.protocol ? { ...state.protocol, user_id: authUserId } : null,
+      products: state.products.map((p) => ({ ...p, user_id: authUserId })),
+      dailyRecords: state.dailyRecords.map((r) => ({ ...r, user_id: authUserId })),
+    });
+    debouncedPersist(() => get().persistData());
+
+    syncToBackend('reconcile user id', async () => {
+      try {
+        await api.createUser(toBackendUserProfilePayload(migratedUser));
+      } catch (err) {
+        if (isApiStatus(err, 409)) return;
+        throw err;
+      }
+    });
+  },
 
   createUser: (data) => {
     const user = normalizeUser({
-      user_id: generateId(),
+      user_id: data.user_id || generateId(),
       age_range: data.age_range || '',
       location_coarse: data.location_coarse || '',
       period_applicable: data.period_applicable || 'prefer_not',
@@ -231,7 +285,7 @@ export const useStore = create<AppState>((set, get) => ({
       wearable_source: data.wearable_source,
       camera_permission_status: data.camera_permission_status || 'not_requested',
       health_connection: data.health_connection || defaultHealthConnection(),
-      onboarding_complete: false,
+      onboarding_complete: data.onboarding_complete || false,
     });
     set({ user });
     // Auto-start the 7-day trial on first user creation. Idempotent — startTrial() is a no-op
@@ -239,7 +293,16 @@ export const useStore = create<AppState>((set, get) => ({
     // hitting the onboarding paywall (e.g. upgraded from a pre-paywall build).
     get().startTrial();
     debouncedPersist(() => get().persistData());
-    if (user) syncToBackend(() => api.createUser(user));
+    if (user) {
+      syncToBackend('create user profile', async () => {
+        try {
+          await api.createUser(toBackendUserProfilePayload(user));
+        } catch (err) {
+          if (isApiStatus(err, 409)) return;
+          throw err;
+        }
+      });
+    }
   },
 
   updateUser: (data) => {
@@ -255,7 +318,23 @@ export const useStore = create<AppState>((set, get) => ({
     });
     set({ user: updated });
     debouncedPersist(() => get().persistData());
-    syncToBackend(() => api.updateUser(current.user_id, data));
+    if (!updated) return;
+    const payload = { ...data } as Partial<UserProfile> & { user_id?: string };
+    delete payload.user_id;
+    if (Object.keys(payload).length === 0) return;
+
+    syncToBackend('update user profile', async () => {
+      try {
+        await api.updateUser(updated.user_id, payload);
+      } catch (err) {
+        if (isApiStatus(err, 404)) {
+          await api.createUser(toBackendUserProfilePayload(updated));
+          await api.updateUser(updated.user_id, payload);
+          return;
+        }
+        throw err;
+      }
+    });
   },
 
   updateHealthConnection: (data) => {
@@ -298,7 +377,7 @@ export const useStore = create<AppState>((set, get) => ({
     };
     set({ protocol });
     debouncedPersist(() => get().persistData());
-    syncToBackend(() => api.createProtocol({
+    syncToBackend('create protocol', () => api.createProtocol({
       user_id: user.user_id,
       primary_goal: goal,
       scan_region: region,
@@ -316,13 +395,13 @@ export const useStore = create<AppState>((set, get) => ({
     };
     set((s) => ({ products: [...s.products, entry] }));
     debouncedPersist(() => get().persistData());
-    syncToBackend(() => api.addProduct(entry));
+    syncToBackend('add product', () => api.addProduct(entry));
   },
 
   removeProduct: (id) => {
     set((s) => ({ products: s.products.filter((p) => p.user_product_id !== id) }));
     debouncedPersist(() => get().persistData());
-    syncToBackend(() => api.deleteProduct(id));
+    syncToBackend('remove product', () => api.deleteProduct(id));
   },
 
   addDailyRecord: (record) => {
@@ -335,7 +414,20 @@ export const useStore = create<AppState>((set, get) => ({
     };
     set((s) => ({ dailyRecords: [...s.dailyRecords, entry] }));
     debouncedPersist(() => get().persistData());
-    syncToBackend(() => api.addDailyRecord(entry));
+    syncToBackend('add daily record', async () => {
+      const synced = await api.addDailyRecord(toApiDailyRecordPayload(entry));
+      if (synced.daily_id && synced.daily_id !== entry.daily_id) {
+        set((s) => ({
+          dailyRecords: s.dailyRecords.map((r) =>
+            r.daily_id === entry.daily_id ? { ...r, daily_id: synced.daily_id } : r
+          ),
+          modelOutputs: s.modelOutputs.map((o) =>
+            o.daily_id === entry.daily_id ? { ...o, daily_id: synced.daily_id } : o
+          ),
+        }));
+        debouncedPersist(() => get().persistData());
+      }
+    });
 
     // Calculate context items logged for XP bonus
     let contextItems = 0;
@@ -357,7 +449,28 @@ export const useStore = create<AppState>((set, get) => ({
     };
     set((s) => ({ modelOutputs: [...s.modelOutputs, entry] }));
     debouncedPersist(() => get().persistData());
-    syncToBackend(() => api.addModelOutput(entry));
+    syncToBackend('add model output', async () => {
+      let backendDailyId = entry.daily_id;
+      const localRecord = get().dailyRecords.find((r) => r.daily_id === entry.daily_id);
+      if (localRecord) {
+        const syncedDaily = await api.addDailyRecord(toApiDailyRecordPayload(localRecord));
+        if (syncedDaily.daily_id) {
+          backendDailyId = syncedDaily.daily_id;
+          if (backendDailyId !== localRecord.daily_id) {
+            set((s) => ({
+              dailyRecords: s.dailyRecords.map((r) =>
+                r.daily_id === localRecord.daily_id ? { ...r, daily_id: backendDailyId } : r
+              ),
+              modelOutputs: s.modelOutputs.map((o) =>
+                o.daily_id === localRecord.daily_id ? { ...o, daily_id: backendDailyId } : o
+              ),
+            }));
+            debouncedPersist(() => get().persistData());
+          }
+        }
+      }
+      await api.addModelOutput({ ...entry, daily_id: backendDailyId });
+    });
     get().updatePersonalBests();
   },
 
@@ -668,10 +781,22 @@ export const useStore = create<AppState>((set, get) => ({
     // Sync trial dates to backend
     const user = get().user;
     if (user) {
-      syncToBackend(() => api.updateUser(user.user_id, {
-        trial_start_date: trialFields.trial_start_date,
-        trial_end_date: trialFields.trial_end_date,
-      } as any));
+      syncToBackend('update trial dates', async () => {
+        const patch = {
+          trial_start_date: trialFields.trial_start_date,
+          trial_end_date: trialFields.trial_end_date,
+        } as any;
+        try {
+          await api.updateUser(user.user_id, patch);
+        } catch (err) {
+          if (isApiStatus(err, 404)) {
+            await api.createUser(toBackendUserProfilePayload(user));
+            await api.updateUser(user.user_id, patch);
+            return;
+          }
+          throw err;
+        }
+      });
     }
     debouncedPersist(() => get().persistData());
   },

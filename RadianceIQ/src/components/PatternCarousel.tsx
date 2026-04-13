@@ -133,5 +133,6 @@ const styles = StyleSheet.create({
   dotActive: {
     backgroundColor: Colors.primary,
     width: 16,
+    borderRadius: 3,
   },
 });

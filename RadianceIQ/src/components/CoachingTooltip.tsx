@@ -76,7 +76,7 @@ export const CoachingTooltip: React.FC<Props> = ({ visible }) => {
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    bottom: 90,
+    bottom: 105,
     alignSelf: 'center',
     zIndex: 10,
   },

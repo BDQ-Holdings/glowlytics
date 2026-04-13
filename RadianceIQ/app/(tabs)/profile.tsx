@@ -23,7 +23,6 @@ import {
 } from '../../src/services/subscription';
 import { scheduleDailyReminder, cancelDailyReminder } from '../../src/services/notifications';
 import { trackEvent, resetAnalytics } from '../../src/services/analytics';
-import { createDemoSeed } from '../../src/services/demoData';
 import { formatRelativeTime } from '../../src/utils/formatRelativeTime';
 import { GamificationCard } from '../../src/components/GamificationCard';
 import { LevelProgressBar } from '../../src/components/LevelProgressBar';
@@ -46,6 +45,21 @@ const InfoRow: React.FC<{ label: string; value: string }> = ({ label, value }) =
     <Text style={styles.infoValue} numberOfLines={1}>{value}</Text>
   </View>
 );
+
+const getErrorMessage = (err: unknown, fallback = 'Unknown error') => {
+  const clerkMessage = (err as any)?.errors?.[0]?.longMessage ?? (err as any)?.errors?.[0]?.message;
+  if (typeof clerkMessage === 'string' && clerkMessage.trim().length > 0) {
+    return clerkMessage;
+  }
+  return err instanceof Error ? err.message : String(err ?? fallback);
+};
+
+const getHealthkitHint = (message: string) => {
+  if (/expo go|native module|unimplemented/i.test(message)) {
+    return 'HealthKit requires an iOS development/production build (not Expo Go). Rebuild the app with EAS and try again.';
+  }
+  return message;
+};
 
 export default function ProfileTab() {
   const router = useRouter();
@@ -94,7 +108,7 @@ export default function ProfileTab() {
                 resetAnalytics();
                 await clerk.signOut();
                 await resetAll();
-                router.replace('/');
+                // AuthRedirector handles navigation when isSignedIn → false
               } catch {
                 Alert.alert('Sign out failed', 'Please try again.');
               }
@@ -103,23 +117,6 @@ export default function ProfileTab() {
         ],
       );
     }
-  };
-
-  const handleLoadDemo = () => {
-    const demo = createDemoSeed();
-    resetAll();
-    const store = useStore.getState();
-    store.createUser(demo.user);
-    for (const p of demo.products) store.addProduct(p);
-    // Load records and outputs directly into state
-    useStore.setState({
-      protocol: demo.protocol,
-      dailyRecords: demo.records,
-      modelOutputs: demo.outputs,
-      gamification: demo.gamification,
-    });
-    store.persistData();
-    Alert.alert('Demo loaded', '21 days of scan history, 4 products, and gamification data loaded.');
   };
 
   const handleResetAllData = () => {
@@ -143,16 +140,52 @@ export default function ProfileTab() {
   const handleHealthConnect = async () => {
     setHealthConnecting(true);
     try {
-      const { connectHealthData } = require('../../src/services/healthPermissions');
+      const { getHealthConnectionState, connectHealthData } = require('../../src/services/healthPermissions');
+
+      const initialState = await getHealthConnectionState();
+      if (initialState.status === 'unavailable') {
+        updateHealthConnection(initialState);
+        Alert.alert(
+          'Apple Health unavailable',
+          initialState.availability_note || 'Apple Health is not available on this device.',
+        );
+        return;
+      }
+
       const conn = await connectHealthData();
       updateHealthConnection(conn);
+
       if (conn.status === 'granted') {
-        useStore.getState().syncHealthData().catch(() => {});
+        const { added, errors } = await useStore.getState().syncHealthData();
+        if (errors.length > 0) {
+          console.warn('[Health] Sync completed with errors:', errors[0]);
+        }
+        if (added === 0 && errors.length > 0) {
+          Alert.alert('Connected with limited data', errors[0]);
+        }
+        return;
       }
-    } catch {
-      // Non-fatal
+
+      const reason =
+        conn.availability_note ||
+        (conn.status === 'denied'
+          ? 'Permission was not granted. You can allow access in Apple Health > Sharing > Apps.'
+          : 'Apple Health is not available on this device.');
+      Alert.alert(
+        conn.status === 'denied' ? 'Apple Health permission needed' : 'Apple Health unavailable',
+        reason,
+      );
+    } catch (e: unknown) {
+      const message = getHealthkitHint(getErrorMessage(e));
+      console.warn('[Health] Connect failed:', message);
+      Alert.alert('Could not connect Apple Health', message);
+      updateHealthConnection({
+        status: 'unavailable',
+        availability_note: message,
+      });
+    } finally {
+      setHealthConnecting(false);
     }
-    setHealthConnecting(false);
   };
 
   return (
@@ -240,16 +273,6 @@ export default function ProfileTab() {
           <Feather name="trash-2" size={16} color={Colors.error} />
           <Text style={[styles.modeButtonText, { color: Colors.error }]}>Reset all data</Text>
         </TouchableOpacity>
-        {__DEV__ && (
-          <TouchableOpacity
-            style={styles.modeButton}
-            onPress={handleLoadDemo}
-            activeOpacity={0.7}
-          >
-            <Feather name="database" size={16} color={Colors.primary} />
-            <Text style={[styles.modeButtonText, { color: Colors.primary }]}>Load demo data</Text>
-          </TouchableOpacity>
-        )}
         {/* Subscription inline */}
         <View style={styles.divider} />
         {subscription.is_active ? (

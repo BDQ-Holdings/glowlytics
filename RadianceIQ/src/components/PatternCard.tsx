@@ -155,6 +155,8 @@ const styles = StyleSheet.create({
   },
   sparkPlaceholder: {
     flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     gap: Spacing.sm,
     backgroundColor: 'rgba(127,127,127,0.06)',
     borderRadius: BorderRadius.md,
@@ -168,11 +170,12 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     fontFamily: FontFamily.sansMedium,
     fontSize: FontSize.xs,
+    marginTop: -2,
   },
   actionRow: {
     flexDirection: 'row',
     gap: Spacing.sm,
-    marginTop: Spacing.xs,
+    marginTop: Spacing.sm,
   },
   detailButton: {
     flex: 1,

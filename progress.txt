@@ -1,152 +1,60 @@
-Glowlytics - Build Progress
-===========================
-Last Updated: 2026-04-02
+Glowlytics — Build Progress
+============================
+Last Updated: 2026-04-12
 
-MILESTONES (chronological):
- 1. Foundation: Expo SDK 54, TypeScript, Expo Router, Zustand
- 2. Auth: Clerk (Apple + Google + email), JWT backend
- 3. Vision: Fine-tuned GPT-4o via backend proxy
- 4. RAG: Pinecone + AAD/ACOG guidelines
- 5. Scoring: Deterministic heuristics (GAGS, SCORAD, VISIA)
- 6. Gamification: XP, 6 levels, 15 badges, weekly challenges
- 7. Rename: RadianceIQ → Glowlytics (glowlytics.ai)
- 8. Onboarding: 7-9 active screens, Headspace-inspired
- 9. Backend: Railway deployment + PostgreSQL
-10. Subscriptions: RevenueCat "Glow Pro", 7-day trial, native paywall
-11. Analytics: PostHog, 20 events
-12. 3-layer vision pipeline: deterministic + ONNX CV + GPT-4o
-13. ML pipeline: 9 notebooks, ONNX export, HuggingFace hosting
-14. On-device lesion detection: YOLOv8 via onnxruntime-react-native
-15. Security hardening: auth, rate limiting, CORS, cascading deletes
-16. Camera: MLKit face detection frame processor (replaced expo-face-detector)
-17. Design system: WCAG AAA, 3-tier surfaces, Switzer-Medium font
-18. Products page: AM/PM grouping, routine coaching, score-tinted cards
-19. Results: story format (paginated swipe-up pages)
-20. Today screen: signal movers, AI insight card, 104pt score hero
-21. Metric detail: per-metric personality (coral/amber/blue), SVG face map
-22. Profile: colored sections, tier badges, personal bests grid
-23. Bug fixing: paywall bypass, baseline trend, IDOR, progress ring, cycle day TZ
-24. DB schema: user_profiles columns + whitelist fields for PATCH
-25. Routine builder: smart product ordering, conflict detection, signal-driven tips
-26. Lesion labels: clinical name + subtitle, evidence badges, post-capture summary
-27. RAG expansion: 77 guideline chunks (was 60), signal-filtered queries, source citations
-28. Scan pipeline: backend failure fallback, detection leak fix, coordinate mapping fix
+STATUS: 0 TS errors | 48 screens | 24 components | 21 services | 448 tests | 7 backend modules
 
-CURRENT STATUS:
-- 0 TS errors, 48 screens, 24 components, 21 services, 7 backend modules, 2 new constants files
-- 448 tests passing across 26 test suites (22 routineBuilder tests added)
-- Scan flow: Camera → Analyzing (infinity loop) → Results (story pages)
-- Backend live on Railway with PostgreSQL, ONNX models, RAG pipeline
-- Latest build submitted to App Store Connect (ASC App ID: 6760600635)
+MILESTONES (28 shipped):
+ 1. Foundation (Expo SDK 54, TS, Router, Zustand)
+ 2. Auth (Clerk Apple/Google/email, JWT backend)
+ 3. Vision (3-layer: deterministic + ONNX + fine-tuned GPT-4o)
+ 4. RAG (Pinecone, 80 guideline chunks, signal-filtered)
+ 5. Scoring (GAGS/SCORAD/VISIA heuristics)
+ 6. Gamification (XP, 6 levels, 15 badges, weekly challenges)
+ 7. Rename (RadianceIQ → Glowlytics)
+ 8. Onboarding (7-9 screens, Headspace-inspired)
+ 9. Backend (Railway + PostgreSQL)
+10. Subscriptions (RevenueCat 9.15.2, "Glow Pro", 7-day trial)
+11. Analytics (PostHog, 20 events)
+12. ML pipeline (9 notebooks, ONNX export, HuggingFace)
+13. On-device lesion detection (YOLOv8 via onnxruntime-react-native)
+14. Camera (MLKit face detection frame processor)
+15. Security (auth, rate limiting, CORS, cascading deletes)
+16. Design system (WCAG AAA, 3-tier surfaces, Switzer)
+17. Products (AM/PM, routine builder, conflict detection, 22 tests)
+18. Results (story format, paginated swipe-up)
+19. Today (signal movers, AI insight, 104pt score hero)
+20. Metric detail (per-metric personality, SVG face map)
+21. Profile (colored sections, tier badges, personal bests)
+22. Lesion labels (clinical names, evidence badges, RAG citations)
+23. Scan pipeline fixes (fallback, coordinate mapping, detection leak)
+24. Bug fixes (paywall bypass, IDOR, cycle TZ, NaN guards)
+25. Pattern Engine (correlation engine, HealthKit sync, UI carousel)
+26. NaN hardening (safeClamp, sparkline, trend, display layers)
+27. Launch prep — production credentials, auth flows, Pinecone seed
+28. UI polish — patterns, streak, coaching tooltip, demo seeder
 
-COMPLETED (grouped by area):
+ML EVAL (all pass):
+- ONNX: Structure r=0.913, Hydration r=0.889, Sun Damage r=0.882, Elasticity r=0.940
+- GPT-4o: 95% accuracy, loss 0.153
+- YOLOv8: mAP50 0.47 (2.8x over v1)
 
-[Auth & Subscriptions]
-- Clerk OAuth + email/password, JWT backend auth
-- RevenueCat "Glow Pro" entitlement, 7-day trial, native paywall
-- gateWithPaywall() shared helper (6 call sites → 1)
-- Customer Center, subscription state in Zustand
-- PostHog: 20 events, user identification, funnel tracking
+LAUNCH PREP (2026-04-12 — all done):
+- Clerk production keys (pk_live_, sk_live_, issuer URL)
+- Railway env vars (ADMIN_SECRET, CORS_ORIGINS)
+- RevenueCat dashboard verified, upgraded to 9.15.2
+- Pinecone seeded (80 chunks, 19 categories)
+- Apple Sign In (native via useSignInWithApple)
+- Google Sign In (web OAuth with transfer handling)
+- Demo user (test@test.com, auto-seeded via DemoSeeder)
+- Privacy policy on landing page
+- App Store metadata ready
 
-[Scan Flow]
-- Camera: MLKit face tracking, auto-capture 4s, direction indicators
-- On-device lesion detection: YOLOv8 (conf 0.1, NMS 0.45), teal overlay
-- Analyzing: infinity loop animation, 9-stage messages, XP overlay
-- Results: story format (score reveal → signals → insights → deep dive → done)
-- 3-layer parallel pipeline: L1 deterministic + L2 ONNX + L3 GPT-4o
-
-[UI/Design]
-- SkinScoreHero: 104pt animated counter, accent bar (no gauge/card)
-- Products: AM/PM/All Day grouping, routine score coaching, score-tinted cards
-- Profile: colored section icons, tier badge, 2x2 personal bests grid
-- Metric detail: per-metric personality, SVG face map, color-coded guidance
-- Today: signal movers, AI insight card, streak with milestones
-- Splash: "Find your glow" DancingScript handwriting reveal
-- Tab bar: SVG notch, floating camera button, glass fill
-- Design tokens: WCAG AAA, 3-tier surfaces, scoreColor() unified
-
-[Backend & Security]
-- Express + PostgreSQL + ONNX + RAG on Railway
-- Authorization on all endpoints, rate limiting, CORS, safe errors
-- Account deletion with cascading transaction (Apple 5.1.1)
-- Curated products DB: search, barcode, ingredient enrichment
-- Signal-specific DB columns (signal_scores, signal_features, lesions)
-
-[ML Pipeline]
-- 9 notebooks: data prep, finetune, MedGemma, eval, structure/hydration/elasticity/lesion
-- ONNX models on HuggingFace (mufasabrownie/glowlytics-skin-models)
-- Handcrafted features: Gabor, LBP-uniform, Frangi, landmark geometry
-
-[Hardening (this session)]
-- UTC→local date fix (7 files via localDateStr)
-- NaN guards: scoreColor, SkinScoreHero, signal movers, results bars
-- Crash guards: personal_bests undefined, GamificationCard xp
-- Memory: CoachingTooltip timer leak, pendingPhotoBase64 not cleared
-- Error handling: sign-out try/catch, notification handlers, empty fallbacks
-- Accessibility: zone marker labels, back button roles, swipe hints
-- FaceAssessmentMap: React.memo + useMemo (428 edges), animation cleanup
-- Shared utilities: scoreColor(), gateWithPaywall(), localDateStr()
-
-[Bug Fixes & Hardening (2026-03-31)]
-- Paywall bypass: incrementFreeScansUsed now persists to AsyncStorage
-- Baseline trend: buildOverallSkinInsight uses scanner_indices for baseline (not raw proxies)
-- IDOR: POST /api/model-outputs verifies user owns daily_id before INSERT
-- Progress ring: stage 6 monotonic (0.66→0.70, no longer regresses)
-- Cycle day: parse period_last_start_date as local date (not UTC) to avoid off-by-one
-- Lesion types: added missing subtitle fields for macule, patch, fallback
-- DB schema: added missing user_profiles columns + whitelist PATCH fields
-- Model downloads: pinned to commit hash, auto-download at startup
-
-[Routine Builder & Clinical Overhaul (2026-04-01)]
-- Smart product ordering: cleanser→serum→moisturizer→SPF within AM/PM sections
-- Ingredient conflict detection: 4 rules (retinoid+AHA, vitC+BP, etc.) with resolution actions
-- Signal-driven adjustment tips: reference user's actual product names, product-aware
-- Timing labels on ProductCard ("first step", "on damp skin", "last step")
-- Conflict banners with amber left border + resolution text
-- routineBuilder.ts: categorize, sort, detect conflicts, generate adjustments (22 tests)
-- ingredients.ts: 7 category defs, 5 ingredient classes, 4 conflict rules
-
-[Lesion Labels & Clinical Guidelines (2026-04-01)]
-- LesionOverlay: clinical name (Papule) + subtitle (inflammatory bump) on labels
-- Label pill flips below bounding box when near top of screen
-- Lesion summary pill on results signals page ("3 lesions detected")
-- Subtitles added to all 7 lesion types + fallback
-- RAG expansion: 60 → 77 guideline chunks (men's health, barrier repair, hyperpigmentation, nutrition, lesion red flags)
-- Signal-filtered RAG queries with Pinecone metadata filter
-- Evidence level badges (Grade A/B/C) on signal detail guidelines
-- Source citations on clinical guidelines
-- GPT-4o insight prompt: cite guidelines by number, prefer Grade A evidence
-
-[Scan Pipeline Fixes (2026-04-02)]
-- detectingRef leak: early return from takePhoto() now resets ref (was permanently stopping detection)
-- Backend failure fallback: Vision API errors now fall back to local heuristics (confidence: low)
-- Coordinate mismatch: LesionOverlay uses actual photo dimensions, not frame processor resolution
-- Server detect: resize to 640px before upload (~100KB vs 4MB), timeout 5s→15s
-- Scanner indices: removed fake fallback values (40/30/35) → honest 0
-
-[Edge Case Hardening (2026-04-02)]
-- routineBuilder: null guards on ingredients_list spreads (3 sites)
-- LesionOverlay: bbox null/length guard before destructuring
-- FacialMesh: confidence NaN guard (?? 0.5)
-- cycleDay: malformed date string guard (Number.isFinite)
-- useFaceTracking: issue content comparison not just count (fixes stale coaching text)
-- download-models.sh: mkdir -p, 2-attempt retry, file size validation, atomic .tmp rename
-- Products tab: numberOfLines on conflict/adjustment text, Set-based conflict filter, Map lookup
-
-REMAINING (Launch checklist):
-[ ] !! Clerk PRODUCTION keys (replace pk_test_ → pk_live_) !!
-    → eas.json production profile + Railway sk_live_ + CLERK_ISSUER_URL
-[ ] RevenueCat dashboard: paywall template, ASC products, "Glow Pro" mapping
-[ ] PostHog dashboard: auth→scan funnel, paywall conversion, retention
-[ ] App Store: metadata, 5 screenshots (iPhone 15 Pro Max), privacy policy URL
-[ ] Content rating questionnaire (12+, medical info: yes)
-[ ] Seed Pinecone on production: POST /api/rag/seed
-[ ] TestFlight smoke test: 3 journeys + subscription + paywall
-[x] Deploy ONNX models to Railway (auto-downloaded via postinstall hook)
-[ ] Run ML evaluation notebook (target: MAE < 10, Pearson r > 0.7)
+REMAINING:
+[ ] Content rating questionnaire in ASC (12+, medical: no)
+[ ] Screenshots (in progress)
+[ ] Rebase feature branch → main
+[ ] Production EAS build
 [ ] Submit for App Review
 
-MANUAL CONFIG (credentials — do before submission):
-[ ] CORS_ORIGINS on Railway: https://glowlytics.ai,...
-[ ] ADMIN_SECRET on Railway: openssl rand -hex 32
-[ ] SSL: verify Railway DB cert handling
+POST-LAUNCH: See POST_LAUNCH_CHECKLIST.md

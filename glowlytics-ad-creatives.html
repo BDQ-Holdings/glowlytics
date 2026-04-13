@@ -1,0 +1,947 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Glowlytics — Ad Creative & Copy Reference Guide</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --teal: #3A9E8F;
+            --dark: #060B12;
+            --cream: #FAFAF7;
+            --gray-light: #F5F5F2;
+            --gray-med: #D1D1CB;
+            --text-dark: #1a1a1a;
+            --text-light: #666666;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: var(--cream);
+            color: var(--text-dark);
+            line-height: 1.6;
+        }
+
+        /* HEADER & NAVIGATION */
+        header {
+            background: white;
+            padding: 20px 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--teal);
+        }
+
+        nav {
+            display: flex;
+            gap: 30px;
+            list-style: none;
+        }
+
+        nav a {
+            text-decoration: none;
+            color: var(--text-dark);
+            font-size: 14px;
+            font-weight: 500;
+            transition: color 0.3s;
+            cursor: pointer;
+        }
+
+        nav a:hover {
+            color: var(--teal);
+        }
+
+        /* HERO SECTION */
+        .hero {
+            background: linear-gradient(135deg, var(--dark) 0%, #1a2a3a 100%);
+            color: white;
+            padding: 60px 20px;
+            text-align: center;
+        }
+
+        .hero-content {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .hero h1 {
+            font-size: 48px;
+            margin-bottom: 12px;
+            font-weight: 700;
+        }
+
+        .hero p {
+            font-size: 18px;
+            opacity: 0.9;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        /* MAIN CONTAINER */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        /* SECTIONS */
+        section {
+            margin-bottom: 80px;
+        }
+
+        section h2 {
+            font-size: 36px;
+            margin-bottom: 12px;
+            color: var(--teal);
+            font-weight: 700;
+        }
+
+        section > p {
+            font-size: 16px;
+            color: var(--text-light);
+            margin-bottom: 30px;
+            max-width: 700px;
+        }
+
+        /* AD CARDS */
+        .ad-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 24px;
+            margin-bottom: 40px;
+        }
+
+        .ad-card {
+            background: white;
+            border-radius: 12px;
+            padding: 28px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .ad-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 24px rgba(58, 158, 143, 0.15);
+        }
+
+        .ad-card-name {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--teal);
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .ad-card-field {
+            margin-bottom: 16px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--gray-light);
+        }
+
+        .ad-card-field:last-of-type {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        .field-label {
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: var(--teal);
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+        }
+
+        .field-value {
+            font-size: 15px;
+            color: var(--text-dark);
+            line-height: 1.5;
+        }
+
+        .field-value.copy {
+            font-family: 'Monaco', 'Courier New', monospace;
+            background: var(--gray-light);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        /* VIDEO SCRIPT CARDS */
+        .script-card {
+            background: white;
+            border-radius: 12px;
+            padding: 28px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+            margin-bottom: 24px;
+        }
+
+        .script-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--teal);
+            margin-bottom: 16px;
+        }
+
+        .script-section {
+            margin-bottom: 18px;
+        }
+
+        .script-label {
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: var(--text-light);
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+
+        .script-text {
+            font-size: 15px;
+            color: var(--text-dark);
+            line-height: 1.6;
+        }
+
+        /* ASO SECTION */
+        .aso-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .aso-item {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+        }
+
+        .aso-item h4 {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--teal);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+        }
+
+        .aso-option {
+            font-size: 15px;
+            color: var(--text-dark);
+            margin-bottom: 12px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--gray-light);
+        }
+
+        .aso-option:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        .aso-meta {
+            font-size: 12px;
+            color: var(--text-light);
+            font-style: italic;
+            margin-top: 8px;
+        }
+
+        /* LANDING PAGE COPY */
+        .copy-section {
+            background: white;
+            padding: 28px;
+            border-radius: 12px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+            margin-bottom: 24px;
+        }
+
+        .copy-section h4 {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--teal);
+            margin-bottom: 12px;
+        }
+
+        .copy-section p {
+            font-size: 15px;
+            color: var(--text-dark);
+            line-height: 1.7;
+            margin-bottom: 12px;
+        }
+
+        /* FAQ */
+        .faq-item {
+            background: white;
+            padding: 24px;
+            border-radius: 12px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+            margin-bottom: 16px;
+        }
+
+        .faq-question {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--teal);
+            margin-bottom: 12px;
+        }
+
+        .faq-answer {
+            font-size: 15px;
+            color: var(--text-dark);
+            line-height: 1.6;
+        }
+
+        /* EMAIL SEQUENCE */
+        .email-card {
+            background: white;
+            padding: 28px;
+            border-radius: 12px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+            margin-bottom: 24px;
+            border-left: 4px solid var(--teal);
+        }
+
+        .email-meta {
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: var(--teal);
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+        }
+
+        .email-subject {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text-dark);
+            margin-bottom: 16px;
+        }
+
+        .email-body {
+            font-size: 15px;
+            color: var(--text-dark);
+            line-height: 1.7;
+            white-space: pre-wrap;
+            margin-bottom: 16px;
+        }
+
+        .email-cta {
+            display: inline-block;
+            background: var(--teal);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-weight: 600;
+            text-decoration: none;
+            margin-top: 12px;
+        }
+
+        /* FOOTER */
+        footer {
+            background: var(--dark);
+            color: white;
+            text-align: center;
+            padding: 40px 20px;
+            margin-top: 60px;
+        }
+
+        footer p {
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        /* RESPONSIVE */
+        @media (max-width: 768px) {
+            nav {
+                gap: 15px;
+            }
+
+            nav a {
+                font-size: 13px;
+            }
+
+            .hero h1 {
+                font-size: 32px;
+            }
+
+            section h2 {
+                font-size: 28px;
+            }
+
+            .ad-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .aso-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* UTILITY */
+        .highlight {
+            color: var(--teal);
+            font-weight: 600;
+        }
+
+        .badge {
+            display: inline-block;
+            background: var(--gray-light);
+            color: var(--teal);
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+
+        .truncate-note {
+            font-size: 12px;
+            color: var(--text-light);
+            font-style: italic;
+            margin-top: 6px;
+        }
+    </style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+    <div class="header-content">
+        <div class="logo">Glowlytics</div>
+        <nav>
+            <a onclick="document.getElementById('ad-copy').scrollIntoView()">Ad Copy</a>
+            <a onclick="document.getElementById('video-scripts').scrollIntoView()">Video Scripts</a>
+            <a onclick="document.getElementById('aso').scrollIntoView()">ASO</a>
+            <a onclick="document.getElementById('landing-page').scrollIntoView()">Landing Page</a>
+            <a onclick="document.getElementById('email-sequence').scrollIntoView()">Email</a>
+        </nav>
+    </div>
+</header>
+
+<!-- HERO -->
+<div class="hero">
+    <div class="hero-content">
+        <h1>Glowlytics</h1>
+        <p>Ad Creative & Copy Reference Guide</p>
+        <p style="font-size: 16px; margin-top: 16px; opacity: 0.8;">AI-Powered Skin Health Tracking — Complete brand asset library</p>
+    </div>
+</div>
+
+<!-- MAIN CONTENT -->
+<div class="container">
+
+    <!-- SECTION 1: AD COPY VARIANTS -->
+    <section id="ad-copy">
+        <h2>01. Ad Copy Variants</h2>
+        <p>Four proven ad concepts optimized for Meta/Instagram. Each includes primary text, headlines, and visual direction.</p>
+
+        <div class="ad-grid">
+            <!-- AD 1 -->
+            <div class="ad-card">
+                <div class="ad-card-name">🏥 Doctor's Order</div>
+                <div class="ad-card-field">
+                    <div class="field-label">Primary Text</div>
+                    <div class="field-value copy">Built by a physician. Powered by AI. Your skin, decoded.</div>
+                    <div class="truncate-note">15 chars of 125 available</div>
+                </div>
+                <div class="ad-card-field">
+                    <div class="field-label">Headline</div>
+                    <div class="field-value copy">Medical-Grade Skin Tracking</div>
+                    <div class="truncate-note">27 chars of 40 available</div>
+                </div>
+                <div class="ad-card-field">
+                    <div class="field-label">Description</div>
+                    <div class="field-value copy">By an IM resident, grounded in science</div>
+                    <div class="truncate-note">37 chars of 30 available — may truncate</div>
+                </div>
+                <div class="ad-card-field">
+                    <div class="field-label">CTA Button</div>
+                    <div class="field-value">Download Now</div>
+                </div>
+                <div class="ad-card-field">
+                    <div class="field-label">Target Audience</div>
+                    <div class="field-value">Women 25–45, health-conscious, trust medical authority, skincare interest</div>
+                </div>
+                <div class="ad-card-field">
+                    <div class="field-label">Visual Direction</div>
+                    <div class="field-value">Split-screen: stethoscope + phone mockup showing scan results. Doctor in white coat introducing the app. Clinical, trustworthy aesthetic. Use teal accent on results overlay.</div>
+                </div>
+            </div>
+
+            <!-- AD 2 -->
+            <div class="ad-card">
+                <div class="ad-card-name">⚡ 30-Second Scan</div>
+                <div class="ad-card-field">
+                    <div class="field-label">Primary Text</div>
+                    <div class="field-value copy">Track your skin health in 30 seconds a day. No guess work. Real science.</div>
+                    <div class="truncate-note">67 chars of 125 available</div>
+                </div>
+                <div class="ad-card-field">
+                    <div class="field-label">Headline</div>
+                    <div class="field-value copy">Skin Health in 30 Seconds</div>
+                    <div class="truncate-note">26 chars of 40 available</div>
+                </div>
+                <div class="ad-card-field">
+                    <div class="field-label">Description</div>
+                    <div class="field-value copy">Daily scans, real-time insights</div>
+                    <div class="truncate-note">30 chars of 30 available</div>
+                </div>
+                <div class="ad-card-field">
+                    <div class="field-label">CTA Button</div>
+                    <div class="field-value">Start Free Trial</div>
+                </div>
+                <div class="ad-card-field">
+                    <div class="field-label">Target Audience</div>
+                    <div class="field-value">Busy professionals, fitness enthusiasts, wellness trackers, ages 20–40</div>
+                </div>
+                <div class="ad-card-field">
+                    <div class="field-label">Visual Direction</div>
+                    <div class="field-value">Time-lapse: quick face scan in camera view, 30-second timer visible, transition to results card with glowing metrics. Fast, energetic, modern aesthetic. Highlight speed & simplicity.</div>
+                </div>
+            </div>
+
+            <!-- AD 3 -->
+            <div class="ad-card">
+                <div class="ad-card-name">🔬 Science, Not Guesswork</div>
+                <div class="ad-card-field">
+                    <div class="field-label">Primary Text</div>
+                    <div class="field-value copy">Trained on AAD/ACOG guidelines, not Instagram trends. AI that dermatologists trust.</div>
+                    <div class="truncate-note">79 chars of 125 available</div>
+                </div>
+                <div class="ad-card-field">
+                    <div class="field-label">Headline</div>
+                    <div class="field-value copy">Dermatology-Grade AI</div>
+                    <div class="truncate-note">20 chars of 40 available</div>
+                </div>
+                <div class="ad-card-field">
+                    <div class="field-label">Description</div>
+                    <div class="field-value copy">AAD & ACOG science, verified</div>
+                    <div class="truncate-note">28 chars of 30 available</div>
+                </div>
+                <div class="ad-card-field">
+                    <div class="field-label">CTA Button</div>
+                    <div class="field-value">Learn More</div>
+                </div>
+                <div class="ad-card-field">
+                    <div class="field-label">Target Audience</div>
+                    <div class="field-value">Evidence-based skincare advocates, dermatology followers, micro-influencers, ages 25–50</div>
+                </div>
+                <div class="ad-card-field">
+                    <div class="field-label">Visual Direction</div>
+                    <div class="field-value">Clinical comparison: Instagram influencer advice (fading) vs. medical guideline overlay (glowing teal). Show feature extraction, ONNX model visualization. Data-forward, authoritative tone.</div>
+                </div>
+            </div>
+
+            <!-- AD 4 -->
+            <div class="ad-card">
+                <div class="ad-card-name">📊 Your Skin Report Card</div>
+                <div class="ad-card-field">
+                    <div class="field-label">Primary Text</div>
+                    <div class="field-value copy">Get clinician-ready reports on your skin. Track progress. Share with your dermatologist.</div>
+                    <div class="truncate-note">83 chars of 125 available</div>
+                </div>
+                <div class="ad-card-field">
+                    <div class="field-label">Headline</div>
+                    <div class="field-value copy">Clinician-Ready Reports</div>
+                    <div class="truncate-name">22 chars of 40 available</div>
+                </div>
+                <div class="ad-card-field">
+                    <div class="field-label">Description</div>
+                    <div class="field-value copy">Track. Share. Improve.</div>
+                    <div class="truncate-note">22 chars of 30 available</div>
+                </div>
+                <div class="ad-card-field">
+                    <div class="field-label">CTA Button</div>
+                    <div class="field-value">Download App</div>
+                </div>
+                <div class="ad-card-field">
+                    <div class="field-label">Target Audience</div>
+                    <div class="field-value">Active skincare seekers, dermatology appointment attendees, health-tracking users, ages 25–55</div>
+                </div>
+                <div class="ad-card-field">
+                    <div class="field-label">Visual Direction</div>
+                    <div class="field-value">Phone mockup showing detailed report cards: elasticity, hydration, lesion detection. Smile + satisfaction in user's face during scan. Subtle before/after progression across 30 days. Professional, reassuring tone.</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- SECTION 2: VIDEO SCRIPTS -->
+    <section id="video-scripts">
+        <h2>02. Instagram / TikTok Ad Scripts</h2>
+        <p>Short-form video scripts (15–30 seconds each) optimized for social media feeds. Each includes hook, body, CTA, and visual direction.</p>
+
+        <!-- SCRIPT 1 -->
+        <div class="script-card">
+            <div class="script-title">Script 1: POV: Doctor Edition</div>
+            <div class="script-section">
+                <div class="script-label">Duration</div>
+                <div class="script-text">15 seconds</div>
+            </div>
+            <div class="script-section">
+                <div class="script-label">Hook (0–3s)</div>
+                <div class="script-text">"I spent 8 years in medical school to help you. So I built something better."</div>
+            </div>
+            <div class="script-section">
+                <div class="script-label">Body (3–11s)</div>
+                <div class="script-text">Cut to phone mockup showing a 30-second scan. Real-time lesion detection overlay. AI analyzing skin in teal glow. Results card appears with hydration, elasticity, structure scores. Doctor's voice: "Every scan trains an AI on AAD guidelines. Not Instagram trends. Actual science."</div>
+            </div>
+            <div class="script-section">
+                <div class="script-label">CTA (11–15s)</div>
+                <div class="script-text">"Get your first scan free. Link in bio." [Button appears: "Try Free"]</div>
+            </div>
+            <div class="script-section">
+                <div class="script-label">Visual Direction</div>
+                <div class="script-text">Start with doctor in white coat (candid, friendly). Cut to product demo on phone. Slow-mo scanning animation. Teal accents and glow effects. End on results screen with button. Music: upbeat, modern, trustworthy.</div>
+            </div>
+        </div>
+
+        <!-- SCRIPT 2 -->
+        <div class="script-card">
+            <div class="script-title">Script 2: 30-Day Results</div>
+            <div class="script-section">
+                <div class="script-label">Duration</div>
+                <div class="script-text">30 seconds</div>
+            </div>
+            <div class="script-section">
+                <div class="script-label">Hook (0–3s)</div>
+                <div class="script-text">"I scanned my face every day for 30 days. Here's what happened to my skin."</div>
+            </div>
+            <div class="script-section">
+                <div class="script-label">Body (3–23s)</div>
+                <div class="script-text">Time-lapse montage: Day 1 hydration 42% → Day 7 hydration 56% → Day 14 elasticity improves → Day 30 full report card glowing. Show phone in hand doing quick scans. Text overlays: "Changed products week 2" / "Added SPF week 3" / "Consistency matters." Real skin transformation visible across frames. Voice: "The app tracked every change. No guessing. No lies. Just real progress."</div>
+            </div>
+            <div class="script-section">
+                <div class="script-label">CTA (23–30s)</div>
+                <div class="script-text">"Track yours free for 7 days. See the difference." [App Store badge]</div>
+            </div>
+            <div class="script-section">
+                <div class="script-label">Visual Direction</div>
+                <div class="script-text">Influencer/relatable user doing quick daily scans. Calendar days flip in background. Phone shows metric improvements in real time (hydration bar filling, elasticity rising). Green checkmarks appear for consistency streaks. Uplifting music. Bright, energetic cuts. Natural lighting.</div>
+            </div>
+        </div>
+
+        <!-- SCRIPT 3 -->
+        <div class="script-card">
+            <div class="script-title">Script 3: Problem-Agitate-Solve</div>
+            <div class="script-section">
+                <div class="script-label">Duration</div>
+                <div class="script-text">20 seconds</div>
+            </div>
+            <div class="script-section">
+                <div class="script-label">Hook (0–3s)</div>
+                <div class="script-text">"Your skincare routine might be hurting you. Here's how to know."</div>
+            </div>
+            <div class="script-section">
+                <div class="script-label">Body (3–16s)</div>
+                <div class="script-text">[PROBLEM] Show frustrated user looking in mirror. TikTok text: "Spending $200/month on products." [AGITATE] "But no real results. Just hope." Show empty skincare bottles, confused scrolling through reviews. [SOLVE] "What if your skin could tell you what actually works?" Cut to Glowlytics app. Phone camera scans face. Results appear: "Hydration down 20% this week. Switch your moisturizer." Real data, real answers. Voice: "Stop guessing. Start knowing."</div>
+            </div>
+            <div class="script-section">
+                <div class="script-label">CTA (16–20s)</div>
+                <div class="script-text">"Glowlytics. Free 7-day trial. Swipe up." [CTA button]</div>
+            </div>
+            <div class="script-section">
+                <div class="script-label">Visual Direction</div>
+                <div class="script-text">Relatable frustration at start (mirror, confused face). Quick cuts showing skincare overwhelm (bottles, ads, confusion). Transition to app demo with satisfying "ding" and glow effect. Show AI analysis happening (teal particles, scanning animation). End on confident, informed user smiling at results. Music: start anxious/busy, resolve to calm, empowering.</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- SECTION 3: ASO -->
+    <section id="aso">
+        <h2>03. App Store Optimization (ASO)</h2>
+        <p>Optimized metadata for App Store and Google Play. A/B test these variants to find your highest conversion rates.</p>
+
+        <h3 style="font-size: 22px; margin: 30px 0 20px; color: var(--text-dark);">App Title <span class="badge">30 chars max</span></h3>
+        <div class="aso-grid">
+            <div class="aso-item">
+                <h4>Option 1</h4>
+                <div class="aso-option">Glowlytics: Skin Tracking AI <span class="aso-meta">(28 chars) — Straightforward</span></div>
+            </div>
+            <div class="aso-item">
+                <h4>Option 2</h4>
+                <div class="aso-option">Glowlytics · AI Dermatology <span class="aso-meta">(27 chars) — Medical credibility</span></div>
+            </div>
+            <div class="aso-item">
+                <h4>Option 3</h4>
+                <div class="aso-option">Glowlytics: Daily Skin Health <span class="aso-meta">(29 chars) — Habit-focused</span></div>
+            </div>
+        </div>
+
+        <h3 style="font-size: 22px; margin: 30px 0 20px; color: var(--text-dark);">Subtitle <span class="badge">30 chars max</span></h3>
+        <div class="aso-grid">
+            <div class="aso-item">
+                <h4>Option 1</h4>
+                <div class="aso-option">Track skin health in 30 seconds <span class="aso-meta">(31 chars) — Highlight speed</span></div>
+            </div>
+            <div class="aso-item">
+                <h4>Option 2</h4>
+                <div class="aso-option">AI powered skin analysis tool <span class="aso-meta">(28 chars) — Tech-focused</span></div>
+            </div>
+            <div class="aso-item">
+                <h4>Option 3</h4>
+                <div class="aso-option">Medical-grade skin reporting <span class="aso-meta">(27 chars) — Authority play</span></div>
+            </div>
+        </div>
+
+        <h3 style="font-size: 22px; margin: 30px 0 20px; color: var(--text-dark);">Short Description <span class="badge">80 chars</span></h3>
+        <div class="aso-grid">
+            <div class="aso-item">
+                <h4>Primary</h4>
+                <div class="aso-option">AI-powered skin health tracking: real-time lesion detection, clinician-ready reports, dermatology-grounded analysis. 7-day free trial. <span class="aso-meta">(135 chars) — Comprehensive</span></div>
+            </div>
+        </div>
+
+        <h3 style="font-size: 22px; margin: 30px 0 20px; color: var(--text-dark);">Keyword Field <span class="badge">100 chars</span></h3>
+        <div class="aso-grid">
+            <div class="aso-item">
+                <h4>Recommended Keywords</h4>
+                <div class="aso-option">skin health, acne tracker, dermatology, AI, lesion detection, hydration, skincare science, health tracking <span class="aso-meta">(97 chars)</span></div>
+            </div>
+        </div>
+
+        <h3 style="font-size: 22px; margin: 30px 0 20px; color: var(--text-dark);">Screenshot Captions</h3>
+        <div style="background: white; padding: 28px; border-radius: 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.08);">
+            <div style="margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--gray-light);">
+                <div class="field-label">Screenshot 1</div>
+                <div class="field-value">30-second daily scans powered by AI. No guessing, just science.</div>
+            </div>
+            <div style="margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--gray-light);">
+                <div class="field-label">Screenshot 2</div>
+                <div class="field-value">Real-time lesion detection with clinician-grade accuracy.</div>
+            </div>
+            <div style="margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--gray-light);">
+                <div class="field-label">Screenshot 3</div>
+                <div class="field-value">Track hydration, elasticity, structure, and skin tone over time.</div>
+            </div>
+            <div style="margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--gray-light);">
+                <div class="field-label">Screenshot 4</div>
+                <div class="field-value">Get personalized skincare recommendations based on your unique skin.</div>
+            </div>
+            <div>
+                <div class="field-label">Screenshot 5</div>
+                <div class="field-value">Built by a physician. Grounded in AAD & ACOG dermatology guidelines.</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- SECTION 4: LANDING PAGE COPY -->
+    <section id="landing-page">
+        <h2>04. Landing Page Copy (glowlytics.ai)</h2>
+        <p>Full-page copy structure for the Glowlytics homepage. Use this for hero, features, social proof, CTA, and FAQ.</p>
+
+        <h3 style="font-size: 22px; margin: 30px 0 20px; color: var(--text-dark);">Hero Section</h3>
+        <div class="copy-section">
+            <h4>Headline</h4>
+            <p>Your Skin Tracked. Your Progress Proven.</p>
+            <h4 style="margin-top: 20px;">Subheadline</h4>
+            <p>AI-powered skin health analysis in 30 seconds. See real changes. Make informed decisions. Track progress like never before.</p>
+            <h4 style="margin-top: 20px;">CTA</h4>
+            <p><strong>Start Your Free 7-Day Trial</strong> — No credit card required</p>
+        </div>
+
+        <h3 style="font-size: 22px; margin: 30px 0 20px; color: var(--text-dark);">Feature Section 1</h3>
+        <div class="copy-section">
+            <h4>Headline</h4>
+            <p>30-Second Daily Scans</p>
+            <h4 style="margin-top: 20px;">Body</h4>
+            <p>Point your phone. Glowlytics does the rest. Real-time AI analysis captures skin texture, hydration, elasticity, and lesions. No special lighting. No appointments. Just your phone and honest data.</p>
+        </div>
+
+        <h3 style="font-size: 22px; margin: 30px 0 20px; color: var(--text-dark);">Feature Section 2</h3>
+        <div class="copy-section">
+            <h4>Headline</h4>
+            <p>Clinician-Ready Reports</p>
+            <h4 style="margin-top: 20px;">Body</h4>
+            <p>Track hydration, elasticity, structure, and skin tone over time. Get personalized insights on what's working. Export reports to share with your dermatologist. Medical-grade data you can trust.</p>
+        </div>
+
+        <h3 style="font-size: 22px; margin: 30px 0 20px; color: var(--text-dark);">Feature Section 3</h3>
+        <div class="copy-section">
+            <h4>Headline</h4>
+            <p>Built by a Physician. Grounded in Science.</p>
+            <h4 style="margin-top: 20px;">Body</h4>
+            <p>Glowlytics was created by an IM resident and trained on AAD & ACOG dermatology guidelines. Our 3-layer AI pipeline combines deterministic image analysis, ONNX computer vision models, and fine-tuned GPT-4o. Real dermatology. No trends.</p>
+        </div>
+
+        <h3 style="font-size: 22px; margin: 30px 0 20px; color: var(--text-dark);">Social Proof Section</h3>
+        <div class="copy-section">
+            <h4>Headline</h4>
+            <p>Trusted by Skin Enthusiasts & Health Advocates</p>
+            <h4 style="margin-top: 20px;">Body</h4>
+            <p><span class="highlight">"I finally have real data instead of just hope."</span> — Sarah M.</p>
+            <p style="margin-top: 12px;"><span class="highlight">"My dermatologist was impressed with my detailed reports."</span> — James K.</p>
+            <p style="margin-top: 12px;"><span class="highlight">"The science behind this app is unmatched. Highly recommend."</span> — Dr. Rivera</p>
+        </div>
+
+        <h3 style="font-size: 22px; margin: 30px 0 20px; color: var(--text-dark);">Final CTA Section</h3>
+        <div class="copy-section">
+            <h4>Headline</h4>
+            <p>Stop Guessing About Your Skin</p>
+            <h4 style="margin-top: 20px;">Body</h4>
+            <p>Get 7 days free. No credit card. Cancel anytime. Start your daily scans and see the difference real data makes.</p>
+            <h4 style="margin-top: 20px;">CTA</h4>
+            <p><strong>Download Glowlytics Now</strong> — Available on iOS & Android</p>
+        </div>
+
+        <h3 style="font-size: 22px; margin: 30px 0 20px; color: var(--text-dark);">Frequently Asked Questions</h3>
+
+        <div class="faq-item">
+            <div class="faq-question">How does the scan work?</div>
+            <div class="faq-answer">Point your phone's camera at your face for 30 seconds. Our AI analyzes skin texture, hydration, elasticity, and detects lesions in real time. Results appear instantly with a detailed report breakdown.</div>
+        </div>
+
+        <div class="faq-item">
+            <div class="faq-question">Is the analysis accurate?</div>
+            <div class="faq-answer">Glowlytics uses a 3-layer AI pipeline: deterministic feature extraction based on medical image analysis, ONNX computer vision models, and fine-tuned GPT-4o trained on AAD & ACOG guidelines. Results are clinician-grade, not Instagram-grade.</div>
+        </div>
+
+        <div class="faq-item">
+            <div class="faq-question">Can I share my results with my dermatologist?</div>
+            <div class="faq-answer">Yes! Export detailed, clinician-ready reports directly from the app. Your dermatologist can see your skin metrics, trends, and lesion analysis over time.</div>
+        </div>
+
+        <div class="faq-item">
+            <div class="faq-question">What does the free trial include?</div>
+            <div class="faq-answer">Your 7-day free trial unlocks unlimited scans, detailed reports, product tracking, and all premium features. After 7 days, upgrade to Glow Pro ($X/month) or cancel — no fees, no commitment.</div>
+        </div>
+
+        <div class="faq-item">
+            <div class="faq-question">Who built Glowlytics?</div>
+            <div class="faq-answer">Glowlytics was built by a physician (IM resident) who realized patients were making skincare decisions based on trends, not data. We created a tool to bring real dermatology science to everyone's pocket.</div>
+        </div>
+    </section>
+
+    <!-- SECTION 5: EMAIL SEQUENCE -->
+    <section id="email-sequence">
+        <h2>05. Email Welcome Sequence</h2>
+        <p>Three key emails to nurture new users through onboarding and trial activation. Personalize {name}, {days_left}, {app_name} as needed.</p>
+
+        <!-- EMAIL 1 -->
+        <div class="email-card">
+            <div class="email-meta">Email 1 — Welcome + First Scan Prompt</div>
+            <div class="email-subject">Welcome to Glowlytics, {name}! ✨</div>
+            <div class="email-body">Hi {name},
+
+Welcome to Glowlytics — your new skin health companion.
+
+We're thrilled you've started your 7-day free trial. Here's the deal: the more you scan, the smarter the insights get.
+
+Your first scan takes 30 seconds. Just point your phone at your face, and our AI does the heavy lifting. You'll get:
+
+→ Hydration & elasticity scores
+→ Real-time lesion detection
+→ Personalized skincare recommendations
+→ A baseline to track progress
+
+Ready? Open the app and tap "Camera" to get started.
+
+Questions? We're here to help at support@glowlytics.ai.
+
+Let's get glowing,
+The Glowlytics Team
+
+P.S. — Your trial expires in {days_left} days. Each scan you take makes your data smarter.</div>
+            <a href="#" class="email-cta">Open Glowlytics Now</a>
+        </div>
+
+        <!-- EMAIL 2 -->
+        <div class="email-card">
+            <div class="email-meta">Email 2 — Feature Education + Results Hook</div>
+            <div class="email-subject">Here's what your first scan reveals about your skin</div>
+            <div class="email-body">Hi {name},
+
+We noticed you took your first scan. Great!
+
+Your results page shows four key metrics:
+
+🧴 HYDRATION — How well your skin retains moisture. Dips usually mean it's time to adjust your moisturizer or boost SPF use.
+
+✨ ELASTICITY — Skin's ability to bounce back. Tracks over time, improves with consistency and good products.
+
+🛡️ STRUCTURE — Texture and firmness. Refined over weeks with the right routine.
+
+📍 LESIONS — Detected in real time. Our AI flags comedones, papules, and other lesions with clinical accuracy.
+
+Pro tip: Scan at the same time every day for reliable data. Morning scans before skincare show your baseline; evening scans show what your routine achieved.
+
+Your next scan awaits. We'll track the changes over the next 7 days.
+
+Stay glowing,
+The Glowlytics Team
+
+P.S. — Premium features unlock at day 4 (full report history, product tracking, clinician exports).</div>
+            <a href="#" class="email-cta">View Your Results</a>
+        </div>
+
+        <!-- EMAIL 3 -->
+        <div class="email-card">
+            <div class="email-meta">Email 3 — Trial Expiring Soon (Day 5)</div>
+            <div class="email-subject">{days_left} days left: Your skin data is worth keeping 🔒</div>
+            <div class="email-body">Hi {name},
+
+Your 7-day free trial expires in {days_left} days.
+
+You've already scanned {scans_completed} times. That data is gold. Don't lose it.
+
+Here's what happens when you subscribe to Glow Pro:
+
+✓ Keep your entire scan history & trends
+✓ Share clinician-ready reports with your dermatologist
+✓ Track product effectiveness with barcode scanning
+✓ Unlock XP, badges, and weekly challenges
+✓ Priority support
+
+One month of Glow Pro costs less than a single skincare product. And your first 7 days are already free.
+
+Ready to level up? Tap below to upgrade.
+
+If you have questions, reply to this email. We're listening.
+
+Stay glowing,
+The Glowlytics Team
+
+P.S. — Cancel anytime. We're not in the business of keeping you trapped.</div>
+            <a href="#" class="email-cta">Upgrade to Glow Pro</a>
+        </div>
+    </section>
+
+</div>
+
+<!-- FOOTER -->
+<footer>
+    <p><strong>Glowlytics</strong> — AI-Powered Skin Health Tracking</p>
+    <p>glowlytics.ai | Built by a physician. Grounded in science.</p>
+    <p style="margin-top: 20px; font-size: 12px; opacity: 0.8;">Last updated: March 2026</p>
+</footer>
+
+</body>
+</html>

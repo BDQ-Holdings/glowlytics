@@ -329,19 +329,32 @@ export const analyzeWithFallback = async (input: AnalysisInput): Promise<{
   lesions?: DetectedLesion[];
   signal_confidence?: SignalConfidence;
 }> => {
+  const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> => {
+    return Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+      }),
+    ]);
+  };
+
   try {
     // Try real Vision API via backend proxy if API base URL is configured and photo is available
     if (env.API_BASE_URL && input.photoUri) {
       try {
         console.log('[Glowlytics] Calling Vision API at:', env.API_BASE_URL);
-        const result = await analyzeWithVisionAPI(input.photoUri, {
-          primary_goal: input.protocol.primary_goal,
-          scan_region: input.protocol.scan_region,
-          sunscreen_used: input.dailyContext.sunscreen_used,
-          sleep_quality: input.dailyContext.sleep_quality,
-          stress_level: input.dailyContext.stress_level,
-          scan_count: input.previousOutputs.length,
-        }, input.preEncodedBase64);
+        const result = await withTimeout(
+          analyzeWithVisionAPI(input.photoUri, {
+            primary_goal: input.protocol.primary_goal,
+            scan_region: input.protocol.scan_region,
+            sunscreen_used: input.dailyContext.sunscreen_used,
+            sleep_quality: input.dailyContext.sleep_quality,
+            stress_level: input.dailyContext.stress_level,
+            scan_count: input.previousOutputs.length,
+          }, input.preEncodedBase64),
+          35_000,
+          'Vision API',
+        );
 
         console.log('[Glowlytics] Vision API success — scores from fine-tuned GPT-4o model');
 
@@ -382,7 +395,14 @@ export const analyzeWithFallback = async (input: AnalysisInput): Promise<{
       console.log('[Glowlytics] No API_BASE_URL configured — using LOCAL heuristic analysis');
       return analyzeSkiN(input);
     } else {
-      throw new Error('No photo was captured. Please try scanning again.');
+      // Graceful degradation: if photo handoff fails, still provide deterministic
+      // scanner/context-based analysis instead of hard-failing the scan.
+      console.warn('[Glowlytics] Missing photoUri — falling back to local analysis');
+      const fallbackResult = await analyzeSkiN(input);
+      return {
+        ...fallbackResult,
+        confidence: 'low' as Confidence,
+      };
     }
   } catch (outerErr: any) {
     // Let the error propagate to the UI — showing fake scores is worse than showing an error

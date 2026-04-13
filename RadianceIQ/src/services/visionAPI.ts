@@ -73,37 +73,75 @@ export async function analyzeWithVisionAPI(
   },
   preEncodedBase64?: string,
 ): Promise<VisionAnalysisResult> {
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+  const shouldRetryStatus = (status: number) => status >= 500 || status === 429;
+  const shouldRetryError = (message: string) =>
+    /timeout|network|fetch|aborted|failed/i.test(message);
+
   const base64Image = preEncodedBase64 || await imageToBase64(photoUri);
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 40_000);
+  let response: Response | null = null;
+  let lastError: Error | null = null;
+  const maxAttempts = 2;
 
-  let response: Response;
-  try {
-    const authHeaders = await getAuthHeaders();
-    response = await fetch(`${env.API_BASE_URL}/api/vision/analyze`, {
-      method: 'POST',
-      headers: authHeaders,
-      body: JSON.stringify({
-        image_base64: base64Image,
-        context: {
-          primary_goal: context.primary_goal,
-          scan_region: context.scan_region,
-          sunscreen_used: context.sunscreen_used,
-          sleep_quality: context.sleep_quality,
-          stress_level: context.stress_level,
-          scan_count: context.scan_count,
-        },
-      }),
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timeout);
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+
+    try {
+      const authHeaders = await getAuthHeaders();
+      response = await fetch(`${env.API_BASE_URL}/api/vision/analyze`, {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({
+          image_base64: base64Image,
+          context: {
+            primary_goal: context.primary_goal,
+            scan_region: context.scan_region,
+            sunscreen_used: context.sunscreen_used,
+            sleep_quality: context.sleep_quality,
+            stress_level: context.stress_level,
+            scan_count: context.scan_count,
+          },
+        }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        const message = String(errorData.error || 'Request failed');
+        const retryable = shouldRetryStatus(response.status);
+        if (retryable && attempt < maxAttempts) {
+          console.warn(`[Glowlytics] Vision API retrying after ${response.status}: ${message}`);
+          await sleep(500 * attempt);
+          continue;
+        }
+        throw new Error(`Vision API error (${response.status}): ${message}`);
+      }
+
+      // Success
+      lastError = null;
+      break;
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err ?? 'Unknown error');
+      const retryable = shouldRetryError(message);
+      if (retryable && attempt < maxAttempts) {
+        console.warn(`[Glowlytics] Vision API transient failure (attempt ${attempt}), retrying: ${message}`);
+        await sleep(500 * attempt);
+        continue;
+      }
+      lastError = err instanceof Error ? err : new Error(message);
+      break;
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-    throw new Error(`Vision API error (${response.status}): ${errorData.error || 'Request failed'}`);
+  if (lastError) {
+    throw lastError;
+  }
+  if (!response) {
+    throw new Error('Vision API request failed before receiving a response.');
   }
 
   const result = await response.json();

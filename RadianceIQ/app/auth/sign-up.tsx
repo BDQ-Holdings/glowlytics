@@ -14,8 +14,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useOAuth, useSignUp } from '@clerk/clerk-expo';
+import { useSSO, useSignInWithApple, useSignUp, useSignIn } from '@clerk/clerk-expo';
 import * as WebBrowser from 'expo-web-browser';
+import * as AuthSession from 'expo-auth-session';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -33,16 +34,149 @@ import {
   BorderRadius,
 } from '../../src/constants/theme';
 import { trackEvent } from '../../src/services/analytics';
+import { env } from '../../src/config/env';
 
 WebBrowser.maybeCompleteAuthSession();
 
 const CALM_EASING = Easing.out(Easing.cubic);
+const OAUTH_CALLBACK_PATH = 'oauth-native-callback';
+
+const decodeClerkHost = (pk: string): string => {
+  try {
+    const encoded = pk.split('_').slice(2).join('_');
+    if (typeof globalThis.atob !== 'function') return 'unknown';
+    return globalThis.atob(encoded).replace(/\$$/, '') || 'unknown';
+  } catch {
+    return 'unknown';
+  }
+};
+
+const getOAuthRedirectUrl = () =>
+  (Platform.OS === 'web'
+    ? AuthSession.makeRedirectUri({
+      scheme: 'glowlytics',
+      path: OAUTH_CALLBACK_PATH,
+    })
+    : `glowlytics://${OAUTH_CALLBACK_PATH}`);
+
+const buildOAuthFailureMessage = (err: unknown, redirectUrl: string) => {
+  const base = getAuthErrorMessage(err);
+  const host = decodeClerkHost(env.CLERK_PUBLISHABLE_KEY);
+  const withNetworkHint = (message: string) => {
+    if (/missing external verification redirect url|network|timed out|503|failed to fetch/i.test(message)) {
+      return `${message}\nNetwork may be blocking ${host}. Try cellular or a different Wi-Fi network.`;
+    }
+    return message;
+  };
+  if (/redirect|callback|oauth/i.test(base)) {
+    return withNetworkHint(`${base}\nRedirect URL: ${redirectUrl}\nClerk instance: ${host}`);
+  }
+  return withNetworkHint(base);
+};
+
+const getSupportedStrategies = (resource: any): string[] | null => {
+  if (!Array.isArray(resource?.supportedFirstFactors)) return null;
+  return resource.supportedFirstFactors
+    .map((factor: any) => factor?.strategy)
+    .filter((s: unknown): s is string => typeof s === 'string');
+};
+
+const isStrategyExplicitlyUnavailable = (resource: any, strategy: string): boolean => {
+  const strategies = getSupportedStrategies(resource);
+  // Clerk can return an empty list transiently during init; don't hard-fail on that.
+  if (!strategies || strategies.length === 0) return false;
+  return !strategies.includes(strategy);
+};
+
+const listStrategies = (resource: any): string => {
+  const strategies = getSupportedStrategies(resource);
+  if (!strategies || strategies.length === 0) return 'none';
+  return strategies.length > 0 ? strategies.join(', ') : 'none';
+};
+
+const ensureOAuthSession = async (
+  result: any,
+  method: 'apple' | 'google',
+) => {
+  const authSessionType = result?.authSessionResult?.type;
+  if (authSessionType && authSessionType !== 'success') {
+    throw new Error(`OAuth flow ${authSessionType}`);
+  }
+
+  if (result?.createdSessionId) {
+    await result.setActive?.({ session: result.createdSessionId });
+    const completedEvent = result.signUp?.createdSessionId === result.createdSessionId
+      ? 'auth_sign_up_completed'
+      : 'auth_sign_in_completed';
+    trackEvent(completedEvent, { method });
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    return;
+  }
+
+  if (result?.signUp?.verifications?.externalAccount?.status === 'verified') {
+    const completeSignUp = await result.signUp.update({});
+    if (completeSignUp.status === 'complete' && completeSignUp.createdSessionId) {
+      await result.setActive?.({ session: completeSignUp.createdSessionId });
+      trackEvent('auth_sign_up_completed', { method });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      return;
+    }
+  }
+
+  const hasStatuses = Boolean(result?.signIn?.status || result?.signUp?.status);
+  if (!authSessionType && !hasStatuses) {
+    if (method === 'apple') {
+      throw new Error('Apple sign-in returned no session. Verify Apple is enabled for this Clerk instance.');
+    }
+    if (method === 'google') {
+      throw new Error('Google sign-in returned no session. Verify Google is enabled for this Clerk instance.');
+    }
+  }
+
+  const signInStatus = result?.signIn?.status;
+  const signUpStatus = result?.signUp?.status;
+  throw new Error(
+    `Authentication did not complete (signIn=${signInStatus || 'none'}, signUp=${signUpStatus || 'none'}).`,
+  );
+};
+
+const getAuthErrorMessage = (err: unknown, fallback = 'An error occurred.') => {
+  const clerkMessage = (err as any)?.errors?.[0]?.longMessage ?? (err as any)?.errors?.[0]?.message;
+  if (typeof clerkMessage === 'string' && clerkMessage.trim().length > 0) {
+    return clerkMessage;
+  }
+  return err instanceof Error ? err.message : fallback;
+};
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+const isMissingSSORedirectError = (err: unknown) =>
+  /Missing external verification redirect URL for SSO flow/i.test(getAuthErrorMessage(err));
+
+const getSSODebugState = (resource: any): string => {
+  const firstFactor = resource?.firstFactorVerification;
+  return [
+    `signIn.status=${resource?.status ?? 'unknown'}`,
+    `firstFactor.status=${firstFactor?.status ?? 'unknown'}`,
+    `hasExternalRedirect=${Boolean(firstFactor?.externalVerificationRedirectURL)}`,
+    `factors=${listStrategies(resource)}`,
+  ].join(', ');
+};
+
+const isAppleAuthCancelError = (err: unknown) => {
+  const code = String((err as any)?.code ?? '').toUpperCase();
+  if (code.includes('CANCEL')) return true;
+  const message = err instanceof Error ? err.message : String(err ?? '');
+  return /cancel|1001/i.test(message);
+};
 
 export default function SignUpScreen() {
   const router = useRouter();
-  const { startOAuthFlow: startAppleOAuth } = useOAuth({ strategy: 'oauth_apple' });
-  const { startOAuthFlow: startGoogleOAuth } = useOAuth({ strategy: 'oauth_google' });
+  const { startSSOFlow } = useSSO();
   const { signUp, setActive, isLoaded } = useSignUp();
+  const { isLoaded: isSignInLoaded, signIn } = useSignIn();
+  const { startAppleAuthenticationFlow } = useSignInWithApple();
+  const isOAuthReady = isLoaded && isSignInLoaded;
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -51,6 +185,7 @@ export default function SignUpScreen() {
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState<'apple' | 'google' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [clerkSlowWarning, setClerkSlowWarning] = useState<string | null>(null);
   const [countdown, setCountdown] = useState(60);
   const [canResend, setCanResend] = useState(false);
 
@@ -139,6 +274,24 @@ export default function SignUpScreen() {
     }
   }, [error]);
 
+  useEffect(() => {
+    if (isOAuthReady) {
+      setClerkSlowWarning(null);
+      return;
+    }
+    const t = setTimeout(() => {
+      setClerkSlowWarning(
+        `Authentication is taking longer than expected. Network may be blocking ${env.CLERK_INSTANCE_HOST}. Try cellular or another Wi-Fi.`,
+      );
+    }, 12000);
+    return () => clearTimeout(t);
+  }, [isOAuthReady]);
+
+  useEffect(() => {
+    if (!__DEV__ || !isOAuthReady) return;
+    console.log(`[Auth] SignUp factors (${decodeClerkHost(env.CLERK_PUBLISHABLE_KEY)}): ${listStrategies(signIn)}`);
+  }, [isOAuthReady, signIn]);
+
   const orbStyle = useAnimatedStyle(() => ({
     opacity: orbOpacity.value,
     transform: [{ scale: orbScale.value }],
@@ -186,36 +339,92 @@ export default function SignUpScreen() {
     transform: [{ scale: verifyScale.value }],
   }));
 
-  const handleOAuthSignUp = useCallback(
-    async (strategy: 'oauth_apple' | 'oauth_google') => {
-      const isApple = strategy === 'oauth_apple';
-      const method = isApple ? 'oauth_apple' : 'oauth_google';
-      try {
-        setError(null);
-        setOauthLoading(isApple ? 'apple' : 'google');
-        trackEvent('auth_sign_up_started', { method });
-
-        const startFlow = isApple ? startAppleOAuth : startGoogleOAuth;
-        const { createdSessionId, setActive: oauthSetActive } = await startFlow();
-
-        if (createdSessionId) {
-          await oauthSetActive?.({ session: createdSessionId });
-          trackEvent('auth_sign_up_completed', { method });
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        }
-      } catch (err: unknown) {
-        const message =
-          err instanceof Error ? err.message : 'An error occurred during sign up.';
-        if (!message.includes('cancel')) {
-          trackEvent('auth_sign_up_failed', { method, error: message });
-          setError(message);
-        }
-      } finally {
-        setOauthLoading(null);
+  const startSSOWithRetry = useCallback(async (
+    strategy: 'oauth_apple' | 'oauth_google',
+    redirectUrl: string,
+  ) => {
+    const run = () => startSSOFlow({ strategy, redirectUrl });
+    try {
+      return await run();
+    } catch (err) {
+      if (!isMissingSSORedirectError(err)) throw err;
+      if (__DEV__) {
+        console.warn(
+          `[Auth] ${strategy} missing external verification redirect URL. Retrying once after signIn.reload(). ${getSSODebugState(signIn)}`,
+        );
       }
-    },
-    [startAppleOAuth, startGoogleOAuth],
-  );
+      try {
+        await signIn?.reload?.();
+      } catch {}
+      await sleep(350);
+      try {
+        return await run();
+      } catch (retryErr) {
+        throw new Error(`${getAuthErrorMessage(retryErr)}\nDetails: ${getSSODebugState(signIn)}`);
+      }
+    }
+  }, [signIn, startSSOFlow]);
+
+  const handleAppleSignUp = useCallback(async () => {
+    if (!isOAuthReady) {
+      setError('Authentication is still initializing. Please try again in a moment.');
+      return;
+    }
+    if (__DEV__ && (
+      isStrategyExplicitlyUnavailable(signIn, 'oauth_token_apple')
+      && isStrategyExplicitlyUnavailable(signIn, 'oauth_apple')
+    )) {
+      console.warn(`[Auth] Apple may be disabled on this instance (${decodeClerkHost(env.CLERK_PUBLISHABLE_KEY)}). Factors: ${listStrategies(signIn)}`);
+    }
+    try {
+      setError(null);
+      setOauthLoading('apple');
+      trackEvent('auth_sign_up_started', { method: 'apple' });
+      const redirectUrl = getOAuthRedirectUrl();
+
+      const result = Platform.OS === 'ios'
+        ? await startAppleAuthenticationFlow()
+        : await startSSOWithRetry('oauth_apple', redirectUrl);
+
+      await ensureOAuthSession(result, 'apple');
+    } catch (err: unknown) {
+      if (!isAppleAuthCancelError(err)) {
+        const message = buildOAuthFailureMessage(err, getOAuthRedirectUrl());
+        trackEvent('auth_sign_up_failed', { method: 'apple', error: message });
+        setError(message);
+      }
+    } finally {
+      setOauthLoading(null);
+    }
+  }, [isOAuthReady, signIn, startAppleAuthenticationFlow, startSSOWithRetry]);
+
+  const handleGoogleSignUp = useCallback(async () => {
+    if (!isOAuthReady) {
+      setError('Authentication is still initializing. Please try again in a moment.');
+      return;
+    }
+    if (__DEV__ && isStrategyExplicitlyUnavailable(signIn, 'oauth_google')) {
+      console.warn(`[Auth] Google may be disabled on this instance (${decodeClerkHost(env.CLERK_PUBLISHABLE_KEY)}). Factors: ${listStrategies(signIn)}`);
+    }
+    try {
+      setError(null);
+      setOauthLoading('google');
+      trackEvent('auth_sign_up_started', { method: 'google' });
+
+      const redirectUrl = getOAuthRedirectUrl();
+      const result = await startSSOWithRetry('oauth_google', redirectUrl);
+
+      await ensureOAuthSession(result, 'google');
+    } catch (err: unknown) {
+      const message = buildOAuthFailureMessage(err, getOAuthRedirectUrl());
+      if (!message.includes('cancel')) {
+        trackEvent('auth_sign_up_failed', { method: 'google', error: message });
+        setError(message);
+      }
+    } finally {
+      setOauthLoading(null);
+    }
+  }, [isOAuthReady, signIn, startSSOWithRetry]);
 
   const handleEmailSignUp = useCallback(async () => {
     if (!isLoaded || !signUp) return;
@@ -247,8 +456,7 @@ export default function SignUpScreen() {
         verifyScale.value = withTiming(1, { duration: 500, easing: CALM_EASING });
       }, 300);
     } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : 'Unable to create account.';
+      const message = getAuthErrorMessage(err, 'Unable to create account.');
       setError(message);
     } finally {
       setLoading(false);
@@ -272,8 +480,7 @@ export default function SignUpScreen() {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
     } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : 'Invalid verification code.';
+      const message = getAuthErrorMessage(err, 'Invalid verification code.');
       trackEvent('auth_sign_up_failed', { method: 'email', error: message });
       setError(message);
     } finally {
@@ -289,12 +496,12 @@ export default function SignUpScreen() {
       setCountdown(60);
       setCanResend(false);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Unable to resend code.';
+      const message = getAuthErrorMessage(err, 'Unable to resend code.');
       setError(message);
     }
   }, [isLoaded, signUp, canResend]);
 
-  const isDisabled = loading || oauthLoading !== null;
+  const isDisabled = loading || oauthLoading !== null || !isOAuthReady;
 
   if (pendingVerification) {
     return (
@@ -384,12 +591,17 @@ export default function SignUpScreen() {
               <Text style={styles.errorText}>{error}</Text>
             </Animated.View>
           ) : null}
+          {!error && clerkSlowWarning ? (
+            <View style={styles.infoContainer}>
+              <Text style={styles.infoText}>{clerkSlowWarning}</Text>
+            </View>
+          ) : null}
 
           {/* OAuth */}
           <Animated.View style={oauth1Style}>
             <TouchableOpacity
               style={styles.appleButton}
-              onPress={() => handleOAuthSignUp('oauth_apple')}
+              onPress={handleAppleSignUp}
               disabled={isDisabled}
               activeOpacity={0.8}
             >
@@ -407,7 +619,7 @@ export default function SignUpScreen() {
           <Animated.View style={oauth2Style}>
             <TouchableOpacity
               style={styles.googleButton}
-              onPress={() => handleOAuthSignUp('oauth_google')}
+              onPress={handleGoogleSignUp}
               disabled={isDisabled}
               activeOpacity={0.8}
             >
@@ -552,6 +764,20 @@ const styles = StyleSheet.create({
   },
   errorText: {
     color: Colors.error,
+    fontFamily: FontFamily.sans,
+    fontSize: FontSize.sm,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+  infoContainer: {
+    backgroundColor: 'rgba(58, 158, 143, 0.08)',
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: 'rgba(58, 158, 143, 0.2)',
+    padding: Spacing.md,
+  },
+  infoText: {
+    color: Colors.textSecondary,
     fontFamily: FontFamily.sans,
     fontSize: FontSize.sm,
     lineHeight: 20,

@@ -490,7 +490,7 @@ Score merging: Layer 2 overrides > Layer 1 + Layer 3 weighted blend (0.6/0.4 for
 - **Screenshots**: capture 5 screens on iPhone 15 Pro Max (1290x2796)
 - **Privacy policy URL**: host privacy-policy content at https://glowlytics.ai/privacy
 - **App Store Connect metadata**: paste description/keywords from app-store-metadata.json
-- **Content rating questionnaire**: complete in App Store Connect (12+, medical info: yes)
+- **Content rating questionnaire**: complete in App Store Connect (12+, medical info: no)
 - **Seed Pinecone on production**: POST /api/rag/seed
 - **TestFlight**: smoke test all 3 journeys + subscription flow
 - **Submit for App Review**

@@ -102,6 +102,19 @@ export const connectHealthData = async (
   }
 
   try {
+    const available = await isHealthDataAvailableAsync();
+    if (!available) {
+      return {
+        source: 'apple_health',
+        status: 'unavailable',
+        requested_types: REQUESTED_TYPES,
+        granted_types: [],
+        sync_skipped: false,
+        last_checked_at: new Date().toISOString(),
+        availability_note: 'Apple Health is not available on this device.',
+      };
+    }
+
     const ok = await requestAuthorization({ toRead: READ_IDENTIFIERS });
     if (!ok) {
       return {
@@ -123,14 +136,18 @@ export const connectHealthData = async (
       last_checked_at: new Date().toISOString(),
     };
   } catch (e: any) {
+    const message = String(e?.message ?? e ?? '');
+    const looksUnavailable =
+      /not available|expo go|native module|unimplemented|simulator/i.test(message);
+
     return {
       source: 'apple_health',
-      status: 'denied',
+      status: looksUnavailable ? 'unavailable' : 'denied',
       requested_types: REQUESTED_TYPES,
       granted_types: [],
       sync_skipped: false,
       last_checked_at: new Date().toISOString(),
-      availability_note: `Permission request failed: ${e?.message ?? e}`,
+      availability_note: `Permission request failed: ${message}`,
     };
   }
 };

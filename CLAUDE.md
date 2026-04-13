@@ -1,43 +1,22 @@
-# Glowlytics - Skin Health Tracking App
+# Glowlytics — Skin Health Tracking App
 
-## Project Structure
+## Structure
 
 ```
-cornell-hackathon/
-  CLAUDE.md, progress.txt, prd.md
-  RadianceIQ/                     # Main app (Expo + React Native)
-    app/                          # 48 screens (Expo Router, file-based)
-      (tabs)/                     # today, products, camera, reports, profile
-      auth/                       # sign-in, sign-up, forgot-password
-      onboarding/                 # 7-9 active screens (dynamic per sex/menstrual)
-      scan/                       # camera → analyzing → results (story format)
-      signal/, skin-metric/, product/, report/, paywall.tsx
-    src/
-      components/   # 24 files (see §Components below)
-      constants/    # theme.ts, signals.ts, lesions.ts, ingredients.ts
-      services/     # 21 services + routineBuilder.ts (see §Services below)
-      store/        # Zustand (useStore.ts)
-      utils/        # localDate.ts, cycleDay.ts, animations.ts
-      hooks/, types/, config/
-    backend/        # 7 modules: app.js, server.js, db-init.js, rag.js,
-                    #   curated-products.js, image-processing.js, signal-models.js
-    assets/, ml/
+RadianceIQ/
+  app/           # 48 screens (Expo Router file-based)
+    (tabs)/      # today, products, camera, reports, profile
+    auth/        # sign-in, sign-up (Apple native + Google OAuth + email)
+    onboarding/  # 8-10 screens (dynamic per sex/menstrual, includes scan-reminder)
+    scan/        # camera → analyzing → results (story format)
+  src/
+    components/  # 24 files
+    services/    # 21 services
+    store/       # Zustand (useStore.ts)
+    constants/   # theme.ts, signals.ts, lesions.ts, ingredients.ts
+    utils/, hooks/, types/, config/
+  backend/       # Express + PostgreSQL + ONNX + RAG (7 modules)
 ```
-
-## Tech Stack
-
-| Layer | Tech |
-|-------|------|
-| Framework | React Native, Expo SDK 54, TypeScript strict |
-| Navigation | Expo Router (file-based) |
-| State | Zustand + AsyncStorage |
-| Auth | Clerk (`@clerk/clerk-expo` v2) |
-| Subscriptions | RevenueCat v9.12.0 ("Glow Pro", 7-day trial) |
-| Analytics | PostHog (posthog-react-native, 20 events) |
-| Vision | 3-layer: deterministic + ONNX CV + GPT-4o (`ft:gpt-4o-2024-08-06:personal:radianceiq-skin:DHBaOo20`) |
-| Camera | react-native-vision-camera + MLKit face detection frame processor |
-| Backend | Express + PostgreSQL + sharp + onnxruntime-node |
-| RAG | Pinecone + OpenAI embeddings (77 guideline chunks, signal-filtered) |
 
 ## Commands
 
@@ -45,63 +24,36 @@ cornell-hackathon/
 cd RadianceIQ
 npm start                    # Dev server
 npx tsc --noEmit             # Type check
-npm test                     # Tests
-cd backend && node server.js # Backend
-cd backend && npm test       # Backend tests
+npm test                     # Tests (448 across 26 suites)
+cd backend && npm test       # Backend tests (151 across 7 suites)
 ```
+
+## Tech Stack
+
+| Layer | Tech |
+|-------|------|
+| Framework | React Native, Expo SDK 54, TypeScript strict |
+| Auth | Clerk v2 — Apple (`useSignInWithApple`), Google (`useOAuth`), email |
+| Subscriptions | RevenueCat 9.15.2 ("Glow Pro", 7-day trial) |
+| Vision | 3-layer parallel: deterministic + ONNX + fine-tuned GPT-4o |
+| Backend | Express + PostgreSQL + Pinecone RAG (80 chunks) on Railway |
+| Camera | react-native-vision-camera + MLKit face detection |
 
 ## Code Conventions
 
-- Targeted Zustand selectors: `useStore((s) => s.field)` — never `useStore()` full subscription
-- `useStore.getState()` for imperative reads in callbacks
-- Shared `scoreColor()` in `theme.ts` — do not define locally (was duplicated 4x, now unified)
-- `localDateStr()` in `utils/localDate.ts` — use instead of `toISOString().split('T')[0]` (UTC bug)
-- `gateWithPaywall()` in `services/subscription.ts` — shared paywall flow for all scan/report gating
+- Zustand selectors: `useStore((s) => s.field)` — never full subscription
+- `scoreColor()` in `theme.ts` — unified score→color mapping
+- `localDateStr()` in `utils/localDate.ts` — not `toISOString().split('T')[0]`
+- `gateWithPaywall()` in `services/subscription.ts` — all scan/report gating
 
-## Scan Flow
+## Key Architecture
 
-Camera → Analyzing → Results (story format)
+**Auth**: Clerk production (`clerk.glowlytics.ai`). Apple uses native iOS flow, Google uses web OAuth. `reconcileAuthUserId` syncs Clerk↔local. `DemoSeeder` auto-loads data for `test@test.com`.
 
-1. **Camera**: MLKit face tracking, auto-capture after 4s aligned, real-time lesion overlay (YOLOv8 every 350ms), direction indicators, coaching tooltip
-2. **Analyzing**: Infinity loop animation, 9-stage pipeline messages, streamed insights, 45s hard timeout, XP overlay
-3. **Results**: Paginated story pages (swipe up): Score reveal → Signal bars → Insights/action plan → Deep dive → Done
+**Vision**: `/api/vision/analyze` — L1 deterministic (~100ms) + L2 ONNX (~200ms) + L3 GPT-4o+RAG (~3-5s). Score merge: L2 > L1+L3 blend. See `backend/signal-models.js`.
 
-## 3-Layer Vision Pipeline
+**Design**: See `.impeccable.md`. Background `#FAFAF7`, primary `#3A9E8F`, WCAG AAA, Switzer font. Signal colors: structure `#7DE7E1`, hydration `#4DA6FF`, inflammation `#FF7A78`, sunDamage `#F2B56A`, elasticity `#B68AFF`.
 
-`/api/vision/analyze` runs in parallel:
-- **L1**: Deterministic (CIELAB, ITA, GLCM, LBP, specular) via `image-processing.js` (~100ms)
-- **L2**: ONNX models (structure, hydration, elasticity, lesion YOLOv8) via `signal-models.js` (~200ms)
-- **L3**: Fine-tuned GPT-4o + RAG guidelines (~3-5s)
+**Security**: CORS, rate limiting, timing-safe admin secret, cascading deletion (Apple 5.1.1(v)). RAG seed endpoint above JWT wall (admin-secret only).
 
-Score merge: L2 > L1+L3 blend. See `backend/signal-models.js` for details.
-
-## Design System
-
-See `.impeccable.md` for full context. Key tokens:
-- Background `#FAFAF7` (cream), primary `#3A9E8F` (teal), `scoreColor()` for score-to-color mapping
-- 3-tier surfaces: hero (elevated+shadow), standard (glass+border), recessed (surfaceOverlay)
-- Signal colors: structure `#7DE7E1`, hydration `#4DA6FF`, inflammation `#FF7A78`, sunDamage `#F2B56A`, elasticity `#B68AFF`
-- Typography: Switzer (sans), DancingScript (splash), WCAG AAA contrast
-
-## Components
-
-Key redesigned components (this session):
-- `SkinScoreHero`: 104pt animated counter + accent bar — no gauge, no card wrapper
-- `FaceAssessmentMap`: Triangulated mesh wireframe, tappable severity markers, metric-colored glow, `React.memo` (428 edges)
-- `ProductCard`: Score accent bar (3px left strip), score-tinted bg, `scoreColor()` from theme
-- `AnimatedFillBar`: Reanimated shared-value bar, extracted for reuse (results + signal detail)
-- Products page: AM/PM/All Day grouping, routine coaching insight, inline add row (no FAB)
-- Profile: colored section icons, tier badge (gold/teal/gray), 2x2 personal bests grid
-- Metric detail: per-metric personality (acne=coral, sun damage=amber, skin age=blue), color-coded Stop/Consider/Continue guidance
-
-## Important Context
-
-**Architecture**: Vision API key server-side only (30s timeout). `POST /api/vision/detect-lesions` is public + rate-limited. Backend auth: `req.auth.userId` on all user-data endpoints. DB `user_id` is TEXT (Clerk ID).
-
-**Subscriptions**: 7-day trial on onboarding skip. `gateWithPaywall()` handles all gating. RevenueCat Error 23 silenced. Guards on missing API keys (RevenueCat, PostHog).
-
-**Camera**: `useFaceTracking` hook → MLKit GPU frame processor. Thresholds: 20% fill, 15° max angle. On-device lesion detection: confidence 0.1, NMS IoU 0.45.
-
-**State**: 0 TS errors, 48 screens, 24 components, 21 services, 7 backend modules, 448 tests. Splash: "Find your glow" DancingScript reveal, 1.5s min. Tab bar: SVG notch + floating camera.
-
-**Security**: CORS, rate limiting, `safeErrorMessage()`, timing-safe admin secret, cascading account deletion (Apple 5.1.1(v)).
+**Production**: Railway env vars configured. Pinecone seeded. ONNX models auto-downloaded. See [progress.txt](progress.txt) for full build history and [POST_LAUNCH_CHECKLIST.md](POST_LAUNCH_CHECKLIST.md) for post-ship items.

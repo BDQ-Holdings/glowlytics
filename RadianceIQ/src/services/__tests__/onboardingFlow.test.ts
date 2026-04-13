@@ -29,7 +29,7 @@ describe('onboardingFlow', () => {
       expect(flow).not.toContain('exercise');
       expect(flow).not.toContain('shower-frequency');
       expect(flow).not.toContain('hand-washing');
-      expect(flow).not.toContain('scan-reminder');
+      expect(flow).toContain('scan-reminder');
       expect(flow).not.toContain('ready');
     });
 
@@ -109,12 +109,12 @@ describe('onboardingFlow', () => {
     });
 
     it('has correct length for each path', () => {
-      expect(buildOnboardingFlow().length).toBe(8);
-      expect(buildOnboardingFlow('male').length).toBe(8);
-      expect(buildOnboardingFlow('female').length).toBe(9);
-      expect(buildOnboardingFlow('female', 'regular').length).toBe(10);
-      expect(buildOnboardingFlow('female', 'irregular').length).toBe(10);
-      expect(buildOnboardingFlow('female', 'no').length).toBe(9);
+      expect(buildOnboardingFlow().length).toBe(9);
+      expect(buildOnboardingFlow('male').length).toBe(9);
+      expect(buildOnboardingFlow('female').length).toBe(10);
+      expect(buildOnboardingFlow('female', 'regular').length).toBe(11);
+      expect(buildOnboardingFlow('female', 'irregular').length).toBe(11);
+      expect(buildOnboardingFlow('female', 'no').length).toBe(10);
     });
 
     it('skips menstrual + cycle-details for female when HealthKit cycle detected', () => {
@@ -146,12 +146,12 @@ describe('onboardingFlow', () => {
       const flow = buildOnboardingFlow('male', undefined, true);
       expect(flow).not.toContain('menstrual');
       expect(flow).not.toContain('cycle-details');
-      expect(flow.length).toBe(8);
+      expect(flow.length).toBe(9);
     });
 
     it('has correct length when HealthKit skips menstrual', () => {
-      expect(buildOnboardingFlow('female', 'regular', true).length).toBe(8);
-      expect(buildOnboardingFlow('female', 'irregular', true).length).toBe(8);
+      expect(buildOnboardingFlow('female', 'regular', true).length).toBe(9);
+      expect(buildOnboardingFlow('female', 'irregular', true).length).toBe(9);
     });
   });
 
