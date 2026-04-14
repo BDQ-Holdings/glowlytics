@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+:root {
+  --bg-deep: #050a12;
+  --bg-dark: #080e1a;
+  --bg-card: #0c1424;
+  --teal: #7DE7E1;
+  --teal-dark: #1BA8A0;
+  --purple: #8A6FE8;
+  --coral: #FF7A78;
+  --amber: #F2B56A;
+  --blue: #4DA6FF;
+  --cream: #f8f6f1;
+  --warm-white: #fdfcfa;
+  --font-display: 'Bricolage Grotesque', serif;
+  --font-body: 'Plus Jakarta Sans', -apple-system, sans-serif;
+}
