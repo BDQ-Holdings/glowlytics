@@ -1,8 +1,7 @@
 {
   "name": "landing",
   "version": "1.0.0",
-  "description": "",
-  "main": "test-errors.js",
+  "description": "Glowlytics landing site and SEO content engine",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
