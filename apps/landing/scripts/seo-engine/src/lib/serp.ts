@@ -1,4 +1,12 @@
-import { newPage, closeBrowser } from "./browser.js";
+/**
+ * SERP data via SerpAPI.
+ *
+ * Returns structured JSON (organic results, PAA, related searches)
+ * with no scraping or CAPTCHA issues.
+ *
+ * Set SERPAPI_KEY in your environment.
+ * https://serpapi.com
+ */
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -10,84 +18,60 @@ export interface SerpData {
   relatedSearches: string[];
 }
 
+const SERPAPI_KEY = process.env.SERPAPI_KEY;
+
 export async function scrapeSERP(query: string): Promise<SerpData> {
-  const page = await newPage();
+  if (!SERPAPI_KEY) {
+    console.error("  SERPAPI_KEY not set. Set it in your environment.");
+    return { organicResults: [], paaQuestions: [], relatedSearches: [] };
+  }
 
   try {
-    const encoded = encodeURIComponent(query);
-    const url = `https://www.google.com/search?q=${encoded}&hl=en&gl=us`;
-
-    await page.goto(url, { waitUntil: "networkidle2", timeout: 15000 });
-
-    // Wait for organic results to render
-    await page.waitForSelector("div.g, div#search", { timeout: 5000 }).catch(() => {});
-
-    // Expand People Also Ask by clicking the first few if they exist
-    const paaButtons = await page.$$("div.related-question-pair, div[data-q], div[jsname] div[role='button']");
-    for (const btn of paaButtons.slice(0, 4)) {
-      try {
-        await btn.click();
-        await sleep(300);
-      } catch {
-        // Some may not be clickable
-      }
-    }
-
-    const data = await page.evaluate(() => {
-      // Organic results
-      const organicResults: { title: string; url: string; description: string }[] = [];
-      document.querySelectorAll("div.g").forEach((el) => {
-        const titleEl = el.querySelector("h3");
-        const linkEl = el.querySelector("a");
-        const descEl = el.querySelector("[data-sncf], .VwiC3b, .s3v9rd, span.st");
-        const title = titleEl?.textContent?.trim() || "";
-        const url = linkEl?.getAttribute("href") || "";
-        const description = descEl?.textContent?.trim() || "";
-        if (title && url.startsWith("http")) {
-          organicResults.push({ title, url, description });
-        }
-      });
-
-      // People Also Ask
-      const paaQuestions: string[] = [];
-      document.querySelectorAll("div[data-q]").forEach((el) => {
-        const q = el.getAttribute("data-q");
-        if (q) paaQuestions.push(q);
-      });
-      // Fallback: grab visible question text from PAA section
-      document.querySelectorAll("div.related-question-pair span, span.CSkcDe").forEach((el) => {
-        const text = el.textContent?.trim();
-        if (text && text.endsWith("?") && !paaQuestions.includes(text)) {
-          paaQuestions.push(text);
-        }
-      });
-
-      // Related searches
-      const relatedSearches: string[] = [];
-      document.querySelectorAll("div.s75CSd a, a.k8XOCe, div.AJLUJb a").forEach((el) => {
-        const text = el.textContent?.trim();
-        if (text) relatedSearches.push(text);
-      });
-
-      return {
-        organicResults: organicResults.slice(0, 10),
-        paaQuestions,
-        relatedSearches,
-      };
+    const params = new URLSearchParams({
+      q: query,
+      engine: "google",
+      gl: "us",
+      hl: "en",
+      num: "10",
+      api_key: SERPAPI_KEY,
     });
 
-    return data;
+    const res = await fetch(`https://serpapi.com/search.json?${params}`);
+
+    if (!res.ok) {
+      console.warn(`  SerpAPI error for "${query}": ${res.status} ${res.statusText}`);
+      return { organicResults: [], paaQuestions: [], relatedSearches: [] };
+    }
+
+    const data = await res.json();
+
+    // Organic results
+    const organicResults = (data.organic_results || []).slice(0, 10).map((r: any) => ({
+      title: r.title || "",
+      url: r.link || "",
+      description: r.snippet || "",
+    }));
+
+    // People Also Ask
+    const paaQuestions = (data.related_questions || [])
+      .map((p: any) => p.question || "")
+      .filter(Boolean);
+
+    // Related searches
+    const relatedSearches = (data.related_searches || [])
+      .map((r: any) => r.query || "")
+      .filter(Boolean);
+
+    return { organicResults, paaQuestions, relatedSearches };
   } catch (err) {
-    console.warn(`SERP scrape error for "${query}":`, err);
+    console.warn(`  SERP fetch error for "${query}":`, err);
     return { organicResults: [], paaQuestions: [], relatedSearches: [] };
-  } finally {
-    await page.close();
   }
 }
 
 export async function batchScrapeSERP(
   queries: string[],
-  delayMs: number = 2000
+  delayMs: number = 500
 ): Promise<Map<string, SerpData>> {
   const results = new Map<string, SerpData>();
   for (const query of queries) {
@@ -96,6 +80,5 @@ export async function batchScrapeSERP(
     results.set(query, data);
     await sleep(delayMs);
   }
-  await closeBrowser();
   return results;
 }

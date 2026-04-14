@@ -1,4 +1,11 @@
-import { newPage } from "./browser.js";
+/**
+ * Content extraction from article URLs.
+ *
+ * Uses cheerio (HTML parser) since article pages are mostly static HTML
+ * and don't block scrapers the way Google does. Falls back gracefully
+ * on JS-rendered SPAs (captures whatever the server returns).
+ */
+import * as cheerio from "cheerio";
 
 export interface ExtractedContent {
   title: string;
@@ -9,67 +16,61 @@ export interface ExtractedContent {
 }
 
 export async function extractContent(url: string): Promise<ExtractedContent | null> {
-  const page = await newPage();
-
   try {
-    await page.goto(url, { waitUntil: "networkidle2", timeout: 15000 });
-
-    const data = await page.evaluate(() => {
-      // Remove non-content elements
-      const remove = "nav, footer, header, script, style, noscript, iframe, .ad, .ads, .sidebar, .comments, [role='navigation'], [role='banner'], [role='contentinfo']";
-      document.querySelectorAll(remove).forEach((el) => el.remove());
-
-      const title =
-        document.querySelector("h1")?.textContent?.trim() ||
-        document.title?.trim() ||
-        "";
-
-      const headings: string[] = [];
-      document.querySelectorAll("h1, h2, h3").forEach((el) => {
-        const text = el.textContent?.trim();
-        if (text) headings.push(text);
-      });
-
-      // Find main content area
-      const mainSelectors = [
-        "article",
-        "main",
-        "[role='main']",
-        ".post-content",
-        ".article-body",
-        ".entry-content",
-        ".content",
-        "#content",
-      ];
-      let bodyText = "";
-      for (const sel of mainSelectors) {
-        const el = document.querySelector(sel);
-        if (el) {
-          bodyText = el.textContent?.trim() || "";
-          break;
-        }
-      }
-      if (!bodyText) {
-        bodyText = document.body?.textContent?.trim() || "";
-      }
-
-      // Normalize whitespace
-      bodyText = bodyText.replace(/\s+/g, " ").trim();
-
-      return { title, headings, bodyText };
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+        Accept: "text/html,application/xhtml+xml",
+      },
+      signal: AbortSignal.timeout(10000),
     });
 
+    if (!res.ok) return null;
+
+    const html = await res.text();
+    const $ = cheerio.load(html);
+
+    // Remove non-content elements
+    $("nav, footer, header, script, style, noscript, iframe, .ad, .ads, .sidebar, .comments, [role='navigation'], [role='banner'], [role='contentinfo']").remove();
+
+    const title = $("h1").first().text().trim() || $("title").text().trim();
+
+    const headings: string[] = [];
+    $("h1, h2, h3").each((_, el) => {
+      const text = $(el).text().trim();
+      if (text) headings.push(text);
+    });
+
+    // Find main content area
+    const mainSelectors = [
+      "article", "main", "[role='main']",
+      ".post-content", ".article-body", ".entry-content",
+      ".content", "#content",
+    ];
+    let bodyText = "";
+    for (const sel of mainSelectors) {
+      const el = $(sel).first();
+      if (el.length) {
+        bodyText = el.text().trim();
+        break;
+      }
+    }
+    if (!bodyText) {
+      bodyText = $("body").text().trim();
+    }
+
+    bodyText = bodyText.replace(/\s+/g, " ").trim();
+
     return {
-      title: data.title,
+      title,
       url,
-      headings: data.headings,
-      bodyText: data.bodyText.slice(0, 15000),
-      wordCount: data.bodyText.split(/\s+/).length,
+      headings,
+      bodyText: bodyText.slice(0, 15000),
+      wordCount: bodyText.split(/\s+/).length,
     };
   } catch {
     return null;
-  } finally {
-    await page.close();
   }
 }
 

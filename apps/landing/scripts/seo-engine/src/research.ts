@@ -3,7 +3,6 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { scrapeSERP } from "./lib/serp.js";
 import { extractMultiple } from "./lib/extractor.js";
-import { closeBrowser } from "./lib/browser.js";
 import { aiResearch } from "./lib/ai.js";
 import type { KeywordCluster, ResearchDossier } from "./lib/types.js";
 
@@ -95,8 +94,6 @@ async function main() {
       console.error(`  Error researching "${cluster.primaryKeyword}":`, err);
     }
   }
-
-  await closeBrowser();
 
   const researched = clusters.filter((c) => c.status === "researched").length;
   console.log(`\nDone! ${researched}/${clusters.length} clusters researched.`);

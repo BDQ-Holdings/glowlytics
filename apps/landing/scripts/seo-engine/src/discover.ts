@@ -3,7 +3,6 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { getAutocompleteSuggestions } from "./lib/autocomplete.js";
 import { scrapeSERP } from "./lib/serp.js";
-import { closeBrowser } from "./lib/browser.js";
 import { clusterKeywords } from "./lib/clustering.js";
 import type { KeywordCluster } from "./lib/types.js";
 
@@ -69,8 +68,6 @@ async function main() {
 
   fs.writeFileSync(KEYWORDS_PATH, JSON.stringify(merged, null, 2));
   console.log(`\nSaved to ${KEYWORDS_PATH}`);
-
-  await closeBrowser();
   console.log("Done!");
 }
 
