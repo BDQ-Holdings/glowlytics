@@ -90,3 +90,31 @@ test('accepts valid token and attaches userId', async () => {
   expect(res.status).toBe(200);
   expect(res.body.userId).toBe('user_abc');
 });
+
+test('rejects user not in MCP_BETA_USER_IDS when set', async () => {
+  process.env.MCP_BETA_USER_IDS = 'user_allowed';
+  const tok = await sign({ sub: 'user_blocked' });
+  const res = await request(buildApp())
+    .get('/protected')
+    .set('Authorization', `Bearer ${tok}`);
+  expect(res.status).toBe(403);
+  expect(res.body.error).toBe('beta_only');
+});
+
+test('accepts user in MCP_BETA_USER_IDS', async () => {
+  process.env.MCP_BETA_USER_IDS = 'user_allowed';
+  const tok = await sign({ sub: 'user_allowed' });
+  const res = await request(buildApp())
+    .get('/protected')
+    .set('Authorization', `Bearer ${tok}`);
+  expect(res.status).toBe(200);
+});
+
+test('allows any authenticated user when MCP_BETA_USER_IDS is empty (GA)', async () => {
+  delete process.env.MCP_BETA_USER_IDS;
+  const tok = await sign({ sub: 'user_anyone' });
+  const res = await request(buildApp())
+    .get('/protected')
+    .set('Authorization', `Bearer ${tok}`);
+  expect(res.status).toBe(200);
+});

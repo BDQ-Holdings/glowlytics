@@ -23,6 +23,11 @@ async function requireMcpAuth(req, res, next) {
     });
     if (!payload.sub) return res.status(401).json({ error: 'invalid_token' });
 
+    const beta = mcpConfig().betaUserIds;
+    if (beta.size > 0 && !beta.has(payload.sub)) {
+      return res.status(403).json({ error: 'beta_only' });
+    }
+
     req.userId = payload.sub;
     req.tokenClaims = payload;
     return next();
