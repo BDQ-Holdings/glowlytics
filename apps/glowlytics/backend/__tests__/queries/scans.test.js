@@ -11,6 +11,9 @@ const {
   getLatestScan,
   getScanHistory,
   getScanById,
+  computeSignalTrend,
+  compareScans,
+  SIGNAL_NAMES,
 } = require('../../queries/scans');
 
 describe('getLatestScan', () => {
@@ -88,3 +91,86 @@ describe('getScanById', () => {
     expect(r).toEqual(row);
   });
 });
+
+describe('SIGNAL_NAMES', () => {
+  it('contains the five canonical signals from the mobile app', () => {
+    expect(SIGNAL_NAMES).toEqual(
+      expect.arrayContaining(['structure', 'hydration', 'inflammation', 'sunDamage', 'elasticity'])
+    );
+  });
+});
+
+describe('computeSignalTrend', () => {
+  it('returns series, delta, and direction=up when value rises', async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        { date: '2026-03-18', signal_scores: { hydration: 60 } },
+        { date: '2026-04-17', signal_scores: { hydration: 75 } },
+      ],
+    });
+    const t = await computeSignalTrend('user_a', 'hydration', '30d');
+    expect(t.series).toHaveLength(2);
+    expect(t.series[0]).toEqual({ date: '2026-03-18', value: 60 });
+    expect(t.series[1]).toEqual({ date: '2026-04-17', value: 75 });
+    expect(t.delta).toBe(15);
+    expect(t.direction).toBe('up');
+  });
+
+  it('returns direction=down when value drops', async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        { date: '2026-03-18', signal_scores: { inflammation: 60 } },
+        { date: '2026-04-17', signal_scores: { inflammation: 40 } },
+      ],
+    });
+    const t = await computeSignalTrend('user_a', 'inflammation', '30d');
+    expect(t.delta).toBe(-20);
+    expect(t.direction).toBe('down');
+  });
+
+  it('returns direction=flat for movements within ±1', async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        { date: '2026-03-18', signal_scores: { hydration: 70 } },
+        { date: '2026-04-17', signal_scores: { hydration: 70 } },
+      ],
+    });
+    const t = await computeSignalTrend('user_a', 'hydration', '7d');
+    expect(t.direction).toBe('flat');
+  });
+
+  it('rejects unknown signal names', async () => {
+    await expect(computeSignalTrend('user_a', 'wrinkles', '30d')).rejects.toThrow(/signal/i);
+  });
+
+  it('rejects unknown periods', async () => {
+    await expect(computeSignalTrend('user_a', 'hydration', '14d')).rejects.toThrow(/period/i);
+  });
+
+  it('returns empty series and null delta when no scans in window', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    const t = await computeSignalTrend('user_a', 'hydration', '30d');
+    expect(t.series).toEqual([]);
+    expect(t.delta).toBeNull();
+    expect(t.direction).toBe('flat');
+  });
+});
+
+describe('compareScans', () => {
+  it('returns signalDeltas keyed by signal name', async () => {
+    mockQuery
+      .mockResolvedValueOnce({ rows: [{ daily_id: 'a', date: '2026-03-01', signal_scores: { hydration: 50, inflammation: 40 } }] })
+      .mockResolvedValueOnce({ rows: [{ daily_id: 'b', date: '2026-04-17', signal_scores: { hydration: 70, inflammation: 30 } }] });
+    const c = await compareScans('user_a', { a: 'a', b: 'b' });
+    expect(c.signalDeltas.hydration).toBe(20);
+    expect(c.signalDeltas.inflammation).toBe(-10);
+  });
+
+  it('throws when either scan is missing or not owned by user', async () => {
+    mockQuery
+      .mockResolvedValueOnce({ rows: [{ daily_id: 'a', signal_scores: {} }] })
+      .mockResolvedValueOnce({ rows: [] });
+    await expect(compareScans('user_a', { a: 'a', b: 'missing' })).rejects.toThrow(/not found/i);
+  });
+});
+

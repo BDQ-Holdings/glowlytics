@@ -48,4 +48,68 @@ async function getScanById(userId, scanId) {
   return rows[0] || null;
 }
 
-module.exports = { getLatestScan, getScanHistory, getScanById };
+const SIGNAL_NAMES = ['structure', 'hydration', 'inflammation', 'sunDamage', 'elasticity'];
+const PERIOD_DAYS = { '7d': 7, '30d': 30, '90d': 90 };
+const FLAT_BAND = 1;
+
+async function computeSignalTrend(userId, signal, period) {
+  if (!SIGNAL_NAMES.includes(signal)) {
+    throw new Error(`Unknown signal: ${signal}`);
+  }
+  const days = PERIOD_DAYS[period];
+  if (!days) {
+    throw new Error(`Unknown period: ${period}`);
+  }
+
+  const { rows } = await pool.query(
+    `SELECT dr.date, mo.signal_scores FROM model_outputs mo
+     JOIN daily_records dr ON mo.daily_id = dr.daily_id
+     WHERE dr.user_id = $1 AND dr.date >= CURRENT_DATE - $2::integer
+     ORDER BY dr.date ASC`,
+    [userId, days]
+  );
+
+  const series = rows
+    .map((r) => ({ date: r.date, value: r.signal_scores ? r.signal_scores[signal] : undefined }))
+    .filter((p) => typeof p.value === 'number');
+
+  if (series.length === 0) {
+    return { series: [], delta: null, direction: 'flat' };
+  }
+
+  const delta = series[series.length - 1].value - series[0].value;
+  let direction = 'flat';
+  if (delta > FLAT_BAND) direction = 'up';
+  else if (delta < -FLAT_BAND) direction = 'down';
+
+  return { series, delta, direction };
+}
+
+async function compareScans(userId, { a, b }) {
+  const [scanA, scanB] = await Promise.all([
+    getScanById(userId, a),
+    getScanById(userId, b),
+  ]);
+  if (!scanA || !scanB) {
+    throw new Error('One or both scans not found for this user');
+  }
+
+  const sA = scanA.signal_scores || {};
+  const sB = scanB.signal_scores || {};
+  const signalDeltas = {};
+  for (const name of SIGNAL_NAMES) {
+    if (typeof sA[name] === 'number' && typeof sB[name] === 'number') {
+      signalDeltas[name] = sB[name] - sA[name];
+    }
+  }
+  return { a: scanA, b: scanB, signalDeltas };
+}
+
+module.exports = {
+  getLatestScan,
+  getScanHistory,
+  getScanById,
+  computeSignalTrend,
+  compareScans,
+  SIGNAL_NAMES,
+};
