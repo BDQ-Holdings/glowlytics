@@ -615,11 +615,13 @@ app.post('/api/rag/seed', async (req, res) => {
   }
 });
 
-// ==================== MCP DISCOVERY (public, no auth) ====================
-// Mounted before authMiddleware so MCP clients can discover the AS without a token.
+// ==================== MCP DISCOVERY + SERVER (public discovery, JWT-auth'd /mcp) ====================
+// Mounted before authMiddleware so MCP discovery + transport use their own auth (Clerk JWT
+// verified against JWKS), independent of the legacy session cookie middleware.
 const { mcpConfig: _mcpCfg } = require('./mcp/config');
 if (_mcpCfg().enabled) {
   require('./mcp/well-known').mountWellKnown(app);
+  require('./mcp/transport').mountMcp(app);
 }
 
 // ==================== PROTECTED ROUTES (auth required) ====================
