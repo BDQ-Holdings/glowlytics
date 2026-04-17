@@ -1,12 +1,20 @@
 const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
 const { registerScanTools } = require('./tools/scans');
+const { registerReportTools } = require('./tools/reports');
+const { registerRoutineTools } = require('./tools/routine');
+const { registerIngredientTools } = require('./tools/ingredients');
 
 const SERVER_INFO = {
   name: 'glowlytics-mcp',
   version: '0.1.0',
 };
 
-const TOOL_REGISTRARS = [registerScanTools];
+const TOOL_REGISTRARS = [
+  registerScanTools,
+  registerReportTools,
+  registerRoutineTools,
+  registerIngredientTools,
+];
 
 function addToolRegistrar(fn) {
   TOOL_REGISTRARS.push(fn);
