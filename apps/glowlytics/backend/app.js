@@ -10,6 +10,7 @@ const { seedGuidelines, queryGuidelines, queryGuidelinesMulti } = require('./rag
 const imageProcessing = require('./image-processing');
 const signalModels = require('./signal-models');
 const { searchCuratedProducts, lookupCuratedBarcode, enrichIngredients } = require('./curated-products');
+const scanQueries = require('./queries/scans');
 
 const app = express();
 
@@ -1369,14 +1370,8 @@ app.get('/api/model-outputs/:userId', async (req, res) => {
   if (!authorizeUser(req, res, req.params.userId)) return;
   try {
     const days = parseInt(req.query.days) || 30;
-    const result = await pool.query(
-      `SELECT mo.* FROM model_outputs mo
-       JOIN daily_records dr ON mo.daily_id = dr.daily_id
-       WHERE dr.user_id = $1 AND dr.date >= CURRENT_DATE - $2::integer
-       ORDER BY dr.date`,
-      [req.params.userId, days]
-    );
-    res.json(result.rows);
+    const rows = await scanQueries.getScanHistory(req.params.userId, { days, limit: 90 });
+    res.json(rows);
   } catch (err) {
     res.status(500).json({ error: safeErrorMessage(err) });
   }
