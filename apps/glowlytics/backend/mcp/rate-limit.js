@@ -13,6 +13,9 @@ function mcpRateLimit(req, res, next) {
   if (!req.userId) {
     return res.status(401).json({ error: 'missing_user' });
   }
+  if (process.env.MCP_DISABLE_RATE_LIMIT === '1') {
+    return next();
+  }
 
   const now = Date.now();
   let bucket = buckets.get(req.userId);
