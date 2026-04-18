@@ -34,31 +34,32 @@ jobs:
           retention-days: 7
 
   # ─── Backend: Jest + Supertest ─────────────────────────────────
+  # Backend has its own complete lockfile — install + test stand alone
+  # rather than going through the workspace setup, which doesn't hoist
+  # backend-specific deps (openai, pg, supertest) to the root and causes
+  # Jest's resolver to fail.
   backend-check:
     name: Backend · Test
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/glowlytics/backend
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: package-lock.json
-      # Workspaces hoist some deps to root but keep workspace-local ones
-      # (e.g. openai, pg, supertest) under apps/glowlytics/backend/node_modules.
-      # Root npm ci doesn't reliably populate those even with --workspaces, so
-      # do a follow-up install directly in the backend dir to guarantee they
-      # exist where Jest's resolver can find them.
-      - run: npm ci --legacy-peer-deps --workspaces --include-workspace-root
-      - name: Show install layout
-        run: |
-          echo "=== root node_modules (key deps) ==="
-          ls node_modules/ 2>/dev/null | grep -E "^(openai|pg|supertest|jose|zod|@modelcontextprotocol)$" || echo "NONE"
-          echo "=== backend node_modules (key deps) ==="
-          ls apps/glowlytics/backend/node_modules/ 2>/dev/null | grep -E "^(openai|pg|supertest|jose|zod|@modelcontextprotocol)$" || echo "NONE"
-      - name: Test
-        working-directory: apps/glowlytics/backend
-        run: npx jest --ci --coverage
+          cache-dependency-path: apps/glowlytics/backend/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: npx jest --ci --coverage
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: apps/glowlytics/backend/coverage/
+          retention-days: 7
       - name: Upload coverage
         if: always()
         uses: actions/upload-artifact@v4
