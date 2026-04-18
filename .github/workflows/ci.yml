@@ -45,7 +45,13 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
       - run: npm ci --legacy-peer-deps
-      - run: npm test --workspace=glowlytics-backend -- --ci --coverage
+      # Cd into the workspace so Jest's module resolver finds workspace-local
+      # deps (npm hoisted some to root, kept others under
+      # apps/glowlytics/backend/node_modules — running at root would miss
+      # those when Jest looks up from the test file's location).
+      - name: Test
+        working-directory: apps/glowlytics/backend
+        run: npx jest --ci --coverage
       - name: Upload coverage
         if: always()
         uses: actions/upload-artifact@v4
