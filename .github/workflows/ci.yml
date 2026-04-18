@@ -44,11 +44,15 @@ jobs:
           node-version: 20
           cache: npm
           cache-dependency-path: package-lock.json
+      # Workspaces hoist some deps to root but keep workspace-local ones
+      # (e.g. openai, pg, supertest) under apps/glowlytics/backend/node_modules.
+      # Root npm ci doesn't reliably populate those even with --workspaces, so
+      # do a follow-up install directly in the backend dir to guarantee they
+      # exist where Jest's resolver can find them.
       - run: npm ci --legacy-peer-deps --workspaces --include-workspace-root
-      # Cd into the workspace so Jest's module resolver finds workspace-local
-      # deps (npm hoisted some to root, kept others under
-      # apps/glowlytics/backend/node_modules — running at root would miss
-      # those when Jest looks up from the test file's location).
+      - name: Install backend workspace deps
+        working-directory: apps/glowlytics/backend
+        run: npm install --no-audit --no-fund
       - name: Test
         working-directory: apps/glowlytics/backend
         run: npx jest --ci --coverage
