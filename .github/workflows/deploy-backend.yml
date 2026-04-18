@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'RadianceIQ/backend/**'
+      - 'apps/glowlytics/backend/**'
       - '.github/workflows/deploy-backend.yml'
   workflow_dispatch:
 
@@ -21,14 +21,14 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: RadianceIQ/backend
+        working-directory: apps/glowlytics/backend
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: RadianceIQ/backend/package-lock.json
+          cache-dependency-path: apps/glowlytics/backend/package-lock.json
       - run: npm ci
       - run: npm test -- --ci
 
@@ -49,7 +49,7 @@ jobs:
       - name: Deploy
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        working-directory: RadianceIQ/backend
+        working-directory: apps/glowlytics/backend
         run: railway up --detach --service "${{ vars.RAILWAY_SERVICE_NAME || 'glowlytics-api' }}"
 
       - name: Health check (wait up to 120s)

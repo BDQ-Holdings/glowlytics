@@ -25,8 +25,8 @@ jobs:
           node-version: 20
           cache: npm
           cache-dependency-path: |
-            RadianceIQ/package-lock.json
-            RadianceIQ/backend/package-lock.json
+            apps/glowlytics/package-lock.json
+            apps/glowlytics/backend/package-lock.json
       - run: npm ci --legacy-peer-deps
       - run: cd backend && npm ci --ignore-scripts
       - run: npx tsc --noEmit
@@ -36,7 +36,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: frontend-coverage
-          path: RadianceIQ/coverage/
+          path: apps/glowlytics/coverage/
           retention-days: 7
 
   # ─── Backend: Jest + Supertest ─────────────────────────────────
@@ -45,14 +45,14 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: RadianceIQ/backend
+        working-directory: apps/glowlytics/backend
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: RadianceIQ/backend/package-lock.json
+          cache-dependency-path: apps/glowlytics/backend/package-lock.json
       - run: npm ci
       - run: npm test -- --ci --coverage
       - name: Upload coverage
@@ -60,7 +60,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: backend-coverage
-          path: RadianceIQ/backend/coverage/
+          path: apps/glowlytics/backend/coverage/
           retention-days: 7
 
   # ─── Backend ONNX Model Availability ───────────────────────────
@@ -72,7 +72,7 @@ jobs:
     name: Backend · Verify ONNX Model URLs
     runs-on: ubuntu-latest
     env:
-      GH_BASE: https://raw.githubusercontent.com/RadianceIQ/glowlytics/18966b9/RadianceIQ/backend/models
+      GH_BASE: https://raw.githubusercontent.com/apps/glowlytics/glowlytics/18966b9/apps/glowlytics/backend/models
     steps:
       - name: Check skin_signals_v2.onnx
         run: |

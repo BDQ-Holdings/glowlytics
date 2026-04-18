@@ -4,12 +4,12 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - 'RadianceIQ/app/**'
-      - 'RadianceIQ/src/**'
-      - 'RadianceIQ/assets/**'
-      - 'RadianceIQ/app.json'
-      - 'RadianceIQ/eas.json'
-      - 'RadianceIQ/package.json'
+      - 'apps/glowlytics/app/**'
+      - 'apps/glowlytics/src/**'
+      - 'apps/glowlytics/assets/**'
+      - 'apps/glowlytics/app.json'
+      - 'apps/glowlytics/eas.json'
+      - 'apps/glowlytics/package.json'
 
 concurrency:
   group: preview-${{ github.event.pull_request.number }}
@@ -28,7 +28,7 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: RadianceIQ/package-lock.json
+          cache-dependency-path: apps/glowlytics/package-lock.json
       - run: npm ci --legacy-peer-deps
       - run: cd backend && npm ci --ignore-scripts
       - run: npx tsc --noEmit
@@ -44,7 +44,7 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: RadianceIQ/package-lock.json
+          cache-dependency-path: apps/glowlytics/package-lock.json
       - run: npm ci --legacy-peer-deps
         working-directory: RadianceIQ
 
