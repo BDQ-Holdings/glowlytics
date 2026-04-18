@@ -18,26 +18,49 @@ async function requireMcpAuth(req, res, next) {
     const token = header.startsWith('Bearer ') ? header.slice(7) : null;
     if (!token) return res.status(401).json({ error: 'missing_token' });
 
+    const cfg = mcpConfig();
+    const expectedResource = `${cfg.baseUrl}/mcp`;
+
     const { payload } = await jwtVerify(token, getJwks(), {
-      issuer: mcpConfig().clerkIssuer,
+      issuer: cfg.clerkIssuer,
     });
     if (!payload.sub) return res.status(401).json({ error: 'invalid_token' });
 
-    // Require an OAuth-grant marker (client_id). Clerk session JWTs do not
-    // carry client_id, so this rejects mobile session tokens that would
-    // otherwise pass signature/issuer checks. Optionally restrict to a
-    // configured allowlist of MCP OAuth client IDs.
+    // Reject anything that isn't an OAuth grant (Clerk session JWTs lack
+    // client_id, so this filters out plain mobile session tokens).
     if (!payload.client_id || typeof payload.client_id !== 'string') {
       return res.status(401).json({ error: 'not_an_oauth_grant' });
     }
-    const allowed = (process.env.MCP_ALLOWED_CLIENT_IDS || '')
+
+    // Prove the token was minted FOR this MCP resource. Two acceptable signals:
+    //   1) RFC 9068 / RFC 8707: aud (or resource) claim matches the MCP URL.
+    //   2) Operator pre-registered the OAuth client_id in MCP_ALLOWED_CLIENT_IDS.
+    // At least one must hold; otherwise a Clerk OAuth token issued for any
+    // other API on the same tenant would bypass the gate.
+    const audValues = Array.isArray(payload.aud)
+      ? payload.aud
+      : payload.aud
+        ? [payload.aud]
+        : [];
+    const resourceValues = Array.isArray(payload.resource)
+      ? payload.resource
+      : payload.resource
+        ? [payload.resource]
+        : [];
+    const audMatches =
+      audValues.includes(expectedResource) || resourceValues.includes(expectedResource);
+
+    const allowedClients = (process.env.MCP_ALLOWED_CLIENT_IDS || '')
       .split(',').map((s) => s.trim()).filter(Boolean);
-    if (allowed.length > 0 && !allowed.includes(payload.client_id)) {
-      return res.status(403).json({ error: 'client_not_allowed' });
+    const clientAllowlisted =
+      allowedClients.length > 0 && allowedClients.includes(payload.client_id);
+
+    if (!audMatches && !clientAllowlisted) {
+      return res.status(401).json({ error: 'token_not_for_mcp' });
     }
 
     req.mcpClientId = payload.client_id;
-    const beta = mcpConfig().betaUserIds;
+    const beta = cfg.betaUserIds;
     if (beta.size > 0 && !beta.has(payload.sub)) {
       return res.status(403).json({ error: 'beta_only' });
     }

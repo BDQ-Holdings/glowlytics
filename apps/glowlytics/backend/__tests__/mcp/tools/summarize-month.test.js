@@ -1,6 +1,7 @@
 jest.mock('../../../queries/scans', () => ({
   getLatestScan: jest.fn(),
   getScanHistory: jest.fn(),
+  getScansInDateRange: jest.fn(),
   computeSignalTrend: jest.fn(),
   compareScans: jest.fn(),
   getScanById: jest.fn(),
@@ -23,7 +24,7 @@ function call(server, name, args = {}) {
 const parseText = (r) => JSON.parse(r.content[0].text);
 
 beforeEach(() => {
-  scans.getScanHistory.mockReset();
+  scans.getScansInDateRange.mockReset();
   scans.computeSignalTrend.mockReset();
   reports.getReportForScan.mockReset();
   routine.getCurrentRoutine.mockReset();
@@ -31,7 +32,7 @@ beforeEach(() => {
 
 describe('summarize_month', () => {
   it('defaults month to current YYYY-MM (UTC)', async () => {
-    scans.getScanHistory.mockResolvedValueOnce([]);
+    scans.getScansInDateRange.mockResolvedValueOnce([]);
     routine.getCurrentRoutine.mockResolvedValueOnce({ am: [], pm: [], conflicts: [] });
     const server = buildMcpServer({ userId: 'user_a' });
     const body = parseText(await call(server, 'summarize_month', {}));
@@ -41,7 +42,7 @@ describe('summarize_month', () => {
   });
 
   it('returns scanCount=0 and signalTrends=null when no scans in month (does not fabricate)', async () => {
-    scans.getScanHistory.mockResolvedValueOnce([]);
+    scans.getScansInDateRange.mockResolvedValueOnce([]);
     routine.getCurrentRoutine.mockResolvedValueOnce({ am: [], pm: [], conflicts: [] });
     const server = buildMcpServer({ userId: 'user_a' });
     const body = parseText(await call(server, 'summarize_month', { month: '2026-01' }));
@@ -53,12 +54,24 @@ describe('summarize_month', () => {
     expect(reports.getReportForScan).not.toHaveBeenCalled();
   });
 
-  it('aggregates signalAverages and latestOverall from in-month scans only', async () => {
-    scans.getScanHistory.mockResolvedValueOnce([
-      // newest first
+  it('queries the calendar month bounds (not trailing 90 days)', async () => {
+    scans.getScansInDateRange.mockResolvedValueOnce([]);
+    routine.getCurrentRoutine.mockResolvedValueOnce({ am: [], pm: [], conflicts: [] });
+    const server = buildMcpServer({ userId: 'user_a' });
+    await call(server, 'summarize_month', { month: '2026-01' });
+    expect(scans.getScansInDateRange).toHaveBeenCalledWith(
+      'user_a',
+      '2026-01-01',
+      '2026-01-31',
+      expect.any(Object)
+    );
+  });
+
+  it('aggregates signalAverages and latestOverall from the rows the SQL helper returns', async () => {
+    // The SQL helper is responsible for date-filtering; the tool trusts it.
+    scans.getScansInDateRange.mockResolvedValueOnce([
       { daily_id: 'a', date: '2026-04-17', signal_scores: { structure: 80, hydration: 60, inflammation: 70, sunDamage: 50, elasticity: 90 } },
       { daily_id: 'b', date: '2026-04-10', signal_scores: { structure: 60, hydration: 80, inflammation: 30, sunDamage: 70, elasticity: 60 } },
-      { daily_id: 'c', date: '2026-03-30', signal_scores: { hydration: 100 } }, // out of month — must be dropped
     ]);
     reports.getReportForScan.mockResolvedValue(null);
     routine.getCurrentRoutine.mockResolvedValueOnce({ am: [], pm: [], conflicts: [] });
@@ -68,35 +81,29 @@ describe('summarize_month', () => {
     expect(body.scanCount).toBe(2);
     expect(body.signalAverages.hydration).toBe(70); // (60+80)/2
     expect(body.signalAverages.inflammation).toBe(50); // (70+30)/2
-    // latest in-month scan is row a; mean of (80, 60, 70, 50, 90) = 70
-    expect(body.latestOverall).toBe(70);
+    expect(body.latestOverall).toBe(70); // mean of 80/60/70/50/90
   });
 
-  it('signalTrends are anchored to in-month rows (not CURRENT_DATE - 30d)', async () => {
-    scans.getScanHistory.mockResolvedValueOnce([
-      // newest first within March
+  it('signalTrends are derived from the returned rows, not from CURRENT_DATE - 30d', async () => {
+    scans.getScansInDateRange.mockResolvedValueOnce([
       { daily_id: 'a', date: '2026-03-31', signal_scores: { hydration: 80 } },
       { daily_id: 'b', date: '2026-03-01', signal_scores: { hydration: 50 } },
-      // Out of month — would skew if not filtered
-      { daily_id: 'c', date: '2026-04-15', signal_scores: { hydration: 10 } },
     ]);
     reports.getReportForScan.mockResolvedValue(null);
     routine.getCurrentRoutine.mockResolvedValueOnce({ am: [], pm: [], conflicts: [] });
 
     const server = buildMcpServer({ userId: 'user_a' });
     const body = parseText(await call(server, 'summarize_month', { month: '2026-03' }));
-    // delta = latest_in_month (80) - earliest_in_month (50) = +30, "up"
     expect(body.signalTrends.hydration).toEqual({ delta: 30, direction: 'up' });
-    // computeSignalTrend (which uses CURRENT_DATE) must NOT be called by this tool
     expect(scans.computeSignalTrend).not.toHaveBeenCalled();
   });
 
   it('queries up to 3 reports for top recommendations and skips empties', async () => {
-    scans.getScanHistory.mockResolvedValueOnce([
+    scans.getScansInDateRange.mockResolvedValueOnce([
       { daily_id: 'a', date: '2026-04-17', signal_scores: {} },
       { daily_id: 'b', date: '2026-04-10', signal_scores: {} },
       { daily_id: 'c', date: '2026-04-05', signal_scores: {} },
-      { daily_id: 'd', date: '2026-04-01', signal_scores: {} }, // beyond top 3
+      { daily_id: 'd', date: '2026-04-01', signal_scores: {} },
     ]);
     reports.getReportForScan
       .mockResolvedValueOnce({ scanId: 'a', recommendations: [{ title: 'SPF', rationale: 'UV' }], citations: [] })

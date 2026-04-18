@@ -19,6 +19,9 @@ jest.mock('../../queries/scans', () => ({
   getScanHistory: jest.fn().mockResolvedValue([
     { daily_id: 'd1', date: '2026-04-17', acne_score: 80, signal_scores: { hydration: 70 } },
   ]),
+  getScansInDateRange: jest.fn().mockResolvedValue([
+    { daily_id: 'd1', date: '2026-04-17', signal_scores: { hydration: 70 } },
+  ]),
   getScanById: jest.fn().mockResolvedValue({ daily_id: 'd1', signal_scores: {} }),
   computeSignalTrend: jest.fn().mockResolvedValue({ series: [], delta: 5, direction: 'up' }),
   compareScans: jest.fn().mockResolvedValue({
@@ -80,7 +83,10 @@ beforeAll(async () => {
 });
 
 async function tokenFor(sub) {
-  return new SignJWT({ client_id: 'oauth_test_client' })
+  return new SignJWT({
+    client_id: 'oauth_test_client',
+    aud: `${process.env.MCP_BASE_URL}/mcp`,
+  })
     .setProtectedHeader({ alg: 'RS256', kid: 'test-key' })
     .setIssuer('https://clerk.glowlytics.ai')
     .setSubject(sub)

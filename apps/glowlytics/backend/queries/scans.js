@@ -37,6 +37,25 @@ async function getScanHistory(userId, { days = 30, limit = 30 } = {}) {
   return rows;
 }
 
+// Inclusive on both ends. startDate/endDate are 'YYYY-MM-DD' strings.
+// Used by tools that need calendar-anchored windows (e.g. summarize_month for
+// arbitrary past months) where the trailing-N-days `days` cap of getScanHistory
+// would silently truncate older months.
+async function getScansInDateRange(userId, startDate, endDate, { limit = 200 } = {}) {
+  const l = clamp(parseInt(limit, 10) || 200, 1, 1000);
+  const { rows } = await pool.query(
+    `SELECT mo.*, dr.date FROM model_outputs mo
+     JOIN daily_records dr ON mo.daily_id = dr.daily_id
+     WHERE dr.user_id = $1
+       AND dr.date >= $2::date
+       AND dr.date <= $3::date
+     ORDER BY dr.date DESC
+     LIMIT $4`,
+    [userId, startDate, endDate, l]
+  );
+  return rows;
+}
+
 async function getScanById(userId, scanId) {
   const { rows } = await pool.query(
     `SELECT mo.*, dr.date FROM model_outputs mo
@@ -108,6 +127,7 @@ async function compareScans(userId, { a, b }) {
 module.exports = {
   getLatestScan,
   getScanHistory,
+  getScansInDateRange,
   getScanById,
   computeSignalTrend,
   compareScans,

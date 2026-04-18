@@ -13,6 +13,7 @@
 jest.mock('../../queries/scans', () => ({
   getLatestScan: jest.fn(),
   getScanHistory: jest.fn(),
+  getScansInDateRange: jest.fn(),
   computeSignalTrend: jest.fn(),
   compareScans: jest.fn(),
   getScanById: jest.fn(),
@@ -48,6 +49,7 @@ beforeEach(() => {
   }
   scans.getLatestScan.mockResolvedValue(null);
   scans.getScanHistory.mockResolvedValue([]);
+  scans.getScansInDateRange.mockResolvedValue([]);
   scans.computeSignalTrend.mockResolvedValue({ series: [], delta: null, direction: 'flat' });
   scans.compareScans.mockResolvedValue({ a: { daily_id: B_SCAN_ID, signal_scores: {} }, b: { daily_id: B_ANOTHER, signal_scores: {} }, signalDeltas: {} });
   reports.getReportForScan.mockResolvedValue(null);
@@ -108,15 +110,13 @@ describe('user_a session can never invoke a query helper as user_b', () => {
   });
 
   test('summarize_month', async () => {
-    scans.getScanHistory.mockResolvedValueOnce([
+    scans.getScansInDateRange.mockResolvedValueOnce([
       { daily_id: 'a', date: '2026-04-17', signal_scores: { hydration: 70 } },
     ]);
-    scans.computeSignalTrend.mockResolvedValue({ series: [], delta: 5, direction: 'up' });
     reports.getReportForScan.mockResolvedValue(null);
     const server = buildMcpServer({ userId: USER_A });
     await call(server, 'summarize_month', { month: '2026-04' });
-    expectFirstArgIsUserA(scans.getScanHistory);
-    expectFirstArgIsUserA(scans.computeSignalTrend);
+    expectFirstArgIsUserA(scans.getScansInDateRange);
     expectFirstArgIsUserA(reports.getReportForScan);
     expectFirstArgIsUserA(routine.getCurrentRoutine);
   });

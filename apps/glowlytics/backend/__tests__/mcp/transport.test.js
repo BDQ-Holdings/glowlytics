@@ -39,7 +39,10 @@ function buildApp() {
 }
 
 async function sign(sub = 'user_abc') {
-  return new SignJWT({ client_id: 'oauth_test_client' })
+  return new SignJWT({
+    client_id: 'oauth_test_client',
+    aud: 'https://api.glowlytics.ai/mcp',
+  })
     .setProtectedHeader({ alg: 'RS256', kid: 'test-key' })
     .setIssuer('https://clerk.glowlytics.ai')
     .setSubject(sub)

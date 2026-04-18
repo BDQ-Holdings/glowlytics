@@ -1,4 +1,4 @@
-const { getScanHistory, SIGNAL_NAMES } = require('../../queries/scans');
+const { getScansInDateRange, SIGNAL_NAMES } = require('../../queries/scans');
 const { getReportForScan } = require('../../queries/reports');
 const { getCurrentRoutine } = require('../../queries/routine');
 const { asJsonText, computeOverallFromSignals } = require('../tool-helpers');
@@ -17,9 +17,13 @@ function daysInMonth(yyyymm) {
   return new Date(Date.UTC(y, m, 0)).getUTCDate();
 }
 
-function rowMonth(row) {
-  const d = row.date instanceof Date ? row.date.toISOString().slice(0, 10) : String(row.date).slice(0, 10);
-  return d.slice(0, 7);
+function monthBounds(yyyymm) {
+  const days = daysInMonth(yyyymm);
+  return {
+    start: `${yyyymm}-01`,
+    end: `${yyyymm}-${String(days).padStart(2, '0')}`,
+    days,
+  };
 }
 
 function averageSignals(rows) {
@@ -79,9 +83,11 @@ function registerSummaryTool(server, { userId }) {
     },
     async ({ month } = {}) => {
       const target = month || currentMonth();
-      const days = daysInMonth(target);
-      const all = await getScanHistory(userId, { days: 90, limit: 90 });
-      const inMonth = all.filter((r) => rowMonth(r) === target);
+      const { start, end, days } = monthBounds(target);
+      // Calendar-anchored query so months outside the trailing 90-day window
+      // (e.g. summarize_month({ month: '2026-01' }) requested in April) still
+      // return complete month data instead of being silently truncated.
+      const inMonth = await getScansInDateRange(userId, start, end, { limit: 200 });
 
       const scanCount = inMonth.length;
       const latestOverall = scanCount > 0

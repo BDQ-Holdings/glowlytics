@@ -10,6 +10,7 @@ beforeEach(() => {
 const {
   getLatestScan,
   getScanHistory,
+  getScansInDateRange,
   getScanById,
   computeSignalTrend,
   compareScans,
@@ -89,6 +90,31 @@ describe('getScanById', () => {
     mockQuery.mockResolvedValueOnce({ rows: [row] });
     const r = await getScanById('user_a', 'd1');
     expect(r).toEqual(row);
+  });
+});
+
+describe('getScansInDateRange', () => {
+  it('queries inclusive of start and end date for the user', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    await getScansInDateRange('user_a', '2026-01-01', '2026-01-31');
+    const [sql, params] = mockQuery.mock.calls[0];
+    expect(sql).toMatch(/dr\.date >= \$2/);
+    expect(sql).toMatch(/dr\.date <= \$3/);
+    expect(params).toEqual(['user_a', '2026-01-01', '2026-01-31', 200]);
+  });
+
+  it('clamps limit to 1000', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    await getScansInDateRange('user_a', '2026-01-01', '2026-01-31', { limit: 9999 });
+    const [, params] = mockQuery.mock.calls[0];
+    expect(params[3]).toBe(1000);
+  });
+
+  it('returns rows from the pool', async () => {
+    const rows = [{ daily_id: 'd1', date: '2026-01-15' }];
+    mockQuery.mockResolvedValueOnce({ rows });
+    const r = await getScansInDateRange('user_a', '2026-01-01', '2026-01-31');
+    expect(r).toEqual(rows);
   });
 });
 
