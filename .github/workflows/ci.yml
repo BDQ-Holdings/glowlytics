@@ -60,13 +60,6 @@ jobs:
           name: backend-coverage
           path: apps/glowlytics/backend/coverage/
           retention-days: 7
-      - name: Upload coverage
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: backend-coverage
-          path: apps/glowlytics/backend/coverage/
-          retention-days: 7
 
   # NOTE: The "Backend · Verify ONNX Model URLs" job was removed. It pinned
   # a hardcoded SHA + RadianceIQ/backend/models path that became stale after
