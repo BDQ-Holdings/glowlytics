@@ -1440,6 +1440,35 @@ app.post('/api/rag/query', async (req, res) => {
   }
 });
 
+// ==================== MCP CLIENT MANAGEMENT (Clerk-session-authed) ====================
+const _clerkClients = require('./mcp/clerk-clients');
+
+app.get('/api/mcp/clients', async (req, res) => {
+  try {
+    const userId = req.auth?.userId;
+    if (!userId) return res.status(401).json({ error: 'Authentication required' });
+    const grants = await _clerkClients.listGrantsForUser(userId);
+    res.json(grants);
+  } catch (err) {
+    log.error('[mcp/clients GET]', err.message);
+    res.status(500).json({ error: 'failed_to_list_clients' });
+  }
+});
+
+app.delete('/api/mcp/clients/:clientId', async (req, res) => {
+  try {
+    const userId = req.auth?.userId;
+    if (!userId) return res.status(401).json({ error: 'Authentication required' });
+    const { clientId } = req.params;
+    if (!clientId) return res.status(400).json({ error: 'clientId required' });
+    const out = await _clerkClients.revokeGrant(userId, clientId);
+    res.json(out);
+  } catch (err) {
+    log.error('[mcp/clients DELETE]', err.message);
+    res.status(500).json({ error: 'failed_to_revoke_client' });
+  }
+});
+
 // Reset rate limiters — exposed for test cleanup
 app._resetRateLimiters = () => {
   detectRateMap.clear();
