@@ -1,12 +1,10 @@
-const {
-  getScanHistory,
-  computeSignalTrend,
-  SIGNAL_NAMES,
-} = require('../../queries/scans');
+const { getScanHistory, SIGNAL_NAMES } = require('../../queries/scans');
 const { getReportForScan } = require('../../queries/reports');
 const { getCurrentRoutine } = require('../../queries/routine');
-const { asJsonText } = require('../tool-helpers');
+const { asJsonText, computeOverallFromSignals } = require('../tool-helpers');
 const schemas = require('../schemas');
+
+const FLAT_BAND = 1;
 
 function currentMonth(now = new Date()) {
   const y = now.getUTCFullYear();
@@ -43,6 +41,24 @@ function averageSignals(rows) {
   return out;
 }
 
+// Trend over the requested calendar month, derived from the in-month rows the
+// caller already fetched. Anchored to the month, not CURRENT_DATE — so a
+// summary for a past month does not mix in the trailing-30d window.
+// Rows arrive newest-first; first = most recent in-month, last = earliest.
+function trendForSignal(rowsNewestFirst, signal) {
+  const values = rowsNewestFirst
+    .map((r) => (r.signal_scores ? r.signal_scores[signal] : undefined))
+    .filter((v) => Number.isFinite(v));
+  if (values.length === 0) return null;
+  const latest = values[0];
+  const earliest = values[values.length - 1];
+  const delta = latest - earliest;
+  let direction = 'flat';
+  if (delta > FLAT_BAND) direction = 'up';
+  else if (delta < -FLAT_BAND) direction = 'down';
+  return { delta, direction };
+}
+
 function topRecForReport(report) {
   if (!report || !Array.isArray(report.recommendations) || report.recommendations.length === 0) return null;
   const r = report.recommendations[0];
@@ -69,20 +85,18 @@ function registerSummaryTool(server, { userId }) {
 
       const scanCount = inMonth.length;
       const latestOverall = scanCount > 0
-        ? (inMonth[0].acne_score ?? inMonth[0].skin_age_score ?? null)
+        ? computeOverallFromSignals(inMonth[0].signal_scores)
         : null;
       const signalAverages = scanCount > 0 ? averageSignals(inMonth) : {};
 
+      // Trends are computed from the same in-month rows so a summary of e.g.
+      // March 2026, requested in April, does not mix in April data.
       let signalTrends = null;
       if (scanCount > 0) {
         signalTrends = {};
         for (const name of SIGNAL_NAMES) {
-          try {
-            const t = await computeSignalTrend(userId, name, '30d');
-            signalTrends[name] = { delta: t.delta, direction: t.direction };
-          } catch {
-            // Skip signals that have no data; never fabricate.
-          }
+          const t = trendForSignal(inMonth, name);
+          if (t) signalTrends[name] = t;
         }
       }
 

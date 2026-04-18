@@ -28,15 +28,31 @@ beforeEach(() => {
 });
 
 describe('get_latest_scan', () => {
-  it('calls getLatestScan with the bound userId', async () => {
+  it('calls getLatestScan with the bound userId and returns mean-of-signals as overallScore', async () => {
     queries.getLatestScan.mockResolvedValueOnce({
-      daily_id: 'd1', date: '2026-04-17', acne_score: 78, signal_scores: { hydration: 70 },
+      daily_id: 'd1',
+      date: '2026-04-17',
+      acne_score: 30, // intentionally different from the signal-mean to prove we don't use it
+      signal_scores: {
+        structure: 80, hydration: 60, inflammation: 70, sunDamage: 50, elasticity: 90,
+      },
     });
     const server = buildMcpServer({ userId: 'user_a' });
     const res = await call(server, 'get_latest_scan');
     expect(queries.getLatestScan).toHaveBeenCalledWith('user_a');
     const body = parseText(res);
-    expect(body).toMatchObject({ scanId: 'd1', date: '2026-04-17', overallScore: 78 });
+    expect(body.scanId).toBe('d1');
+    // mean(80, 60, 70, 50, 90) = 70
+    expect(body.overallScore).toBe(70);
+  });
+
+  it('overallScore is null when no signals are present', async () => {
+    queries.getLatestScan.mockResolvedValueOnce({
+      daily_id: 'd1', date: '2026-04-17', acne_score: 80, signal_scores: {},
+    });
+    const server = buildMcpServer({ userId: 'user_a' });
+    const body = parseText(await call(server, 'get_latest_scan'));
+    expect(body.overallScore).toBeNull();
   });
 
   it('returns a JSON-encoded null when there are no scans', async () => {

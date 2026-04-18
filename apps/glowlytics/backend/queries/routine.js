@@ -8,6 +8,7 @@ const pool = new Pool({
 function scheduleIncludes(usage, slot) {
   if (!usage) return true;
   const u = String(usage).toUpperCase();
+  if (u === 'BOTH') return true;
   return u.includes(slot);
 }
 

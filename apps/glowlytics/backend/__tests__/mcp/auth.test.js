@@ -35,8 +35,13 @@ async function sign({
   sub = 'user_abc',
   iss = 'https://clerk.glowlytics.ai',
   exp = Math.floor(Date.now() / 1000) + 60,
+  clientId = 'oauth_client_default',
+  extraClaims = {},
 } = {}) {
-  return new SignJWT({})
+  const claims = clientId === null
+    ? { ...extraClaims }
+    : { client_id: clientId, ...extraClaims };
+  return new SignJWT(claims)
     .setProtectedHeader({ alg: 'RS256', kid: 'test-key' })
     .setIssuer(iss)
     .setSubject(sub)
@@ -52,6 +57,7 @@ beforeEach(() => {
   process.env.CLERK_ISSUER_URL = 'https://clerk.glowlytics.ai';
   process.env.CLERK_JWKS_URL = jwksUrl;
   delete process.env.MCP_BETA_USER_IDS;
+  delete process.env.MCP_ALLOWED_CLIENT_IDS;
 });
 
 test('rejects missing Authorization header', async () => {
@@ -104,6 +110,34 @@ test('rejects user not in MCP_BETA_USER_IDS when set', async () => {
 test('accepts user in MCP_BETA_USER_IDS', async () => {
   process.env.MCP_BETA_USER_IDS = 'user_allowed';
   const tok = await sign({ sub: 'user_allowed' });
+  const res = await request(buildApp())
+    .get('/protected')
+    .set('Authorization', `Bearer ${tok}`);
+  expect(res.status).toBe(200);
+});
+
+test('rejects token without client_id (Clerk session token)', async () => {
+  const tok = await sign({ clientId: null }); // mimics a session JWT
+  const res = await request(buildApp())
+    .get('/protected')
+    .set('Authorization', `Bearer ${tok}`);
+  expect(res.status).toBe(401);
+  expect(res.body.error).toBe('not_an_oauth_grant');
+});
+
+test('rejects OAuth grant whose client_id is not in MCP_ALLOWED_CLIENT_IDS', async () => {
+  process.env.MCP_ALLOWED_CLIENT_IDS = 'oauth_known_a,oauth_known_b';
+  const tok = await sign({ clientId: 'oauth_unknown' });
+  const res = await request(buildApp())
+    .get('/protected')
+    .set('Authorization', `Bearer ${tok}`);
+  expect(res.status).toBe(403);
+  expect(res.body.error).toBe('client_not_allowed');
+});
+
+test('accepts OAuth grant whose client_id is in MCP_ALLOWED_CLIENT_IDS', async () => {
+  process.env.MCP_ALLOWED_CLIENT_IDS = 'oauth_known_a,oauth_known_b';
+  const tok = await sign({ sub: 'user_abc', clientId: 'oauth_known_a' });
   const res = await request(buildApp())
     .get('/protected')
     .set('Authorization', `Bearer ${tok}`);

@@ -46,4 +46,16 @@ describe('getCurrentRoutine', () => {
     expect(r.am).toHaveLength(1);
     expect(r.pm).toHaveLength(1);
   });
+
+  it("places products with usage_schedule='both' in both am and pm", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        { user_product_id: 1, product_name: 'Cleanser', usage_schedule: 'both' },
+        { user_product_id: 2, product_name: 'Moisturizer', usage_schedule: 'BOTH' },
+      ],
+    });
+    const r = await getCurrentRoutine('user_a');
+    expect(r.am.map((p) => p.product_name).sort()).toEqual(['Cleanser', 'Moisturizer']);
+    expect(r.pm.map((p) => p.product_name).sort()).toEqual(['Cleanser', 'Moisturizer']);
+  });
 });

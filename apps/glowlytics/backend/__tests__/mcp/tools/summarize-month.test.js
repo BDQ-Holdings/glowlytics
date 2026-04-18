@@ -53,13 +53,13 @@ describe('summarize_month', () => {
     expect(reports.getReportForScan).not.toHaveBeenCalled();
   });
 
-  it('aggregates signalAverages from in-month scans only', async () => {
+  it('aggregates signalAverages and latestOverall from in-month scans only', async () => {
     scans.getScanHistory.mockResolvedValueOnce([
-      { daily_id: 'a', date: '2026-04-17', acne_score: 80, signal_scores: { hydration: 60, inflammation: 40 } },
-      { daily_id: 'b', date: '2026-04-10', acne_score: 70, signal_scores: { hydration: 80, inflammation: 30 } },
-      { daily_id: 'c', date: '2026-03-30', acne_score: 50, signal_scores: { hydration: 100 } }, // out of month
+      // newest first
+      { daily_id: 'a', date: '2026-04-17', signal_scores: { structure: 80, hydration: 60, inflammation: 70, sunDamage: 50, elasticity: 90 } },
+      { daily_id: 'b', date: '2026-04-10', signal_scores: { structure: 60, hydration: 80, inflammation: 30, sunDamage: 70, elasticity: 60 } },
+      { daily_id: 'c', date: '2026-03-30', signal_scores: { hydration: 100 } }, // out of month — must be dropped
     ]);
-    scans.computeSignalTrend.mockResolvedValue({ delta: 5, direction: 'up' });
     reports.getReportForScan.mockResolvedValue(null);
     routine.getCurrentRoutine.mockResolvedValueOnce({ am: [], pm: [], conflicts: [] });
 
@@ -67,8 +67,28 @@ describe('summarize_month', () => {
     const body = parseText(await call(server, 'summarize_month', { month: '2026-04' }));
     expect(body.scanCount).toBe(2);
     expect(body.signalAverages.hydration).toBe(70); // (60+80)/2
-    expect(body.signalAverages.inflammation).toBe(35); // (40+30)/2
-    expect(body.latestOverall).toBe(80);
+    expect(body.signalAverages.inflammation).toBe(50); // (70+30)/2
+    // latest in-month scan is row a; mean of (80, 60, 70, 50, 90) = 70
+    expect(body.latestOverall).toBe(70);
+  });
+
+  it('signalTrends are anchored to in-month rows (not CURRENT_DATE - 30d)', async () => {
+    scans.getScanHistory.mockResolvedValueOnce([
+      // newest first within March
+      { daily_id: 'a', date: '2026-03-31', signal_scores: { hydration: 80 } },
+      { daily_id: 'b', date: '2026-03-01', signal_scores: { hydration: 50 } },
+      // Out of month — would skew if not filtered
+      { daily_id: 'c', date: '2026-04-15', signal_scores: { hydration: 10 } },
+    ]);
+    reports.getReportForScan.mockResolvedValue(null);
+    routine.getCurrentRoutine.mockResolvedValueOnce({ am: [], pm: [], conflicts: [] });
+
+    const server = buildMcpServer({ userId: 'user_a' });
+    const body = parseText(await call(server, 'summarize_month', { month: '2026-03' }));
+    // delta = latest_in_month (80) - earliest_in_month (50) = +30, "up"
+    expect(body.signalTrends.hydration).toEqual({ delta: 30, direction: 'up' });
+    // computeSignalTrend (which uses CURRENT_DATE) must NOT be called by this tool
+    expect(scans.computeSignalTrend).not.toHaveBeenCalled();
   });
 
   it('queries up to 3 reports for top recommendations and skips empties', async () => {
@@ -78,7 +98,6 @@ describe('summarize_month', () => {
       { daily_id: 'c', date: '2026-04-05', signal_scores: {} },
       { daily_id: 'd', date: '2026-04-01', signal_scores: {} }, // beyond top 3
     ]);
-    scans.computeSignalTrend.mockResolvedValue({ delta: 0, direction: 'flat' });
     reports.getReportForScan
       .mockResolvedValueOnce({ scanId: 'a', recommendations: [{ title: 'SPF', rationale: 'UV' }], citations: [] })
       .mockResolvedValueOnce({ scanId: 'b', recommendations: [], citations: [] })
