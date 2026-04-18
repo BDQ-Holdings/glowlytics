@@ -22,7 +22,7 @@ jobs:
           node-version: 20
           cache: npm
           cache-dependency-path: package-lock.json
-      - run: npm ci --legacy-peer-deps
+      - run: npm ci --legacy-peer-deps --workspaces --include-workspace-root
       - run: npx tsc --noEmit -p apps/glowlytics
       - run: npm test --workspace=glowlytics -- --ci --coverage
       - name: Upload coverage
@@ -44,7 +44,7 @@ jobs:
           node-version: 20
           cache: npm
           cache-dependency-path: package-lock.json
-      - run: npm ci --legacy-peer-deps
+      - run: npm ci --legacy-peer-deps --workspaces --include-workspace-root
       # Cd into the workspace so Jest's module resolver finds workspace-local
       # deps (npm hoisted some to root, kept others under
       # apps/glowlytics/backend/node_modules — running at root would miss
