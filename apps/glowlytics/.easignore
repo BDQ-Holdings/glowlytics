@@ -1,0 +1,18 @@
+# Backend (not needed for iOS build)
+backend/
+ml/
+
+# Build artifacts
+*.ipa
+build-*.ipa
+/tmp/
+
+# Dev files
+.claude/
+*.md
+
+# Backend ONNX models (bundled model is in assets/models/, keep that)
+backend/models/
+
+# OS files
+.DS_Store

@@ -1,0 +1,284 @@
+import { env } from '../config/env';
+import { getAuthHeaders } from './api';
+import { safeClamp } from '../utils/safeClamp';
+import type {
+  Confidence,
+  DetectedCondition,
+  DetectedLesion,
+  GeneratedInsights,
+  RagRecommendation,
+  SignalConfidence,
+  SignalFeatures,
+  SignalScores,
+  ZoneSeverity,
+} from '../types';
+
+/**
+ * Validate signal scores from the backend — reject NaN/undefined/non-finite.
+ * Returns undefined if ALL values are invalid (client falls through to
+ * deriveCompositeSignals). Replaces individual invalid values with 50 (neutral).
+ */
+function sanitizeSignalScores(scores: any): SignalScores | undefined {
+  if (!scores || typeof scores !== 'object') return undefined;
+  const keys: (keyof SignalScores)[] = ['structure', 'hydration', 'inflammation', 'sunDamage', 'elasticity'];
+  let validCount = 0;
+  const result = {} as SignalScores;
+  for (const k of keys) {
+    const v = scores[k];
+    if (Number.isFinite(v)) {
+      result[k] = Math.max(0, Math.min(100, Math.round(v)));
+      validCount++;
+    } else {
+      result[k] = 50; // neutral fallback
+    }
+  }
+  return validCount > 0 ? result : undefined;
+}
+
+export interface VisionAnalysisResult {
+  acne_score: number;
+  sun_damage_score: number;
+  skin_age_score: number;
+  confidence: Confidence;
+  primary_driver: string;
+  recommended_action: string;
+  conditions?: DetectedCondition[];
+  rag_recommendations?: RagRecommendation[];
+  personalized_feedback?: string;
+  signal_scores?: SignalScores;
+  signal_features?: SignalFeatures;
+  lesions?: DetectedLesion[];
+  signal_confidence?: SignalConfidence;
+  zone_severity?: ZoneSeverity;
+}
+
+export async function imageToBase64(uri: string): Promise<string> {
+  // Use the legacy API — SDK 54 deprecated the top-level readAsStringAsync
+  const FileSystem = await import('expo-file-system/legacy');
+  const base64 = await FileSystem.readAsStringAsync(uri, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+  return base64;
+}
+
+export async function analyzeWithVisionAPI(
+  photoUri: string,
+  context: {
+    primary_goal: string;
+    scan_region: string;
+    sunscreen_used: boolean;
+    sleep_quality?: string;
+    stress_level?: string;
+    scan_count: number;
+  },
+  preEncodedBase64?: string,
+): Promise<VisionAnalysisResult> {
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+  const shouldRetryStatus = (status: number) => status >= 500 || status === 429;
+  const shouldRetryError = (message: string) =>
+    /timeout|network|fetch|aborted|failed/i.test(message);
+
+  const base64Image = preEncodedBase64 || await imageToBase64(photoUri);
+
+  let response: Response | null = null;
+  let lastError: Error | null = null;
+  const maxAttempts = 2;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+
+    try {
+      const authHeaders = await getAuthHeaders();
+      response = await fetch(`${env.API_BASE_URL}/api/vision/analyze`, {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({
+          image_base64: base64Image,
+          context: {
+            primary_goal: context.primary_goal,
+            scan_region: context.scan_region,
+            sunscreen_used: context.sunscreen_used,
+            sleep_quality: context.sleep_quality,
+            stress_level: context.stress_level,
+            scan_count: context.scan_count,
+          },
+        }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        const message = String(errorData.error || 'Request failed');
+        const retryable = shouldRetryStatus(response.status);
+        if (retryable && attempt < maxAttempts) {
+          console.warn(`[Glowlytics] Vision API retrying after ${response.status}: ${message}`);
+          await sleep(500 * attempt);
+          continue;
+        }
+        throw new Error(`Vision API error (${response.status}): ${message}`);
+      }
+
+      // Success
+      lastError = null;
+      break;
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err ?? 'Unknown error');
+      const retryable = shouldRetryError(message);
+      if (retryable && attempt < maxAttempts) {
+        console.warn(`[Glowlytics] Vision API transient failure (attempt ${attempt}), retrying: ${message}`);
+        await sleep(500 * attempt);
+        continue;
+      }
+      lastError = err instanceof Error ? err : new Error(message);
+      break;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  if (lastError) {
+    throw lastError;
+  }
+  if (!response) {
+    throw new Error('Vision API request failed before receiving a response.');
+  }
+
+  const result = await response.json();
+
+  // Validate the response shape
+  const clamp = safeClamp;
+  return {
+    acne_score: clamp(result.acne_score),
+    sun_damage_score: clamp(result.sun_damage_score),
+    skin_age_score: clamp(result.skin_age_score),
+    confidence: (['low', 'med', 'high'].includes(result.confidence) ? result.confidence : 'low') as Confidence,
+    primary_driver: result.primary_driver || 'general tracking',
+    recommended_action: result.recommended_action || 'Continue daily scans for more data.',
+    conditions: result.conditions,
+    rag_recommendations: result.rag_recommendations,
+    personalized_feedback: result.personalized_feedback,
+    signal_scores: sanitizeSignalScores(result.signal_scores),
+    signal_features: result.signal_features,
+    lesions: result.lesions,
+    signal_confidence: result.signal_confidence,
+    zone_severity: result.zone_severity,
+  };
+}
+
+/**
+ * Stage 2: Stream personalized insights from the backend via SSE.
+ * Calls /api/vision/generate-insights with merged Stage 1 data.
+ *
+ * Uses XMLHttpRequest with onprogress for React Native compatibility
+ * (fetch ReadableStream is not supported on Hermes/React Native).
+ *
+ * @param params Stage 1 results + user context for insight generation
+ * @param onChunk Called with each streamed text chunk for live display
+ * @returns Parsed GeneratedInsights JSON once stream completes
+ */
+export async function streamInsights(
+  params: {
+    signal_scores: SignalScores;
+    signal_features?: SignalFeatures;
+    signal_confidence?: SignalConfidence;
+    lesions?: DetectedLesion[];
+    conditions?: DetectedCondition[];
+    zone_severity?: ZoneSeverity;
+    user_profile?: Record<string, unknown>;
+    user_goal?: string;
+    products?: Array<{ product_name: string; usage_schedule: string }>;
+    scan_count?: number;
+    rag_context?: RagRecommendation[];
+  },
+  onChunk: (text: string) => void,
+): Promise<GeneratedInsights | null> {
+  const authHeaders = await getAuthHeaders();
+
+  return new Promise((resolve) => {
+    let fullText = '';
+    let processedLength = 0;
+    const timeoutId = setTimeout(() => {
+      xhr.abort();
+      resolve(parseInsightsFromText(fullText));
+    }, 15_000); // 15s max for streaming (not 30 — avoid blocking UX)
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${env.API_BASE_URL}/api/vision/generate-insights`);
+
+    // Set headers from auth
+    for (const [key, value] of Object.entries(authHeaders)) {
+      if (typeof value === 'string') {
+        xhr.setRequestHeader(key, value);
+      }
+    }
+
+    xhr.onprogress = () => {
+      // Process new data since last onprogress
+      const newData = xhr.responseText.slice(processedLength);
+      processedLength = xhr.responseText.length;
+
+      const lines = newData.split('\n');
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6).trim();
+        if (data === '[DONE]') continue;
+
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.text) {
+            fullText += parsed.text;
+            onChunk(parsed.text);
+          }
+        } catch {
+          // Skip malformed SSE chunks
+        }
+      }
+    };
+
+    xhr.onload = () => {
+      clearTimeout(timeoutId);
+      resolve(parseInsightsFromText(fullText));
+    };
+
+    xhr.onerror = () => {
+      clearTimeout(timeoutId);
+      console.warn('[Glowlytics] Insight stream XHR error');
+      resolve(null);
+    };
+
+    xhr.onabort = () => {
+      clearTimeout(timeoutId);
+      resolve(parseInsightsFromText(fullText));
+    };
+
+    xhr.send(JSON.stringify(params));
+  });
+}
+
+/** Extract and parse the GeneratedInsights JSON from accumulated GPT text. */
+function parseInsightsFromText(text: string): GeneratedInsights | null {
+  if (!text) return null;
+
+  try {
+    // Find balanced JSON object — match first { to its closing }
+    let depth = 0;
+    let start = -1;
+    for (let i = 0; i < text.length; i++) {
+      if (text[i] === '{') {
+        if (depth === 0) start = i;
+        depth++;
+      } else if (text[i] === '}') {
+        depth--;
+        if (depth === 0 && start >= 0) {
+          const jsonStr = text.slice(start, i + 1);
+          return JSON.parse(jsonStr) as GeneratedInsights;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[Glowlytics] Failed to parse insights JSON:', err);
+  }
+
+  return null;
+}

@@ -1,0 +1,25 @@
+{
+  "name": "glowlytics",
+  "private": true,
+  "workspaces": [
+    "apps/glowlytics"
+  ],
+  "scripts": {
+    "mobile:start": "npm --prefix apps/glowlytics run start",
+    "mobile:typecheck": "npm --prefix apps/glowlytics run typecheck",
+    "mobile:test": "npm --prefix apps/glowlytics run test",
+    "backend:dev": "npm --prefix apps/glowlytics/backend run dev",
+    "backend:test": "npm --prefix apps/glowlytics/backend run test",
+    "landing:dev": "npm --prefix apps/landing run dev",
+    "landing:build": "npm --prefix apps/landing run build"
+  },
+  "dependencies": {
+    "docx": "^9.6.1"
+  },
+  "overrides": {
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "react-test-renderer": "19.1.0"
+  }
+}
+
