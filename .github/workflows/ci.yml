@@ -50,9 +50,12 @@ jobs:
       # do a follow-up install directly in the backend dir to guarantee they
       # exist where Jest's resolver can find them.
       - run: npm ci --legacy-peer-deps --workspaces --include-workspace-root
-      - name: Install backend workspace deps
-        working-directory: apps/glowlytics/backend
-        run: npm install --no-audit --no-fund
+      - name: Show install layout
+        run: |
+          echo "=== root node_modules (key deps) ==="
+          ls node_modules/ 2>/dev/null | grep -E "^(openai|pg|supertest|jose|zod|@modelcontextprotocol)$" || echo "NONE"
+          echo "=== backend node_modules (key deps) ==="
+          ls apps/glowlytics/backend/node_modules/ 2>/dev/null | grep -E "^(openai|pg|supertest|jose|zod|@modelcontextprotocol)$" || echo "NONE"
       - name: Test
         working-directory: apps/glowlytics/backend
         run: npx jest --ci --coverage
