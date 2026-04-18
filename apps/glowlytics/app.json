@@ -1,0 +1,113 @@
+{
+  "expo": {
+    "name": "Glowlytics",
+    "slug": "Glowlytics",
+    "version": "1.1.3",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "scheme": "glowlytics",
+    "backgroundColor": "#FAFAF7",
+    "splash": {
+      "image": "./assets/logo-emblem.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FAFAF7"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "requireFullScreen": true,
+      "deploymentTarget": "16.0",
+      "bundleIdentifier": "com.glowlytics.app",
+      "usesAppleSignIn": true,
+      "associatedDomains": [],
+      "infoPlist": {
+        "NSCameraUsageDescription": "Glowlytics uses the camera to capture guided skin scans and compare trends over time.",
+        "NSPhotoLibraryUsageDescription": "Glowlytics needs photo library access to save scan photos.",
+        "NSHealthShareUsageDescription": "Glowlytics reads sleep, heart rate, HRV, steps, mindful minutes, and menstrual flow from Apple Health to find patterns in your skin. This data stays on your device.",
+        "NSFaceIDUsageDescription": "Glowlytics uses Face ID to securely unlock your account.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.glowlytics.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#FAFAF7",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "permissions": [
+        "CAMERA",
+        "android.permission.CAMERA",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Glowlytics uses the camera to capture guided skin scans and compare trends over time."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Glowlytics uses your location to determine regional UV and humidity levels for skin context."
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "16.0"
+          },
+          "android": {
+            "minSdkVersion": 26
+          }
+        }
+      ],
+      [
+        "expo-asset",
+        {
+          "assets": [
+            "./assets/models"
+          ]
+        }
+      ],
+      "expo-font",
+      "expo-notifications",
+      "expo-web-browser",
+      "expo-mail-composer",
+      [
+        "react-native-vision-camera",
+        {
+          "cameraPermissionText": "Glowlytics uses the camera to capture guided skin scans and compare trends over time.",
+          "enableFrameProcessors": true
+        }
+      ],
+      [
+        "@kingstinct/react-native-healthkit",
+        {
+          "NSHealthShareUsageDescription": "Glowlytics reads sleep, heart rate, HRV, steps, mindful minutes, and menstrual flow from Apple Health to find patterns in your skin. This data stays on your device."
+        }
+      ]
+    ],
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "f56f9712-7cc3-48a3-ba5d-710c5e469c3d"
+      },
+      "router": {}
+    },
+    "owner": "mufasabrownie"
+  }
+}
