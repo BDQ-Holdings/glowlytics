@@ -2,8 +2,7 @@
   "name": "glowlytics",
   "private": true,
   "workspaces": [
-    "apps/glowlytics",
-    "apps/glowlytics/backend"
+    "apps/glowlytics"
   ],
   "scripts": {
     "mobile:start": "npm --prefix apps/glowlytics run start",
