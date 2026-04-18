@@ -19,20 +19,16 @@ jobs:
   test:
     name: Frontend · Pre-preview Test
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: apps/glowlytics
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: apps/glowlytics/package-lock.json
+          cache-dependency-path: package-lock.json
       - run: npm ci --legacy-peer-deps
-      - run: cd backend && npm ci --ignore-scripts
-      - run: npx tsc --noEmit
-      - run: npm test -- --ci
+      - run: npx tsc --noEmit -p apps/glowlytics
+      - run: npm test --workspace=glowlytics -- --ci
 
   preview:
     name: EAS Preview Build
