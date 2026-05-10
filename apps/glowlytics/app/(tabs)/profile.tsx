@@ -1,744 +1,339 @@
-import React, { useState } from 'react';
-import { Alert, Linking, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import React, { useMemo } from 'react';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
-import { AtmosphereScreen } from '../../src/components/AtmosphereScreen';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { GlowIcon } from '../../src/components/glow/GlowIcons';
+import { FadeUp, SectionHead } from '../../src/components/glow/GlowPrimitives';
 import {
-  BorderRadius,
   Colors,
   FontFamily,
-  FontSize,
+  Glow,
   Spacing,
-  Surfaces,
 } from '../../src/constants/theme';
 import { useStore } from '../../src/store/useStore';
 import {
-  presentPaywall,
-  presentCustomerCenter,
-  checkSubscriptionStatus,
-  restorePurchases,
-  isTrialActive,
-  trialDaysRemaining,
-} from '../../src/services/subscription';
-import { scheduleDailyReminder, cancelDailyReminder } from '../../src/services/notifications';
-import { trackEvent, resetAnalytics } from '../../src/services/analytics';
-import { formatRelativeTime } from '../../src/utils/formatRelativeTime';
-import { ConnectedAppsSection } from '../../src/components/ConnectedAppsSection';
-import { GamificationCard } from '../../src/components/GamificationCard';
-import { LevelProgressBar } from '../../src/components/LevelProgressBar';
-import { BadgeShowcase } from '../../src/components/BadgeShowcase';
+  buildOverallSkinInsight,
+  getLatestDailyForOutput,
+} from '../../src/services/skinInsights';
 
-let useUser: (() => { user: { primaryEmailAddress?: { emailAddress?: string } } | null | undefined }) | undefined;
-let useClerk: (() => { signOut: () => Promise<void> }) | undefined;
-
+let useUser: (() => { user: { firstName?: string | null; primaryEmailAddress?: { emailAddress?: string } } | null | undefined }) | undefined;
 try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
   const clerk = require('@clerk/clerk-expo');
   useUser = clerk.useUser;
-  useClerk = clerk.useClerk;
 } catch {
   // Clerk not available
 }
 
-const InfoRow: React.FC<{ label: string; value: string }> = ({ label, value }) => (
-  <View style={styles.infoRow}>
-    <Text style={styles.infoLabel}>{label}</Text>
-    <Text style={styles.infoValue} numberOfLines={1}>{value}</Text>
-  </View>
-);
+interface MeStat {
+  label: string;
+  value: string | number;
+}
 
-const getErrorMessage = (err: unknown, fallback = 'Unknown error') => {
-  const clerkMessage = (err as any)?.errors?.[0]?.longMessage ?? (err as any)?.errors?.[0]?.message;
-  if (typeof clerkMessage === 'string' && clerkMessage.trim().length > 0) {
-    return clerkMessage;
-  }
-  return err instanceof Error ? err.message : String(err ?? fallback);
-};
+interface MeGoal {
+  label: string;
+  target: string;
+  progress: number; // 0-100
+}
 
-const getHealthkitHint = (message: string) => {
-  if (/expo go|native module|unimplemented/i.test(message)) {
-    return 'HealthKit requires an iOS development/production build (not Expo Go). Rebuild the app with EAS and try again.';
-  }
-  return message;
-};
+const SETTINGS_ROWS = [
+  { key: 'account',       label: 'Account & subscription', route: '/account' as const },
+  { key: 'connected',     label: 'Connected health',       route: '/account' as const },
+  { key: 'notifications', label: 'Notifications',          route: '/account' as const },
+  { key: 'privacy',       label: 'Privacy',                route: '/privacy-policy' as const },
+  { key: 'export',        label: 'Export your data',       route: '/account' as const },
+  { key: 'help',          label: 'Help & feedback',        route: '/account' as const },
+];
 
-export default function ProfileTab() {
+export default function MeTab() {
   const router = useRouter();
-  const user = useStore((s) => s.user);
-  const protocol = useStore((s) => s.protocol);
-  const dailyRecords = useStore((s) => s.dailyRecords);
-  const gamification = useStore((s) => s.gamification);
-  const subscription = useStore((s) => s.subscription);
-  const setSubscription = useStore((s) => s.setSubscription);
-  const notificationSettings = useStore((s) => s.notificationSettings);
-  const setNotificationTime = useStore((s) => s.setNotificationTime);
-  const resetAll = useStore((s) => s.resetAll);
-  const healthConnection = useStore((s) => s.user?.health_connection);
-  const healthSyncStatus = useStore((s) => s.healthSyncStatus);
-  const updateHealthConnection = useStore((s) => s.updateHealthConnection);
+  const palette = Glow.palette;
+  const insets = useSafeAreaInsets();
 
-  const [showTimePicker, setShowTimePicker] = useState(false);
-  const [healthConnecting, setHealthConnecting] = useState(false);
+  const user = useStore((s) => s.user);
+  const dailyRecords = useStore((s) => s.dailyRecords);
+  const modelOutputs = useStore((s) => s.modelOutputs);
+  // Future: surface user-defined goals from store; the redesign falls back to
+  // sensible defaults derived from streak + onboarding data when none exist.
+  const goals: Array<{ title?: string; label?: string; target?: string; subtitle?: string; progress?: number }> = [];
   const getStreak = useStore((s) => s.getStreak);
-  const streak = getStreak();
+  const streak = useMemo(() => getStreak(), [dailyRecords, getStreak]);
 
   const clerkUser = useUser ? useUser() : null;
-  const clerk = useClerk ? useClerk() : null;
-  const clerkEmail = clerkUser?.user?.primaryEmailAddress?.emailAddress;
+  const firstName = clerkUser?.user?.firstName ?? '';
+  const email = clerkUser?.user?.primaryEmailAddress?.emailAddress;
+  const initial = (firstName || email || 'You').charAt(0).toUpperCase();
 
-  const periodLabel =
-    user?.period_applicable === 'yes'
-      ? 'Tracking'
-      : user?.period_applicable === 'no'
-        ? 'Not applicable'
-        : 'Prefer not to say';
+  const memberSince = useMemo(() => {
+    const created = (user as any)?.created_at;
+    if (!created) return null;
+    const date = new Date(created);
+    if (Number.isNaN(date.getTime())) return null;
+    return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  }, [user]);
 
-  const handleSignOut = async () => {
-    if (clerk) {
-      Alert.alert(
-        'Sign out',
-        'Are you sure you want to sign out?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Sign out',
-            style: 'destructive',
-            onPress: async () => {
-              try {
-                trackEvent('auth_sign_out');
-                resetAnalytics();
-                await clerk.signOut();
-                await resetAll();
-                // AuthRedirector handles navigation when isSignedIn → false
-              } catch {
-                Alert.alert('Sign out failed', 'Please try again.');
-              }
-            },
-          },
-        ],
-      );
+  const glowGained = useMemo(() => {
+    if (modelOutputs.length < 2) return 0;
+    const baseline = modelOutputs[0];
+    const latest = modelOutputs[modelOutputs.length - 1];
+    const baseInsight = buildOverallSkinInsight({
+      latestOutput: baseline,
+      baselineOutput: baseline,
+      latestDaily: getLatestDailyForOutput(baseline, dailyRecords),
+      baselineDaily: getLatestDailyForOutput(baseline, dailyRecords),
+      serverSignalScores: baseline.signal_scores,
+      serverSignalFeatures: baseline.signal_features,
+      serverSignalConfidence: baseline.signal_confidence,
+      serverLesions: baseline.lesions,
+    });
+    const latestInsight = buildOverallSkinInsight({
+      latestOutput: latest,
+      baselineOutput: baseline,
+      latestDaily: getLatestDailyForOutput(latest, dailyRecords),
+      baselineDaily: getLatestDailyForOutput(baseline, dailyRecords),
+      serverSignalScores: latest.signal_scores,
+      serverSignalFeatures: latest.signal_features,
+      serverSignalConfidence: latest.signal_confidence,
+      serverLesions: latest.lesions,
+    });
+    return Math.round((latestInsight?.score ?? 0) - (baseInsight?.score ?? 0));
+  }, [modelOutputs, dailyRecords]);
+
+  const stats: MeStat[] = [
+    { label: 'Day streak', value: streak },
+    { label: 'Check-ins', value: modelOutputs.length },
+    { label: 'Glow gained', value: `${glowGained >= 0 ? '+' : ''}${glowGained}` },
+  ];
+
+  const meGoals: MeGoal[] = useMemo(() => {
+    if (!goals || goals.length === 0) {
+      // Fall back to a sensible default trio so the section never looks empty.
+      return [
+        { label: 'Daily check-in',     target: '30 days in a row', progress: Math.min(100, (streak / 30) * 100) },
+        { label: 'Build your shelf',   target: 'Three core products', progress: 0 },
+        { label: 'Calm baseline',      target: 'Steady redness for a week', progress: 30 },
+      ];
     }
-  };
-
-  const handleResetAllData = () => {
-    Alert.alert(
-      'Reset all data',
-      'This will permanently delete all your scan history, products, and settings. This action cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete everything',
-          style: 'destructive',
-          onPress: async () => {
-            await resetAll();
-            router.replace('/');
-          },
-        },
-      ],
-    );
-  };
-
-  const handleHealthConnect = async () => {
-    setHealthConnecting(true);
-    try {
-      const { getHealthConnectionState, connectHealthData } = require('../../src/services/healthPermissions');
-
-      const initialState = await getHealthConnectionState();
-      if (initialState.status === 'unavailable') {
-        updateHealthConnection(initialState);
-        Alert.alert(
-          'Apple Health unavailable',
-          initialState.availability_note || 'Apple Health is not available on this device.',
-        );
-        return;
-      }
-
-      const conn = await connectHealthData();
-      updateHealthConnection(conn);
-
-      if (conn.status === 'granted') {
-        const { added, errors } = await useStore.getState().syncHealthData();
-        if (errors.length > 0) {
-          console.warn('[Health] Sync completed with errors:', errors[0]);
-        }
-        if (added === 0 && errors.length > 0) {
-          Alert.alert('Connected with limited data', errors[0]);
-        }
-        return;
-      }
-
-      const reason =
-        conn.availability_note ||
-        (conn.status === 'denied'
-          ? 'Permission was not granted. You can allow access in Apple Health > Sharing > Apps.'
-          : 'Apple Health is not available on this device.');
-      Alert.alert(
-        conn.status === 'denied' ? 'Apple Health permission needed' : 'Apple Health unavailable',
-        reason,
-      );
-    } catch (e: unknown) {
-      const message = getHealthkitHint(getErrorMessage(e));
-      console.warn('[Health] Connect failed:', message);
-      Alert.alert('Could not connect Apple Health', message);
-      updateHealthConnection({
-        status: 'unavailable',
-        availability_note: message,
-      });
-    } finally {
-      setHealthConnecting(false);
-    }
-  };
+    return goals.slice(0, 3).map((g: any) => ({
+      label: g.title || g.label || 'Goal',
+      target: g.target || g.subtitle || '',
+      progress: Math.max(0, Math.min(100, g.progress ?? 0)),
+    }));
+  }, [goals, streak]);
 
   return (
-    <AtmosphereScreen>
-      {/* Identity header */}
-      <View style={styles.identityHeader}>
-        <View style={styles.avatarWrap}>
-          <View style={styles.avatarGlow} />
-          <View style={styles.avatarCircle}>
-            <Text style={styles.avatarLetter}>
-              {(clerkEmail?.[0] || user?.age_range?.[0] || 'G').toUpperCase()}
+    <ScrollView
+      style={{ flex: 1, backgroundColor: palette.bg }}
+      contentContainerStyle={{
+        paddingTop: insets.top + Spacing.xl,
+        paddingBottom: insets.bottom + 120,
+      }}
+      showsVerticalScrollIndicator={false}
+    >
+      <FadeUp index={0}>
+        <View style={s.header}>
+          <LinearGradient
+            colors={[palette.accent, palette.accent2]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={s.avatar}
+          >
+            <Text style={[s.avatarText, { color: palette.surface }]}>{initial}</Text>
+          </LinearGradient>
+          <View style={{ flex: 1 }}>
+            <Text style={[s.name, { color: palette.ink }]}>
+              {firstName || 'Welcome'}
+            </Text>
+            <Text style={[s.subtitle, { color: palette.muted }]}>
+              {memberSince ? `Member since ${memberSince}` : email || 'Glowlytics member'}
             </Text>
           </View>
         </View>
-        <View style={styles.identityInfo}>
-          {clerkEmail && <Text style={styles.identityEmail} numberOfLines={1}>{clerkEmail}</Text>}
-          <View style={styles.identityMeta}>
-            <View style={[styles.tierBadge, {
-              backgroundColor: subscription.is_active
-                ? 'rgba(192, 123, 42, 0.12)'
-                : isTrialActive(subscription)
-                  ? Colors.surfaceOverlay
-                  : Colors.surface,
-            }]}>
-              <Text style={[styles.tierBadgeText, {
-                color: subscription.is_active
-                  ? Colors.warning
-                  : isTrialActive(subscription)
-                    ? Colors.primary
-                    : Colors.textMuted,
-              }]}>
-                {subscription.is_active ? 'Glow Pro' : isTrialActive(subscription) ? 'Trial' : 'Free'}
+      </FadeUp>
+
+      <FadeUp index={1}>
+        <View style={[s.statsRow]}>
+          {stats.map((st) => (
+            <View
+              key={st.label}
+              style={[s.statCard, { backgroundColor: palette.surface, borderColor: palette.glow }]}
+            >
+              <Text style={[s.statValue, { color: palette.ink }]}>{st.value}</Text>
+              <Text style={[s.statLabel, { color: palette.muted }]}>
+                {st.label.toUpperCase()}
               </Text>
             </View>
-            {streak > 0 && (
-              <View style={styles.identityStreakRow}>
-                <Feather name="zap" size={11} color={streak >= 7 ? Colors.warning : Colors.primary} />
-                <Text style={[styles.identityStreak, { color: streak >= 7 ? Colors.warning : Colors.primary }]}>
-                  {streak}d
-                </Text>
-              </View>
-            )}
-          </View>
+          ))}
         </View>
-      </View>
+      </FadeUp>
 
-      {/* Account & Subscription */}
-      <View style={styles.card}>
-        <View style={styles.cardTitleRow}>
-          <Feather name="user" size={15} color={Colors.primary} />
-          <Text style={styles.cardTitle}>Account & Plan</Text>
-        </View>
-        {clerkEmail ? (
-          <InfoRow label="Email" value={clerkEmail} />
-        ) : null}
-        <TouchableOpacity
-          style={styles.modeButton}
-          onPress={handleSignOut}
-          activeOpacity={0.7}
-          accessibilityRole="button"
-          accessibilityLabel="Sign out of your account"
-        >
-          <Feather name="log-out" size={16} color={Colors.error} />
-          <Text style={[styles.modeButtonText, { color: Colors.error }]}>Sign out</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.modeButton}
-          onPress={() => router.push('/privacy-policy')}
-          activeOpacity={0.7}
-          accessibilityRole="link"
-          accessibilityLabel="Terms and Privacy Policy"
-        >
-          <Feather name="shield" size={16} color={Colors.primaryLight} />
-          <Text style={styles.modeButtonText}>Terms & Privacy Policy</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.modeButton, styles.modeButtonDestructive]}
-          onPress={handleResetAllData}
-          activeOpacity={0.7}
-          accessibilityRole="button"
-          accessibilityLabel="Reset all data"
-        >
-          <Feather name="trash-2" size={16} color={Colors.error} />
-          <Text style={[styles.modeButtonText, { color: Colors.error }]}>Reset all data</Text>
-        </TouchableOpacity>
-
-        <View style={styles.divider} />
-        <ConnectedAppsSection />
-
-        {/* Subscription inline */}
-        <View style={styles.divider} />
-        {subscription.is_active ? (
-          <>
-            <InfoRow label="Plan" value="Glow Pro" />
-            {subscription.expires_at && (
-              <InfoRow
-                label="Renews"
-                value={new Date(subscription.expires_at).toLocaleDateString('en-US', {
-                  month: 'short',
-                  day: 'numeric',
-                  year: 'numeric',
-                })}
-              />
-            )}
-            <TouchableOpacity
-              style={styles.modeButton}
-              onPress={async () => {
-                trackEvent('subscription_manage_tapped');
-                try {
-                  await presentCustomerCenter();
-                } catch {
-                  Alert.alert('Subscription', 'Unable to open subscription management. Please try again later.');
-                }
-              }}
-              activeOpacity={0.7}
-              accessibilityRole="button"
-              accessibilityLabel="Manage subscription"
-            >
-              <Feather name="settings" size={16} color={Colors.primaryLight} />
-              <Text style={styles.modeButtonText}>Manage subscription</Text>
-            </TouchableOpacity>
-          </>
-        ) : (
-          <>
-            <InfoRow
-              label="Plan"
-              value={isTrialActive(subscription) ? 'Free Trial' : 'Free'}
-            />
-            {isTrialActive(subscription) && (
-              <InfoRow
-                label="Trial days remaining"
-                value={String(trialDaysRemaining(subscription))}
-              />
-            )}
-            <TouchableOpacity
-              style={styles.modeButton}
-              accessibilityRole="button"
-              accessibilityLabel="Upgrade to Glow Pro"
-              onPress={async () => {
-                try {
-                  const purchased = await presentPaywall();
-                  if (purchased) {
-                    const sub = await checkSubscriptionStatus(subscription);
-                    setSubscription(sub);
-                  }
-                } catch {
-                  Alert.alert('Subscription', 'Unable to load upgrade options. Please try again later.');
-                }
-              }}
-              activeOpacity={0.7}
-            >
-              <Feather name="zap" size={16} color={Colors.primary} />
-              <Text style={[styles.modeButtonText, { color: Colors.primary }]}>Upgrade to Glow Pro</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.modeButton}
-              onPress={async () => {
-                try {
-                  const sub = await restorePurchases(subscription);
-                  setSubscription(sub);
-                  if (sub.is_active) {
-                    Alert.alert('Restored', 'Your subscription has been restored.');
-                  } else {
-                    Alert.alert('Nothing to restore', 'No previous purchases found.');
-                  }
-                } catch {
-                  Alert.alert('Restore failed', 'Unable to restore purchases. Please try again later.');
-                }
-              }}
-              activeOpacity={0.7}
-            >
-              <Feather name="refresh-cw" size={16} color={Colors.primaryLight} />
-              <Text style={styles.modeButtonText}>Restore Purchases</Text>
-            </TouchableOpacity>
-          </>
-        )}
-      </View>
-
-      {/* Health Data */}
-      {Platform.OS === 'ios' && healthConnection?.status !== 'unavailable' && (
-        <View style={styles.card}>
-          <View style={styles.cardTitleRow}>
-            <Feather name="heart" size={15} color="#FF7A78" />
-            <Text style={styles.cardTitle}>Health Data</Text>
-          </View>
-          {healthConnection?.status === 'granted' ? (
-            <>
-              <InfoRow label="Apple Health" value="Connected" />
-              <InfoRow
-                label="Last synced"
-                value={formatRelativeTime(healthSyncStatus.last_sync_at) ?? 'Never'}
-              />
-              <TouchableOpacity
-                style={styles.modeButton}
-                onPress={() => {
-                  Linking.openURL('x-apple-health://').catch(() => {
-                    Linking.openURL('app-settings:').catch(() => {});
-                  });
-                }}
-                activeOpacity={0.7}
-              >
-                <Feather name="settings" size={16} color={Colors.primaryLight} />
-                <Text style={styles.modeButtonText}>Manage in iOS Settings</Text>
-              </TouchableOpacity>
-            </>
-          ) : (
-            <TouchableOpacity
-              style={styles.modeButton}
-              onPress={handleHealthConnect}
-              disabled={healthConnecting}
-              activeOpacity={0.7}
-            >
-              <Feather name="activity" size={16} color={Colors.primary} />
-              <Text style={[styles.modeButtonText, { color: Colors.primary }]}>
-                {healthConnecting ? 'Connecting...' : 'Connect Apple Health'}
-              </Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      )}
-
-      {/* Notifications */}
-      <View style={styles.card}>
-        <View style={styles.cardTitleRow}>
-          <Feather name="bell" size={15} color={Colors.secondary} />
-          <Text style={styles.cardTitle}>Notifications</Text>
-        </View>
-        <TouchableOpacity
-          style={styles.infoRow}
-          onPress={() => {
-            if (notificationSettings.notifications_enabled) {
-              setShowTimePicker(true);
-            }
-          }}
-          activeOpacity={notificationSettings.notifications_enabled ? 0.7 : 1}
-        >
-          <Text style={styles.infoLabel}>Daily reminder</Text>
-          <Text style={[styles.infoValue, notificationSettings.notifications_enabled && notificationSettings.notification_time
-            ? { color: Colors.primary }
-            : { color: Colors.textDim }]}>
-            {notificationSettings.notifications_enabled && notificationSettings.notification_time
-              ? notificationSettings.notification_time
-              : 'Off'}
-          </Text>
-        </TouchableOpacity>
-        {showTimePicker && (
-          <DateTimePicker
-            value={(() => {
-              const [h, m] = (notificationSettings.notification_time || '08:00').split(':').map(Number);
-              const d = new Date(2000, 0, 1, h, m);
-              return d;
-            })()}
-            mode="time"
-            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-            onChange={async (_, selected) => {
-              setShowTimePicker(Platform.OS === 'ios');
-              if (selected) {
-                const h = selected.getHours();
-                const m = selected.getMinutes();
-                const timeStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-                try {
-                  await scheduleDailyReminder(h, m);
-                  setNotificationTime(timeStr);
-                } catch { /* notification scheduling failed — non-fatal */ }
-              }
-            }}
-            themeVariant="light"
+      <FadeUp index={2}>
+        <View style={s.section}>
+          <SectionHead
+            title="Your goals"
+            hint={`${meGoals.length} active`}
+            ink={palette.ink}
+            muted={palette.muted}
           />
-        )}
-        {notificationSettings.notifications_enabled ? (
-          <View style={{ gap: Spacing.sm }}>
-            <TouchableOpacity
-              style={styles.modeButton}
-              onPress={() => setShowTimePicker(!showTimePicker)}
-              activeOpacity={0.7}
-            >
-              <Feather name="clock" size={16} color={Colors.primary} />
-              <Text style={[styles.modeButtonText, { color: Colors.primary }]}>Change time</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.modeButton}
-              onPress={async () => {
-                try {
-                  await cancelDailyReminder();
-                } catch { /* non-fatal */ }
-                setNotificationTime(null);
-                setShowTimePicker(false);
-              }}
-              activeOpacity={0.7}
-            >
-              <Feather name="bell-off" size={16} color={Colors.error} />
-              <Text style={[styles.modeButtonText, { color: Colors.error }]}>Turn off reminders</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <TouchableOpacity
-            style={styles.modeButton}
-            onPress={async () => {
-              const defaultTime = '08:00';
-              const [h, m] = defaultTime.split(':').map(Number);
-              try {
-                await scheduleDailyReminder(h, m);
-                setNotificationTime(defaultTime);
-              } catch { /* non-fatal */ }
-            }}
-            activeOpacity={0.7}
-          >
-            <Feather name="bell" size={16} color={Colors.primary} />
-            <Text style={[styles.modeButtonText, { color: Colors.primary }]}>Enable daily reminder</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {/* Your Profile — demographics + scan protocol combined */}
-      <View style={styles.card}>
-        <View style={styles.cardTitleRow}>
-          <Feather name="edit-3" size={15} color={Colors.clay} />
-          <Text style={styles.cardTitle}>Your Profile</Text>
-        </View>
-        <InfoRow label="Age range" value={user?.age_range || '—'} />
-        <InfoRow label="Location" value={user?.location_coarse || '—'} />
-        <InfoRow label="Period tracking" value={periodLabel} />
-        {user?.smoker_status !== undefined && (
-          <InfoRow label="Smoker" value={user.smoker_status ? 'Yes' : 'No'} />
-        )}
-        {user?.drink_baseline_frequency && (
-          <InfoRow label="Alcohol" value={user.drink_baseline_frequency} />
-        )}
-        <View style={styles.divider} />
-        <InfoRow label="Goal" value={protocol?.primary_goal?.replace(/_/g, ' ') || '—'} />
-        <InfoRow label="Region" value={protocol?.scan_region?.replace(/_/g, ' ') || '—'} />
-        <InfoRow label="Total scans" value={String(dailyRecords.length)} />
-      </View>
-
-      {/* Progress — gamification + achievements unified */}
-      <View style={styles.card}>
-        <View style={styles.cardTitleRow}>
-          <Feather name="award" size={15} color={Colors.warning} />
-          <Text style={styles.cardTitle}>Progress</Text>
-        </View>
-        <GamificationCard gamification={gamification} streak={streak} />
-        <View style={styles.divider} />
-        <LevelProgressBar xp={gamification.xp} />
-        <BadgeShowcase earnedBadges={gamification.badges} />
-        <View style={styles.personalBests}>
-          <Text style={styles.personalBestsTitle}>Personal bests</Text>
-          <View style={styles.bestGrid}>
-            <View style={[styles.bestItem, { backgroundColor: 'rgba(192, 123, 42, 0.06)' }]}>
-              <Text style={[styles.bestValue, { color: Colors.warning }]}>
-                {gamification.personal_bests?.longest_streak || '--'}
-              </Text>
-              <Text style={styles.bestLabel}>Longest streak</Text>
-            </View>
-            <View style={[styles.bestItem, { backgroundColor: Colors.glowCoral }]}>
-              <Text style={[styles.bestValue, { color: Colors.acne }]}>
-                {(gamification.personal_bests?.lowest_acne ?? 100) < 100 ? gamification.personal_bests!.lowest_acne : '--'}
-              </Text>
-              <Text style={styles.bestLabel}>Lowest acne</Text>
-            </View>
-            <View style={[styles.bestItem, { backgroundColor: Colors.surfaceOverlay }]}>
-              <Text style={[styles.bestValue, { color: Colors.primary }]}>
-                {(gamification.personal_bests?.highest_skin_score ?? 0) > 0 ? gamification.personal_bests!.highest_skin_score : '--'}
-              </Text>
-              <Text style={styles.bestLabel}>Best score</Text>
-            </View>
-            <View style={[styles.bestItem, { backgroundColor: Colors.glowSecondary }]}>
-              <Text style={[styles.bestValue, { color: Colors.secondary }]}>
-                {(gamification.personal_bests?.most_consistent_week ?? 0) > 0 ? `${gamification.personal_bests!.most_consistent_week}/7` : '--'}
-              </Text>
-              <Text style={styles.bestLabel}>Best week</Text>
-            </View>
+          <View style={{ marginTop: 12, gap: 8 }}>
+            {meGoals.map((g, i) => (
+              <View
+                key={i}
+                style={[s.goalCard, { backgroundColor: palette.surface, borderColor: palette.glow }]}
+              >
+                <View style={s.goalTopRow}>
+                  <Text style={[s.goalLabel, { color: palette.ink }]}>{g.label}</Text>
+                  <Text style={[s.goalProgress, { color: palette.accent }]}>
+                    {Math.round(g.progress)}%
+                  </Text>
+                </View>
+                {!!g.target && (
+                  <Text style={[s.goalTarget, { color: palette.muted }]}>{g.target}</Text>
+                )}
+                <View style={[s.goalTrack, { backgroundColor: palette.bg }]}>
+                  <View
+                    style={{
+                      height: '100%',
+                      width: `${g.progress}%`,
+                      backgroundColor: palette.accent,
+                    }}
+                  />
+                </View>
+              </View>
+            ))}
           </View>
         </View>
-      </View>
+      </FadeUp>
 
-      <View style={styles.footerSpacer} />
-    </AtmosphereScreen>
+      <FadeUp index={3}>
+        <View style={s.section}>
+          <SectionHead
+            title="Settings"
+            hint=""
+            ink={palette.ink}
+            muted={palette.muted}
+          />
+          <View style={[s.settingsCard, { backgroundColor: palette.surface, borderColor: palette.glow }]}>
+            {SETTINGS_ROWS.map((row, i) => (
+              <TouchableOpacity
+                key={row.key}
+                activeOpacity={0.7}
+                onPress={() => router.push(row.route as any)}
+                style={[
+                  s.settingsRow,
+                  i < SETTINGS_ROWS.length - 1 && { borderBottomWidth: 1, borderBottomColor: palette.bg },
+                ]}
+              >
+                <Text style={[s.settingsLabel, { color: palette.ink }]}>{row.label}</Text>
+                <GlowIcon name="chevron" size={14} color={palette.muted} stroke={1.6} />
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      </FadeUp>
+    </ScrollView>
   );
 }
 
-const styles = StyleSheet.create({
-  identityHeader: {
-    ...Surfaces.hero,
+const s = StyleSheet.create({
+  header: {
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.xs,
     flexDirection: 'row',
     alignItems: 'center',
-    padding: Spacing.lg,
-    gap: Spacing.md,
-    marginBottom: Spacing.md,
+    gap: 16,
   },
-  avatarWrap: {
-    width: 60,
-    height: 60,
+  avatar: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarGlow: {
-    position: 'absolute',
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: Colors.glowPrimary,
+  avatarText: {
+    fontFamily: FontFamily.sans,
+    fontSize: 32,
   },
-  avatarCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
+  name: {
+    fontFamily: FontFamily.sans,
+    fontSize: 28,
   },
-  avatarLetter: {
-    color: Colors.textOnDark,
-    fontFamily: FontFamily.sansBold,
-    fontSize: FontSize.xl,
+  subtitle: {
+    fontFamily: FontFamily.sans,
+    fontSize: 13,
+    marginTop: 2,
   },
-  identityInfo: {
+  statsRow: {
+    paddingHorizontal: Spacing.lg,
+    marginTop: Spacing.lg,
+    flexDirection: 'row',
+    gap: 8,
+  },
+  statCard: {
     flex: 1,
-    gap: Spacing.xs,
-  },
-  identityEmail: {
-    color: Colors.text,
-    fontFamily: FontFamily.sansSemiBold,
-    fontSize: FontSize.md,
-  },
-  identityMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  tierBadge: {
-    backgroundColor: Colors.surfaceOverlay,
-    borderRadius: BorderRadius.full,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.xxs,
-  },
-  tierBadgeText: {
-    color: Colors.primary,
-    fontFamily: FontFamily.sansSemiBold,
-    fontSize: FontSize.xxs,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  identityStreakRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-  },
-  identityStreak: {
-    fontFamily: FontFamily.sansBold,
-    fontSize: FontSize.xs,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: Colors.divider,
-    marginVertical: Spacing.xs,
-  },
-  card: {
-    backgroundColor: Colors.glass,
-    borderRadius: BorderRadius.xl,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: Colors.border,
-    padding: Spacing.lg,
-    gap: Spacing.sm,
-    marginBottom: Spacing.md,
-  },
-  cardTitleRow: {
-    flexDirection: 'row',
+    padding: 14,
     alignItems: 'center',
-    gap: Spacing.sm,
   },
-  cardTitle: {
-    color: Colors.text,
-    fontFamily: FontFamily.sansBold,
-    fontSize: FontSize.md,
+  statValue: {
+    fontFamily: FontFamily.sans,
+    fontSize: 26,
   },
-  infoRow: {
+  statLabel: {
+    fontFamily: FontFamily.sansMedium,
+    fontSize: 10,
+    letterSpacing: 0.6,
+    marginTop: 4,
+  },
+  section: {
+    paddingHorizontal: Spacing.lg,
+    marginTop: Spacing.lg,
+  },
+  goalCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 16,
+  },
+  goalTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  goalLabel: {
+    fontFamily: FontFamily.sansSemiBold,
+    fontSize: 14,
+  },
+  goalProgress: {
+    fontFamily: FontFamily.sansSemiBold,
+    fontSize: 12,
+  },
+  goalTarget: {
+    fontFamily: FontFamily.sans,
+    fontSize: 12,
+    marginTop: 4,
+  },
+  goalTrack: {
+    marginTop: 10,
+    height: 4,
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  settingsCard: {
+    marginTop: 12,
+    borderRadius: 18,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  settingsRow: {
+    paddingHorizontal: 18,
+    paddingVertical: 14,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: Spacing.xs,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.divider,
   },
-  infoLabel: {
-    color: Colors.textMuted,
-    fontFamily: FontFamily.sansMedium,
-    fontSize: FontSize.sm,
-    textTransform: 'capitalize',
-  },
-  infoValue: {
-    color: Colors.text,
-    fontFamily: FontFamily.sansSemiBold,
-    fontSize: FontSize.sm,
-    textTransform: 'capitalize',
-    flexShrink: 1,
-    textAlign: 'right',
-  },
-  modeButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.xs,
-    backgroundColor: Colors.glassStrong,
-    borderRadius: BorderRadius.full,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.md,
-  },
-  modeButtonDestructive: {
-    borderColor: 'rgba(209, 67, 67, 0.18)',
-    backgroundColor: 'rgba(209, 67, 67, 0.06)',
-  },
-  modeButtonText: {
-    color: Colors.primaryLight,
-    fontFamily: FontFamily.sansSemiBold,
-    fontSize: FontSize.sm,
-  },
-  personalBests: {
-    marginTop: Spacing.sm,
-    gap: Spacing.sm,
-  },
-  personalBestsTitle: {
-    color: Colors.textMuted,
-    fontFamily: FontFamily.sansSemiBold,
-    fontSize: FontSize.xs,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-  bestGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.sm,
-  },
-  bestItem: {
-    width: '47%' as any,
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.md,
-    gap: Spacing.xxs,
-  },
-  bestValue: {
-    fontFamily: FontFamily.sansBold,
-    fontSize: FontSize.xl,
-  },
-  bestLabel: {
-    color: Colors.textMuted,
-    fontFamily: FontFamily.sansMedium,
-    fontSize: FontSize.xs,
-  },
-  footerSpacer: {
-    height: Spacing.xl,
+  settingsLabel: {
+    fontFamily: FontFamily.sans,
+    fontSize: 14,
   },
 });
