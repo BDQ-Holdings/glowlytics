@@ -1,10 +1,10 @@
 Glowlytics — Build Progress
 ============================
-Last Updated: 2026-04-12
+Last Updated: 2026-05-11
 
-STATUS: 0 TS errors | 48 screens | 24 components | 21 services | 448 tests | 7 backend modules
+STATUS: 0 TS errors | 56 screens | 31 components | 31 services | 361 mobile tests (24 suites) + 285 backend tests (24 suites) = 646 total | 7 backend top-level modules + 23 nested (mcp/ + queries/ etc.)
 
-MILESTONES (28 shipped):
+MILESTONES (31 shipped):
  1. Foundation (Expo SDK 54, TS, Router, Zustand)
  2. Auth (Clerk Apple/Google/email, JWT backend)
  3. Vision (3-layer: deterministic + ONNX + fine-tuned GPT-4o)
@@ -33,6 +33,9 @@ MILESTONES (28 shipped):
 26. NaN hardening (safeClamp, sparkline, trend, display layers)
 27. Launch prep — production credentials, auth flows, Pinecone seed
 28. UI polish — patterns, streak, coaching tooltip, demo seeder
+29. MCP server (Q1) — Streamable HTTP transport at /mcp, JWKS Bearer auth, beta allowlist, per-user rate limiter (60/min + 10/sec burst), structured tool-call logging
+30. MCP tools (Q2/Q3) — get_latest_scan, get_scan_history, get_signal_trend, compare_scans, get_scan_report, get_current_routine, lookup_ingredient, search_ingredients, summarize_month; ingredient lookup with Pinecone chunkId citations; getCurrentRoutine splits product_catalog by AM/PM; Connected Apps (Beta) section in Profile with /api/mcp/clients GET+DELETE
+31. Glow design language redesign + API fortification — full app reskin (Dusk/Meadow/Rose palettes, breathing-glow halos, italic DancingScript accents, SF-symbol monoline icons, Hydrated/Calm/Even/Firm 4-facet UI mapped onto existing 5-signal pipeline); httpClient with retry/backoff/jitter/Retry-After/token cache/401 refresh; syncOutbox replaces fire-and-forget syncToBackend with up-to-5-attempt durable queue; productLookup 3rd-party fetches bounded to 6s; tabs relabeled Today/Story/Shelf/Me (file routes preserved)
 
 ML EVAL (all pass):
 - ONNX: Structure r=0.913, Hydration r=0.889, Sun Damage r=0.882, Elasticity r=0.940
@@ -51,10 +54,89 @@ LAUNCH PREP (2026-04-12 — all done):
 - App Store metadata ready
 
 REMAINING:
-[ ] Content rating questionnaire in ASC (12+, medical: no)
-[ ] Screenshots (in progress)
-[ ] Rebase feature branch → main
-[ ] Production EAS build
-[ ] Submit for App Review
+[x] Content rating questionnaire in ASC (12+, medical: no)
+[x] Screenshots
+[x] Production EAS build
+[x] Submit for App Review (1.0.1, 2026-04-13)
+
+APP STORE REVIEW v1 (2026-04-15 — REJECTED, 1.0.1):
+- Guideline 2.1(a) Performance — App Completeness
+- Bug: failed login (demo/Apple/Google) on iPad Air M3 / iPadOS 26.4.1
+- Root cause (server-side, not iPad-specific):
+    Clerk returned status=needs_client_trust + supported_second_factors=[email_code]
+    on test@test.com → password verified but blocked by bot-trust + email MFA gate
+- Fix (Clerk dashboard, no code change):
+    - Enabled "Bypass Client Trust" on test@test.com user
+    - Removed email MFA from test@test.com
+- Verified: POST /v1/client/sign_ins now returns status=complete with session
+
+RESUBMIT v2 (2026-04-17, build 1.1.3):
+- tokenCache.ts: removed proactive JWT exp eviction (Clerk handles refresh,
+  fewer false-positive logouts on app relaunch)
+- Onboarding empty-state copy polish (7 strings, scientific + warm voice;
+  e.g. "Capture your baseline", "Trends start with your first scan")
+- Version 1.1.2 → 1.1.3, EAS local build (90.5 MB IPA), submitted to TestFlight
+- ASC App ID 6760600635 (eas.json still says 6744096507 — stale, update next touch)
+- MRDP compliance form must be saved in ASC → App Information before Resubmit ungreys
+- Pending: Apple processing → re-review
+
+MCP SERVER ROLLOUT (2026-04-20 → 2026-04-29):
+- /mcp endpoint exposes 9 tools to authenticated MCP clients (Claude.ai etc.)
+- Auth: Clerk JWKS Bearer + beta allowlist gate; only test@test.com + drmustafa
+  during beta
+- Rate limit: 60 calls/min + 10/sec burst per user
+- Tool inventory (all user-scoped, audit-logged via structured logger):
+  - get_latest_scan / get_scan_history / get_signal_trend / compare_scans
+  - get_scan_report — formats generated_insights from scan row
+  - get_current_routine — splits product_catalog by AM/PM
+  - lookup_ingredient / search_ingredients — Pinecone with chunkId citations
+  - summarize_month — composes scans + trends + routine + reports
+- e2e tested via MCP SDK client; cross-tool user-scoping suite
+- Connected Apps (Beta) UI in Profile: list + revoke via /api/mcp/clients
+
+GLOW REDESIGN + API FORTIFICATION (2026-05-09 → 2026-05-11):
+- Design language port from claude.ai/design hand-off:
+  - 3 palettes (Dusk default, Meadow, Rose) — cream + dusk plum accent
+  - Switzer body, DancingScript italic word accent ("friend", "Five",
+    "radiant"), italic SectionHead pattern
+  - BreathingGlow (3.2s sine), GlowRing, GlowSpark, FadeUp staggered entrance
+    (150/280/380/480ms) primitives in src/components/glow/
+  - 22 SF-symbol monoline icons replace Feather + emoji
+  - 4-facet UI (Hydrated/Calm/Even/Firm) layered onto existing 5-signal ML
+    via src/constants/facets.ts adapter — no ML pipeline change
+- Tabs: Today / Story / Shelf / Me (route files preserved for deep links)
+  - Today: greeting hero with breathing glow + 4 facet grid + ritual peek
+    + story preview + mood selector + sparkline
+  - Story: 14-day glow trend + "What we noticed" pattern cards (taps →
+    redesigned pattern/[id]) + photo timeline + generate-report CTA
+  - Shelf: tone-tinted product cards with heart rating, dashed Add CTA,
+    "See routine score & conflicts" → routine.tsx (old products tab moved)
+  - Me: gradient avatar + stats trio (streak / check-ins / glow gained) +
+    goals + settings → account.tsx (old profile tab moved)
+- Detail screens redesigned: signal/[key], pattern/[id], product/[id]
+- Scan flow reskinned: cream gradient, italic copy, dusk-plum capture button
+- Auth + onboarding (21 screens) + paywall + settings palette-swapped via
+  shared OnboardingHero/OptionCard components
+- API fortification (this session, uncommitted):
+  - src/services/httpClient.ts (220 lines) — central fetch wrapper:
+    exponential backoff with jitter, Retry-After honor, 50s token cache,
+    401-driven token refresh, X-Request-ID correlation, AbortSignal compose
+    polyfill for RN, structured ApiError class with status/body/requestId
+  - src/services/syncOutbox.ts (170 lines) — replaces syncToBackend
+    fire-and-forget: durable in-memory retry queue, up to 5 attempts with
+    exp backoff (1s→30s capped), terminal-error predicate for 409s,
+    sync_outbox_dropped telemetry
+  - src/services/api.ts — every endpoint now retries on 5xx/429/network;
+    ApiError + isApiError exposed alongside backwards-compat isApiStatus
+  - src/services/visionAPI.ts — inline retry loop deleted, delegates to
+    httpClient (1 retry max to avoid double-charging GPT-4o on transients)
+  - src/services/productLookup.ts — 3rd-party waterfall fetches (OBF, OFF,
+    UPCitemdb, NIH DailyMed) capped at 6s each, emit
+    product_lookup_source_failed telemetry per source
+- Build: TestFlight submission of v1.1.6 build #106 (com.glowlytics.app,
+  ASC 6760600635) — 91MB IPA via EAS local build after dependency
+  triage (root expo bumped to ~54.0.34, removed @types/react-native +
+  @expo/config-plugins, explicit expo-updates-interface@2.0.0 +
+  expo-dev-menu-interface + @ide/backoff installs)
 
 POST-LAUNCH: See POST_LAUNCH_CHECKLIST.md

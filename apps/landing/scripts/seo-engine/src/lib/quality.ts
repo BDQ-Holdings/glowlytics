@@ -18,6 +18,7 @@ export function checkQuality(
 ): QualityResult {
   const issues: string[] = [];
   const words = content.split(/\s+/).length;
+  const normalized = content.toLowerCase();
   const [min, max] = WORD_COUNT_RANGES[frontmatter.type];
 
   if (words < min * 0.8) {
@@ -39,6 +40,27 @@ export function checkQuality(
 
   if (frontmatter.sources.length < 2) {
     issues.push(`Only ${frontmatter.sources.length} sources (minimum 2)`);
+  }
+
+  if (
+    (frontmatter.type === "blog" || frontmatter.type === "guide" || frontmatter.type === "faq") &&
+    !normalized.includes("consult a dermatologist")
+  ) {
+    issues.push('Missing "consult a dermatologist" disclaimer');
+  }
+
+  if (frontmatter.type === "faq") {
+    const questionCount = (content.match(/^##\s+/gm) || []).length;
+    if (questionCount < 3) {
+      issues.push(`FAQ has only ${questionCount} sections (minimum 3)`);
+    }
+  }
+
+  if (frontmatter.type === "guide") {
+    const stepCount = (content.match(/^##\s+step\b/gi) || []).length;
+    if (stepCount < 3) {
+      issues.push(`Guide has only ${stepCount} step sections (minimum 3)`);
+    }
   }
 
   return {

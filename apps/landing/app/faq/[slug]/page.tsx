@@ -26,5 +26,9 @@ export default async function FAQPage({ params }: Props) {
   const item = getContentBySlug("faq", slug);
   if (!item) notFound();
   const content = await renderMdx(item.content);
-  return <ArticleLayout meta={item.meta}>{content}</ArticleLayout>;
+  return (
+    <ArticleLayout meta={item.meta} markdown={item.content}>
+      {content}
+    </ArticleLayout>
+  );
 }

@@ -7,6 +7,7 @@
  * Set SERPAPI_KEY in your environment.
  * https://serpapi.com
  */
+import { getFetchTimeoutMs } from "./pipeline.js";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -27,6 +28,7 @@ export async function scrapeSERP(query: string): Promise<SerpData> {
   }
 
   try {
+    const timeoutMs = getFetchTimeoutMs();
     const params = new URLSearchParams({
       q: query,
       engine: "google",
@@ -36,7 +38,9 @@ export async function scrapeSERP(query: string): Promise<SerpData> {
       api_key: SERPAPI_KEY,
     });
 
-    const res = await fetch(`https://serpapi.com/search.json?${params}`);
+    const res = await fetch(`https://serpapi.com/search.json?${params}`, {
+      signal: AbortSignal.timeout(timeoutMs),
+    });
 
     if (!res.ok) {
       console.warn(`  SerpAPI error for "${query}": ${res.status} ${res.statusText}`);

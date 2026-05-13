@@ -1,3 +1,4 @@
+import { filterKeywords } from "./keyword-filter.js";
 import type { ContentType, SearchIntent, KeywordCluster } from "./types.js";
 
 function slugify(text: string): string {
@@ -58,6 +59,28 @@ function classifyContentType(keyword: string, paaQuestions: string[]): ContentTy
   return "blog";
 }
 
+function keywordFitness(keyword: string, paaMap: Map<string, string[]>): number {
+  const lower = keyword.toLowerCase();
+  const wordCount = lower.split(/\s+/).length;
+  const paaCount = (paaMap.get(keyword) || []).length;
+
+  let score = 0;
+  score += Math.max(0, 12 - Math.abs(wordCount - 4) * 2);
+  score += Math.min(paaCount, 4) * 4;
+
+  if (/^(how|what|why|can|does|is|are|when|should)\b/.test(lower)) score += 3;
+  if (/\b(causes|treatment|routine|guide|symptoms|benefits|meaning|definition)\b/.test(lower)) score += 2;
+  if (/\b(best|top|review|cheap|price)\b/.test(lower)) score -= 3;
+
+  score -= lower.length * 0.02;
+
+  return score;
+}
+
+function pickPrimaryKeyword(clusterKeywords: string[], paaMap: Map<string, string[]>): string {
+  return [...clusterKeywords].sort((a, b) => keywordFitness(b, paaMap) - keywordFitness(a, paaMap))[0];
+}
+
 export function clusterKeywords(
   keywords: string[],
   paaMap: Map<string, string[]>,
@@ -66,7 +89,7 @@ export function clusterKeywords(
   const clusters: KeywordCluster[] = [];
   const assigned = new Set<string>();
 
-  const sorted = [...keywords].sort((a, b) => b.length - a.length);
+  const sorted = filterKeywords(keywords).sort((a, b) => b.length - a.length);
 
   for (const keyword of sorted) {
     if (assigned.has(keyword)) continue;
@@ -83,22 +106,26 @@ export function clusterKeywords(
 
     assigned.add(keyword);
 
-    const paaQuestions = paaMap.get(keyword) || [];
+    const clusterKeywords = [keyword, ...related];
+    const primaryKeyword = pickPrimaryKeyword(clusterKeywords, paaMap);
+    const relatedKeywords = clusterKeywords.filter((item) => item !== primaryKeyword).slice(0, 30);
+
+    const paaQuestions = paaMap.get(primaryKeyword) || [];
     const allPaa = [
       ...paaQuestions,
-      ...related.flatMap((r) => paaMap.get(r) || []),
+      ...relatedKeywords.flatMap((r) => paaMap.get(r) || []),
     ];
     const uniquePaa = [...new Set(allPaa)];
 
-    const slug = slugify(keyword);
-    const opportunityScore = 1 + related.length + uniquePaa.length * 0.5;
+    const slug = slugify(primaryKeyword);
+    const opportunityScore = 1 + Math.min(relatedKeywords.length, 30) + uniquePaa.length * 2;
 
     clusters.push({
       slug,
-      primaryKeyword: keyword,
-      relatedKeywords: related,
-      contentType: classifyContentType(keyword, uniquePaa),
-      intent: classifyIntent(keyword),
+      primaryKeyword,
+      relatedKeywords,
+      contentType: classifyContentType(primaryKeyword, uniquePaa),
+      intent: classifyIntent(primaryKeyword),
       opportunityScore,
       paaQuestions: uniquePaa,
       status: "new",

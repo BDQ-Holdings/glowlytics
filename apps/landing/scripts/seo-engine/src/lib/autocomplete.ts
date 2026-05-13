@@ -1,3 +1,5 @@
+import { getFetchTimeoutMs } from "./pipeline.js";
+
 const ALPHABET = "abcdefghijklmnopqrstuvwxyz".split("");
 
 function sleep(ms: number): Promise<void> {
@@ -24,11 +26,13 @@ async function fetchSuggestions(query: string): Promise<string[]> {
   const url = `https://suggestqueries.google.com/complete/search?client=firefox&q=${encoded}`;
 
   try {
+    const timeoutMs = getFetchTimeoutMs();
     const res = await fetch(url, {
       headers: {
         "User-Agent":
           "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       },
+      signal: AbortSignal.timeout(timeoutMs),
     });
 
     if (!res.ok) return [];

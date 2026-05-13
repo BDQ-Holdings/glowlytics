@@ -6,6 +6,7 @@
  * on JS-rendered SPAs (captures whatever the server returns).
  */
 import * as cheerio from "cheerio";
+import { getFetchTimeoutMs } from "./pipeline.js";
 
 export interface ExtractedContent {
   title: string;
@@ -17,13 +18,14 @@ export interface ExtractedContent {
 
 export async function extractContent(url: string): Promise<ExtractedContent | null> {
   try {
+    const timeoutMs = getFetchTimeoutMs();
     const res = await fetch(url, {
       headers: {
         "User-Agent":
           "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
         Accept: "text/html,application/xhtml+xml",
       },
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
 
     if (!res.ok) return null;

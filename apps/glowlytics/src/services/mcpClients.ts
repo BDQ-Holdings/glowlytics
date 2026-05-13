@@ -1,7 +1,7 @@
 // src/services/mcpClients.ts
 // List + revoke OAuth applications connected to the user via the Glowlytics MCP server.
 
-import { getAuthHeaders } from './api';
+import { httpJson } from './httpClient';
 import { env } from '../config/env';
 
 export interface McpClient {
@@ -11,18 +11,12 @@ export interface McpClient {
   connectedAt: string | null;
 }
 
-export const listConnectedApps = async (): Promise<McpClient[]> => {
-  const headers = await getAuthHeaders();
-  const res = await fetch(`${env.API_BASE_URL}/api/mcp/clients`, { headers });
-  if (!res.ok) throw new Error(`failed_to_list_mcp_clients_${res.status}`);
-  return res.json();
-};
+export const listConnectedApps = (): Promise<McpClient[]> =>
+  httpJson<McpClient[]>(`${env.API_BASE_URL}/api/mcp/clients`);
 
 export const revokeConnectedApp = async (clientId: string): Promise<void> => {
-  const headers = await getAuthHeaders();
-  const res = await fetch(
+  await httpJson<unknown>(
     `${env.API_BASE_URL}/api/mcp/clients/${encodeURIComponent(clientId)}`,
-    { method: 'DELETE', headers }
+    { method: 'DELETE' }
   );
-  if (!res.ok) throw new Error(`failed_to_revoke_mcp_client_${res.status}`);
 };

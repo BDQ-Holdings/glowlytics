@@ -4,12 +4,12 @@ on:
   push:
     branches: [main]
     paths:
-      - 'RadianceIQ/app/**'
-      - 'RadianceIQ/src/**'
-      - 'RadianceIQ/assets/**'
-      - 'RadianceIQ/app.json'
-      - 'RadianceIQ/eas.json'
-      - 'RadianceIQ/package.json'
+      - 'apps/glowlytics/app/**'
+      - 'apps/glowlytics/src/**'
+      - 'apps/glowlytics/assets/**'
+      - 'apps/glowlytics/app.json'
+      - 'apps/glowlytics/eas.json'
+      - 'apps/glowlytics/package.json'
       - '.github/workflows/deploy-mobile.yml'
   workflow_dispatch:
     inputs:
@@ -50,14 +50,14 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: RadianceIQ
+        working-directory: apps/glowlytics
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: RadianceIQ/package-lock.json
+          cache-dependency-path: apps/glowlytics/package-lock.json
       - run: npm ci --legacy-peer-deps
       - run: cd backend && npm ci --ignore-scripts
       - run: npx tsc --noEmit
@@ -78,9 +78,9 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: RadianceIQ/package-lock.json
+          cache-dependency-path: apps/glowlytics/package-lock.json
       - run: npm ci --legacy-peer-deps
-        working-directory: RadianceIQ
+        working-directory: apps/glowlytics
 
       - name: Setup EAS
         uses: expo/expo-github-action@v8
@@ -89,7 +89,7 @@ jobs:
           token: ${{ secrets.EXPO_TOKEN }}
 
       - name: Build
-        working-directory: RadianceIQ
+        working-directory: apps/glowlytics
         run: |
           PROFILE="${{ github.event.inputs.profile || 'production' }}"
           PLATFORM="${{ matrix.platform }}"
@@ -117,9 +117,9 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: RadianceIQ/package-lock.json
+          cache-dependency-path: apps/glowlytics/package-lock.json
       - run: npm ci --legacy-peer-deps
-        working-directory: RadianceIQ
+        working-directory: apps/glowlytics
 
       - name: Setup EAS
         uses: expo/expo-github-action@v8
@@ -128,7 +128,7 @@ jobs:
           token: ${{ secrets.EXPO_TOKEN }}
 
       - name: Submit latest build to TestFlight / Play Store
-        working-directory: RadianceIQ
+        working-directory: apps/glowlytics
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}

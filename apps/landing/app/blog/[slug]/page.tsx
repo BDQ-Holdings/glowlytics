@@ -38,5 +38,9 @@ export default async function BlogPost({ params }: Props) {
 
   const content = await renderMdx(item.content);
 
-  return <ArticleLayout meta={item.meta}>{content}</ArticleLayout>;
+  return (
+    <ArticleLayout meta={item.meta} markdown={item.content}>
+      {content}
+    </ArticleLayout>
+  );
 }

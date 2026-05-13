@@ -26,5 +26,9 @@ export default async function GlossaryEntry({ params }: Props) {
   const item = getContentBySlug("glossary", slug);
   if (!item) notFound();
   const content = await renderMdx(item.content);
-  return <ArticleLayout meta={item.meta}>{content}</ArticleLayout>;
+  return (
+    <ArticleLayout meta={item.meta} markdown={item.content}>
+      {content}
+    </ArticleLayout>
+  );
 }

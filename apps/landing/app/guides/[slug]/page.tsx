@@ -30,5 +30,9 @@ export default async function GuidePage({ params }: Props) {
   const item = getContentBySlug("guide", slug);
   if (!item) notFound();
   const content = await renderMdx(item.content);
-  return <ArticleLayout meta={item.meta}>{content}</ArticleLayout>;
+  return (
+    <ArticleLayout meta={item.meta} markdown={item.content}>
+      {content}
+    </ArticleLayout>
+  );
 }

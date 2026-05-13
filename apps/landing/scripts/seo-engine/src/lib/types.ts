@@ -2,6 +2,7 @@ export type ContentType = "blog" | "faq" | "guide" | "glossary";
 export type SearchIntent = "informational" | "transactional" | "navigational";
 export type ClusterStatus = "new" | "researched" | "written";
 export type Confidence = "high" | "medium" | "low";
+export type RunStatus = "completed" | "partial" | "failed" | "skipped";
 
 export interface KeywordCluster {
   slug: string;
@@ -53,4 +54,32 @@ export interface ContentFrontmatter {
   readingTime: number;
   schema: "Article" | "FAQPage" | "HowTo";
   relatedSlugs: string[];
+}
+
+export interface StageResult {
+  name: string;
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+  timeoutMs: number;
+  timedOut?: boolean;
+  signal?: string;
+  error?: string;
+}
+
+export interface DailyRunReport {
+  runId: string;
+  startedAt: string;
+  finishedAt?: string;
+  localDate: string;
+  dailyLimit: number;
+  alreadyWrittenToday: number;
+  selectedSlugs: string[];
+  researchedSlugs: string[];
+  writtenSlugs: string[];
+  failedSlugs: string[];
+  skippedReason?: string;
+  stages: StageResult[];
+  discoverTriggered: boolean;
+  status: RunStatus;
 }

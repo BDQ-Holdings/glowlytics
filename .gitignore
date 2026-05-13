@@ -13,3 +13,11 @@ web-build/
 .DS_Store
 *.log
 .superpowers/
+.claude/
+apps/glowlytics/dist-web-check/
+apps/landing/.next/
+apps/landing/out/
+apps/landing/tsconfig.tsbuildinfo
+apps/landing/data/.seo-daily.lock
+apps/landing/data/runs/*.json
+apps/landing/data/runs/cron.log

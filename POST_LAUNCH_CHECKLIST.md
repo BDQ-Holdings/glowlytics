@@ -2,11 +2,14 @@
 
 ## Week 1 (Immediate)
 - [ ] Monitor Clerk production auth — verify sign-in with Apple/Google/email works
+- [ ] **Do NOT re-enable "Client Trust" or MFA on `test@test.com`** — reviewer login will fail (Apple rejected v1.0.1 for exactly this)
+- [ ] Confirm MRDP compliance form is saved in ASC → App Information (required for any future resubmission)
 - [ ] Monitor RevenueCat — verify paywall presentation, trial activation, subscription purchase
 - [ ] Verify RAG responses are returning guideline citations in scan results
 - [ ] Check PostHog: set up auth->scan funnel, paywall conversion, retention dashboards
 - [ ] Monitor Railway logs for errors (`railway logs`)
 - [ ] Respond to any App Review feedback
+- [ ] Update `eas.json` `ascAppId` from `6744096507` → `6760600635` (stale; EAS credentials override works but cleaner to fix)
 
 ## Week 2-4 (Stabilization)
 - [ ] Run ML evaluation notebook (target: MAE < 10, Pearson r > 0.7)

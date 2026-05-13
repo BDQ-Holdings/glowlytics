@@ -3,6 +3,8 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { getAutocompleteSuggestions } from "./lib/autocomplete.js";
+import { filterKeywords } from "./lib/keyword-filter.js";
+import { sleep } from "./lib/pipeline.js";
 import { scrapeSERP } from "./lib/serp.js";
 import { clusterKeywords } from "./lib/clustering.js";
 import type { KeywordCluster } from "./lib/types.js";
@@ -11,10 +13,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.resolve(__dirname, "../../../data");
 const SEEDS_PATH = path.join(DATA_DIR, "seeds.json");
 const KEYWORDS_PATH = path.join(DATA_DIR, "keywords.json");
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 async function main() {
   console.log("=== SEO Engine: Keyword Discovery ===\n");
@@ -31,6 +29,7 @@ async function main() {
 
   for (const seed of seeds) {
     console.log(`\n--- Processing seed: "${seed}" ---`);
+    allSuggestions.push(seed);
 
     console.log("  Fetching autocomplete suggestions...");
     const suggestions = await getAutocompleteSuggestions(seed);
@@ -49,8 +48,8 @@ async function main() {
     await sleep(1000);
   }
 
-  const uniqueSuggestions = [...new Set(allSuggestions.map((s) => s.toLowerCase().trim()))];
-  console.log(`\n\nTotal unique suggestions: ${uniqueSuggestions.length}`);
+  const uniqueSuggestions = filterKeywords(allSuggestions);
+  console.log(`\n\nUsable unique suggestions: ${uniqueSuggestions.length}`);
 
   console.log("Clustering keywords...");
   const newClusters = clusterKeywords(uniqueSuggestions, paaMap);
@@ -72,4 +71,7 @@ async function main() {
   console.log("Done!");
 }
 
-main().catch(console.error);
+main().catch((err) => {
+  console.error(err);
+  process.exitCode = 1;
+});

@@ -1,58 +1,53 @@
-jest.mock('../api', () => ({
-  getAuthHeaders: jest.fn().mockResolvedValue({ Authorization: 'Bearer t' }),
+jest.mock('../httpClient', () => ({
+  httpJson: jest.fn(),
 }));
 jest.mock('../../config/env', () => ({
   env: { API_BASE_URL: 'https://api.test' },
 }));
 
 import { listConnectedApps, revokeConnectedApp } from '../mcpClients';
+import { httpJson } from '../httpClient';
 
-const mockFetch = jest.fn();
-(global as { fetch: typeof fetch }).fetch = mockFetch as unknown as typeof fetch;
+const mockHttpJson = httpJson as jest.MockedFunction<typeof httpJson>;
 
-beforeEach(() => mockFetch.mockReset());
+beforeEach(() => mockHttpJson.mockReset());
 
 describe('listConnectedApps', () => {
-  it('GETs /api/mcp/clients with auth headers', async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => [
-        { clientId: 'c1', clientName: 'Claude Desktop', scopes: ['openid'], connectedAt: '2026-04-15T00:00:00Z' },
-      ],
-    });
+  it('GETs /api/mcp/clients via httpJson (auth/retry/X-Request-ID handled centrally)', async () => {
+    mockHttpJson.mockResolvedValueOnce([
+      { clientId: 'c1', clientName: 'Claude Desktop', scopes: ['openid'], connectedAt: '2026-04-15T00:00:00Z' },
+    ]);
     const apps = await listConnectedApps();
-    expect(mockFetch).toHaveBeenCalledWith('https://api.test/api/mcp/clients', expect.objectContaining({
-      headers: expect.objectContaining({ Authorization: 'Bearer t' }),
-    }));
+    expect(mockHttpJson).toHaveBeenCalledWith('https://api.test/api/mcp/clients');
     expect(apps).toHaveLength(1);
     expect(apps[0].clientName).toBe('Claude Desktop');
   });
 
-  it('throws when the server returns non-2xx', async () => {
-    mockFetch.mockResolvedValueOnce({ ok: false, status: 500, json: async () => ({}) });
-    await expect(listConnectedApps()).rejects.toThrow(/failed_to_list_mcp_clients_500/);
+  it('propagates errors from httpJson', async () => {
+    mockHttpJson.mockRejectedValueOnce(new Error('http_500'));
+    await expect(listConnectedApps()).rejects.toThrow(/http_500/);
   });
 });
 
 describe('revokeConnectedApp', () => {
-  it('DELETEs /api/mcp/clients/:clientId with auth headers', async () => {
-    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ revoked: true }) });
+  it('DELETEs /api/mcp/clients/:clientId via httpJson', async () => {
+    mockHttpJson.mockResolvedValueOnce({ revoked: true });
     await revokeConnectedApp('app_xyz');
-    expect(mockFetch).toHaveBeenCalledWith(
+    expect(mockHttpJson).toHaveBeenCalledWith(
       'https://api.test/api/mcp/clients/app_xyz',
       expect.objectContaining({ method: 'DELETE' })
     );
   });
 
   it('url-encodes the clientId', async () => {
-    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ revoked: true }) });
+    mockHttpJson.mockResolvedValueOnce({ revoked: true });
     await revokeConnectedApp('weird/id with spaces');
-    const url = mockFetch.mock.calls[0][0] as string;
+    const url = mockHttpJson.mock.calls[0][0] as string;
     expect(url).toContain('weird%2Fid%20with%20spaces');
   });
 
-  it('throws when the server returns non-2xx', async () => {
-    mockFetch.mockResolvedValueOnce({ ok: false, status: 404, json: async () => ({}) });
-    await expect(revokeConnectedApp('x')).rejects.toThrow(/failed_to_revoke_mcp_client_404/);
+  it('propagates errors from httpJson', async () => {
+    mockHttpJson.mockRejectedValueOnce(new Error('http_404'));
+    await expect(revokeConnectedApp('x')).rejects.toThrow(/http_404/);
   });
 });

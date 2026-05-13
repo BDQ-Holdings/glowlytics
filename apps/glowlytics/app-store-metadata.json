@@ -1,0 +1,35 @@
+{
+  "appName": "Glowlytics",
+  "subtitle": "Skin Health Tracking",
+  "description": "Glowlytics is your personal skin health companion -- a clinically inspired tracking app that turns your daily skincare routine into measurable progress.\n\nPOWERED BY INTELLIGENT ANALYSIS\nGlowlytics combines advanced computer vision with dermatology-grade scoring frameworks (GAGS for acne, SCORAD for inflammation, VISIA-inspired metrics for sun damage) to give you objective, repeatable skin assessments. No guesswork, no subjective before-and-afters -- just data.\n\nDAILY TRACKING THAT TAKES SECONDS\nSnap a photo each morning. Our guided camera overlay ensures consistent lighting and framing so every scan is comparable. The app measures inflammation, pigmentation, and texture indices, then translates them into five intuitive signal scores: Structure, Hydration, Inflammation, Sun Damage, and Elasticity.\n\nSEE YOUR SKIN STORY UNFOLD\nWatch trend lines evolve over days, weeks, and months. Interactive charts show how each signal responds to product changes, sunscreen adherence, sleep quality, and hormonal cycles. Animated gauges and sparkline tiles make complex data instantly readable.\n\nPERSONALIZED PRODUCT INTELLIGENCE\nScan any product barcode or search by name. Glowlytics cross-references 45+ active ingredients against your skin profile and current concerns to generate a personalized effectiveness score. Know exactly which products are working -- and which ones are not worth the shelf space.\n\nCLINICIAN-READY REPORTS\nGenerate professional PDF exports that summarize your trend data, representative photos, product history, and context overlays (sunscreen use, sleep, cycle tracking) into a format your dermatologist can actually use. Bridge the gap between daily self-care and clinical conversations.\n\nSMART ONBOARDING\nTell Glowlytics your age range, primary concern, and target scan region. The app tailors its scoring weights, recommendations, and product intelligence to your specific goals -- whether that is clearing acne, reversing sun damage, or monitoring skin aging.\n\nPRIVACY BY DESIGN\nGlowlytics stores scan history locally and uses encrypted backend services when needed to sync account data and generate non-diagnostic skin insights. We do not sell your data, use it for advertising, or train public models on your photos.\n\nBUILT FOR REAL PEOPLE\n- Deterministic scoring algorithms (no random fluctuation)\n- Works offline after initial setup\n- Supports secure email authentication\n- Warm, low-contrast interface designed for comfortable morning routines\n- Haptic feedback for a premium, tactile experience\n- Accessibility-conscious design with clear contrast ratios\n\nWHAT YOU GET\n- Unlimited daily skin scans with guided camera\n- 5 signal dimensions with animated trend visualizations\n- Barcode-based product scanning with ingredient analysis\n- Personalized product effectiveness scores\n- Clinician-ready report generation with representative photos\n- Sunscreen adherence tracking\n- Optional sleep and cycle context integration\n- Streak tracking to build consistent habits\n\nSUBSCRIPTION TERMS\nGlow Pro is an auto-renewing subscription. Privacy Policy: https://glowlytics.ai/privacy\nTerms of Use (EULA): https://www.apple.com/legal/internet-services/itunes/dev/stdeula/\n\nGlowlytics was built by a team focused on helping people track skin changes more consistently and discuss trends more clearly with their clinician. Download today and start understanding your skin like never before.",
+  "keywords": "skin,health,acne,sun damage,skincare,tracking,dermatology,skin age,routine,analysis",
+  "category": "Health & Fitness",
+  "privacyPolicyUrl": "https://glowlytics.ai/privacy",
+  "supportUrl": "https://glowlytics.ai",
+  "marketingUrl": "https://glowlytics.ai",
+  "screenshots": {
+    "iphone_6_7": {
+      "device": "iPhone 15 Pro Max",
+      "resolution": "1290x2796",
+      "screens": [
+        "Onboarding welcome",
+        "Daily scan with camera overlay",
+        "Results with score tiles and facial mesh",
+        "Signal detail with animated gauge",
+        "Clinician report preview"
+      ]
+    }
+  },
+  "ageRating": "12+",
+  "contentDescriptions": {
+    "medicalInfo": true,
+    "userGeneratedContent": false
+  },
+  "reviewNotes": {
+    "demoAccount": {
+      "email": "test@test.com",
+      "password": "AppleTest123!"
+    },
+    "notes": "Sign in with the demo account above (email + password). The app auto-loads 21 days of skin scan history, 4 products, and gamification data for this account so all features are immediately visible. Key flows to review: (1) Home screen with score tiles and trend sparklines, (2) Camera tab for guided skin scan, (3) Signal detail pages with animated gauges and source citations, (4) Products tab with ingredient analysis, (5) Profile with streak and badges, (6) Profile > Account & Plan > Delete account for full account deletion. The app requires camera access for skin scanning. HealthKit integration is optional and can be skipped during onboarding. Subscription disclosures and legal links appear on the paywall screen."
+  }
+}

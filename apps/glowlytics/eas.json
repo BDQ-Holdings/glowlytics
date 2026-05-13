@@ -1,0 +1,54 @@
+{
+  "cli": {
+    "version": ">= 14.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": {
+        "simulator": false
+      },
+      "env": {
+        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_dHJ1ZS1zdW5iZWFtLTYwLmNsZXJrLmFjY291bnRzLmRldiQ",
+        "EXPO_PUBLIC_API_BASE_URL": "http://192.168.1.26:3001",
+        "EXPO_PUBLIC_REVENUECAT_API_KEY": "appl_MBqPaEhWtSCUgAaUcgQzuwEsGpc",
+        "EXPO_PUBLIC_POSTHOG_API_KEY": "phc_ug01nkCMyTUbzxOO4GBXT7zfzmAbZlC8KR1zo4Nps28",
+        "EXPO_PUBLIC_ENABLE_APPLE_OAUTH": "true",
+        "EXPO_PUBLIC_ENABLE_GOOGLE_OAUTH": "true"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_dHJ1ZS1zdW5iZWFtLTYwLmNsZXJrLmFjY291bnRzLmRldiQ",
+        "EXPO_PUBLIC_API_BASE_URL": "https://glowlytics-api-production.up.railway.app",
+        "EXPO_PUBLIC_REVENUECAT_API_KEY": "appl_MBqPaEhWtSCUgAaUcgQzuwEsGpc",
+        "EXPO_PUBLIC_POSTHOG_API_KEY": "phc_ug01nkCMyTUbzxOO4GBXT7zfzmAbZlC8KR1zo4Nps28",
+        "EXPO_PUBLIC_ENABLE_APPLE_OAUTH": "true",
+        "EXPO_PUBLIC_ENABLE_GOOGLE_OAUTH": "true"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuZ2xvd2x5dGljcy5haSQ",
+        "EXPO_PUBLIC_API_BASE_URL": "https://glowlytics-api-production.up.railway.app",
+        "EXPO_PUBLIC_REVENUECAT_API_KEY": "appl_MBqPaEhWtSCUgAaUcgQzuwEsGpc",
+        "EXPO_PUBLIC_POSTHOG_API_KEY": "phc_ug01nkCMyTUbzxOO4GBXT7zfzmAbZlC8KR1zo4Nps28",
+        "EXPO_PUBLIC_ENABLE_APPLE_OAUTH": "true",
+        "EXPO_PUBLIC_ENABLE_GOOGLE_OAUTH": "true"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "appleId": "drmustafa@bdqholdings.com",
+        "ascAppId": "6760600635",
+        "appleTeamId": "D86BX62AKF"
+      }
+    }
+  }
+}

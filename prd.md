@@ -16,11 +16,14 @@ Glowlytics is a skin health tracking app that enables users to gain insights int
 - Flashlight integration (Android/iOS)
 - HealthKit/HealthConnect permissions (mocked for Expo Go, native for EAS builds)
 - Face detection bounding box overlay on camera UI
+- **Glow design language** — three palettes (Dusk default, Meadow, Rose) with cream + dusk-plum accent; Switzer body + DancingScript italic word accents; SF-symbol monoline icon set (22 glyphs in `src/components/glow/`); BreathingGlow + GlowRing + GlowSpark + FadeUp primitives with the 150/280/380/480ms staggered cadence
+- **Fortified API client** — `src/services/httpClient.ts` wraps every backend call with exponential backoff + jitter, `Retry-After` honoring, 50s Bearer-token cache, 401-driven token refresh, `X-Request-ID` correlation, and a structured `ApiError` class. `src/services/syncOutbox.ts` replaces fire-and-forget store mutations with a durable retry queue (up to 5 attempts, exp backoff to 30s)
 
 ### Backend
 - **Express.js** API server with JWT authentication middleware
 - **PostgreSQL** database
-- **Open Beauty Facts API** - skincare product ingredients lookup via barcode (waterfall: Open Beauty Facts → Open Food Facts → UPCitemdb → NIH DailyMed)
+- **MCP (Model Context Protocol) server** — Streamable HTTP transport mounted at `/mcp` with JWKS Bearer auth, beta allowlist gate, per-user rate limiter (60/min + 10/sec burst), structured tool-call audit logging. Exposes 9 user-scoped tools to authenticated MCP clients (Claude.ai etc.): `get_latest_scan`, `get_scan_history`, `get_signal_trend`, `compare_scans`, `get_scan_report`, `get_current_routine`, `lookup_ingredient`, `search_ingredients`, `summarize_month`. Connected apps managed via `/api/mcp/clients` GET + DELETE; surfaced in the Profile → Connected Apps (Beta) section.
+- **Open Beauty Facts API** - skincare product ingredients lookup via barcode (waterfall: Open Beauty Facts → Open Food Facts → UPCitemdb → NIH DailyMed; each source capped at 6s, telemetry on failure)
 - **Vision LLM API** — Fine-tuned GPT-4o for skin image analysis with condition detection (9 types × 8 facial zones), personalized feedback, local fallback
 - **3-layer parallel vision pipeline** — Layer 1: deterministic features (CIELAB, ITA, GLCM, LBP, Gabor, Frangi) + Layer 2: ONNX CV models (structure MobileNetV3, hydration/elasticity EfficientNet-B0, YOLOv8 lesion detector) + Layer 3: fine-tuned GPT-4o. Score merging: L2 overrides > L1+L3 blend.
 - **On-device lesion detection** — YOLOv8 ONNX model via onnxruntime-react-native, CoreML on iOS. Downloads from HuggingFace on first use, cached locally. Real-time inference during camera scan.
@@ -434,24 +437,28 @@ Score merging: Layer 2 overrides > Layer 1 + Layer 3 weighted blend (0.6/0.4 for
 
 ---
 
-## Implementation Status (as of 2026-03-25)
+## Implementation Status (as of 2026-05-11)
 
 ### Completed (Ship-Ready)
 - All 3 user journeys fully implemented (onboarding, daily scan, report)
 - **Mandatory auth flow** with Clerk sign-in gate, forgot password, sign-out
-- **Auth token wiring** — Clerk getToken() injected into API client on app startup
-- **Animated auth screens** with Headspace-inspired staggered entrances, error shake, success haptics
+- **Auth token wiring** — Clerk getToken() injected into API client on app startup; cached for 50s in httpClient
+- **Animated auth screens** with Headspace-inspired staggered entrances, error shake, success haptics; Glow palette skin (cream + dusk plum, DancingScript wordmark)
 - **Clerk authentication** with Sign in with Apple, Google, and Email/Password
+- **Glow design language redesign** — full app reskin: 3 palettes (Dusk default, Meadow, Rose); Switzer body + DancingScript italic accent; SF-symbol monoline icons; BreathingGlow + GlowRing + GlowSpark + FadeUp primitives; Today / Story / Shelf / Me tab structure with route files preserved for deep links; 4-facet UI (Hydrated/Calm/Even/Firm) mapped onto the existing 5-signal ML pipeline via `src/constants/facets.ts`. New screens: `app/story.tsx`, `app/today/ritual.tsx`, `app/account.tsx`, `app/routine.tsx`.
+- **MCP server** — Streamable HTTP transport at `/mcp`, JWKS Bearer auth, beta allowlist, per-user rate limiter (60/min + 10/sec burst), 9 user-scoped tools (`get_latest_scan`, `get_scan_history`, `get_signal_trend`, `compare_scans`, `get_scan_report`, `get_current_routine`, `lookup_ingredient`, `search_ingredients`, `summarize_month`), structured tool-call audit logging, cross-tool user-scoping test suite. Connected Apps (Beta) section in Profile lists + revokes clients via `/api/mcp/clients` GET+DELETE.
+- **Fortified API client** — `src/services/httpClient.ts` is the single fetch wrapper for every backend + 3rd-party call: exponential backoff with jitter, `Retry-After` honoring, 401 token refresh, `X-Request-ID` correlation, structured `ApiError`. `src/services/syncOutbox.ts` replaces the previous fire-and-forget pattern with a durable retry queue (up to 5 attempts, capped 30s backoff). 3rd-party product lookups capped at 6s with per-source telemetry.
 - **RevenueCat subscription** — "Glow Pro" entitlement, 7-day free trial (started on onboarding paywall skip), monthly/yearly/lifetime products, native paywall UI via RevenueCatUI, Customer Center for subscription management. Error 23 (CONFIGURATION_ERROR) silenced.
 - **Scan gating** — camera tab, camera screen, home scan buttons redirect to paywall when trial expired and not subscribed
 - **Daily scan notifications** — expo-notifications with configurable time picker in onboarding + profile settings
-- **Products tab** — full product management screen replacing Trend tab, with routine score ring, product cards with effectiveness rings, add via search/barcode/manual entry
+- **Shelf tab (renamed from Products)** — full product management screen with tone-tinted cards + heart rating; routine score view (`app/routine.tsx`) reachable from "See routine score & conflicts" link
 - **Report gating** — clinician reports require active "Glow Pro" subscription
-- **PostHog analytics** — 20 events tracked across auth, onboarding, scans, paywall conversion, engagement, and sign-out; user identification via Clerk userId
+- **PostHog analytics** — 20+ events tracked across auth, onboarding, scans, paywall conversion, engagement, sync-outbox drops, product-lookup failures, sign-out; user identification via Clerk userId
 - **Vision API** — fine-tuned GPT-4o (`ft:gpt-4o-2024-08-06:personal:radianceiq-skin:DHBaOo20`) via backend proxy; API key server-side only
-- **RAG pipeline** — Pinecone vector DB with 18 curated AAD/ACOG guideline chunks, semantic search via OpenAI text-embedding-3-small
-- **Product intelligence** with 45-ingredient knowledge base, personalized effectiveness scoring, detail views
-- **Signal detail screens** with animated gauges, trend charts, personalized recommendations
+- **RAG pipeline** — Pinecone vector DB with 80 curated AAD/ACOG guideline chunks, semantic search via OpenAI text-embedding-3-small
+- **Product intelligence** with 45-ingredient knowledge base, personalized effectiveness scoring, detail views (redesigned with Glow verdict card)
+- **Signal detail screens** with animated gauges, trend charts, personalized recommendations (redesigned with breathing glow + facet copy)
+- **Pattern detail** — 7-day correlation bar chart, side-by-side evidence, "Try this" tips
 - **Photo persistence** — scan photos saved to documentDirectory, stored in DailyRecord.photo_uri
 - **Representative photos in reports** — first/middle/last photos from selected time range
 - **Privacy policy** — in-app screen (BDQ Holdings LLC, GDPR/CCPA, 11 sections)
@@ -464,9 +471,9 @@ Score merging: Layer 2 overrides > Layer 1 + Layer 3 weighted blend (0.6/0.4 for
 - **App icon** — gradient background (purple-to-cyan) with white G logo
 - **App Store metadata** — description, keywords, screenshot specs for iPhone 15 Pro Max
 - **Demo script** — 7-minute structured walkthrough with talking points
-- **Production build submitted** — v1.0.0 build #3 uploaded to App Store Connect
-- **412 tests** (24 suites), 0 TypeScript errors
-- 48 screen files, 24 components, 20 services, 7 backend modules, Zustand store
+- **Production build submitted** — v1.1.6 build #106 uploaded to TestFlight 2026-05-09
+- **361 mobile tests** (24 suites) + **285 backend tests** (24 suites) = 646 total, 0 TypeScript errors
+- 56 screen files, 31 components (37 with nested), 31 services, 7 top-level backend modules (+23 nested), Zustand store
 - EAS dev client + production builds succeeding (latest on TestFlight)
 
 ### SDK Migration (SDK 55 → 54)

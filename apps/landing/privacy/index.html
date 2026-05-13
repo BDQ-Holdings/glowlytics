@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy - Glowlytics</title>
+  <meta name="description" content="Glowlytics Privacy Policy. Learn how BDQ Holdings LLC handles your data.">
+  <link rel="icon" type="image/png" href="../logo-emblem.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400;1,9..40,500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'DM Sans', -apple-system, sans-serif;
+      background: #EDF5F6;
+      color: #1a2b3c;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    /* ============ NAV ============ */
+    .nav-wrap {
+      background: rgba(240, 247, 248, 0.97);
+      border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+    .nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 40px;
+      max-width: 1080px;
+      margin: 0 auto;
+    }
+    .nav-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+    }
+    .nav-logo img { width: 34px; height: 34px; }
+    .nav-logo span {
+      font-size: 17px;
+      font-weight: 700;
+      color: #0e1e2e;
+    }
+    .nav-back {
+      color: #4a5e6d;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      transition: color 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .nav-back:hover { color: #1a2b3c; }
+    .nav-back svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    /* ============ PAGE HEADER ============ */
+    .page-header {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 64px 24px 0;
+      text-align: center;
+    }
+    .page-header h1 {
+      font-size: 42px;
+      font-weight: 700;
+      line-height: 1.15;
+      letter-spacing: -1.5px;
+      color: #0e1e2e;
+      margin-bottom: 16px;
+    }
+    .page-header .meta {
+      font-size: 15px;
+      color: #7a8f9e;
+      line-height: 1.6;
+    }
+    .page-header .meta strong {
+      color: #5a6f7e;
+      font-weight: 600;
+    }
+
+    /* ============ CONTENT ============ */
+    .content {
+      max-width: 800px;
+      margin: 40px auto 80px;
+      padding: 0 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 20px;
+      padding: 36px 40px;
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+      border: 1px solid rgba(0, 0, 0, 0.04);
+    }
+    .card h2 {
+      font-size: 20px;
+      font-weight: 700;
+      color: #0e1e2e;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .card h2 .num {
+      width: 30px;
+      height: 30px;
+      border-radius: 10px;
+      background: #EDF5F6;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+      color: #39B5BF;
+      flex-shrink: 0;
+    }
+    .card p {
+      font-size: 15px;
+      color: #4a5e6d;
+      line-height: 1.75;
+      margin-bottom: 12px;
+    }
+    .card p:last-child {
+      margin-bottom: 0;
+    }
+    .card ul {
+      list-style: none;
+      padding: 0;
+      margin: 0 0 12px 0;
+    }
+    .card ul:last-child {
+      margin-bottom: 0;
+    }
+    .card li {
+      font-size: 15px;
+      color: #4a5e6d;
+      line-height: 1.75;
+      padding-left: 20px;
+      position: relative;
+    }
+    .card li::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 11px;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #39B5BF;
+    }
+    .card a {
+      color: #39B5BF;
+      text-decoration: none;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+    .card a:hover {
+      color: #2a9aa3;
+    }
+
+    /* ============ FOOTER ============ */
+    footer {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 28px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      border-top: 1px solid rgba(0, 0, 0, 0.06);
+    }
+    footer .c { font-size: 12px; color: #9badb8; }
+    footer .fl { display: flex; gap: 20px; }
+    footer .fl a { font-size: 12px; color: #9badb8; text-decoration: none; }
+    footer .fl a:hover { color: #5a6f7e; }
+
+    /* ============ RESPONSIVE ============ */
+    @media (max-width: 900px) {
+      .nav { padding: 18px 24px; }
+      .page-header { padding: 48px 24px 0; }
+      .page-header h1 { font-size: 32px; letter-spacing: -1px; }
+      .card { padding: 28px 24px; border-radius: 16px; }
+    }
+    @media (max-width: 480px) {
+      .page-header h1 { font-size: 28px; }
+      .card h2 { font-size: 18px; }
+      footer { flex-direction: column; text-align: center; }
+    }
+
+    /* ============ ANIMATIONS ============ */
+    @keyframes rise { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
+    .an { opacity: 0; animation: rise 0.65s ease-out forwards; }
+    .an1 { animation-delay: 0.05s; }
+    .an2 { animation-delay: 0.1s; }
+    .an3 { animation-delay: 0.15s; }
+    .an4 { animation-delay: 0.2s; }
+    .an5 { animation-delay: 0.25s; }
+    .an6 { animation-delay: 0.3s; }
+    .an7 { animation-delay: 0.35s; }
+    .an8 { animation-delay: 0.4s; }
+    .an9 { animation-delay: 0.45s; }
+    .an10 { animation-delay: 0.5s; }
+    .an11 { animation-delay: 0.55s; }
+    .an12 { animation-delay: 0.6s; }
+    .an13 { animation-delay: 0.65s; }
+  </style>
+</head>
+<body>
+
+<!-- ===== NAV ===== -->
+<div class="nav-wrap">
+  <nav class="nav">
+    <a href="/" class="nav-logo">
+      <img src="../logo-emblem.png" alt="Glowlytics">
+      <span>Glowlytics</span>
+    </a>
+    <a href="/" class="nav-back">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M10 12L6 8l4-4"/>
+      </svg>
+      Back to home
+    </a>
+  </nav>
+</div>
+
+<!-- ===== PAGE HEADER ===== -->
+<div class="page-header an an1">
+  <h1>Privacy Policy</h1>
+  <p class="meta">
+    <strong>Effective Date:</strong> April 20, 2026<br>
+    <strong>Company:</strong> BDQ Holdings LLC<br>
+    <strong>Contact:</strong> <a href="mailto:drmustafa@bdqholdings.com" style="color:#39B5BF;text-decoration:none;font-weight:500;">drmustafa@bdqholdings.com</a>
+  </p>
+</div>
+
+<!-- ===== CONTENT ===== -->
+<div class="content">
+
+  <!-- 1. Information We Collect -->
+  <div class="card an an2">
+    <h2><span class="num">1</span> Information We Collect</h2>
+    <p>We collect the following types of information to provide and improve the Glowlytics experience:</p>
+    <ul>
+      <li><strong>Account information</strong> -- name, email address, and authentication credentials managed through Clerk</li>
+      <li><strong>Skin scan photos</strong> -- images captured via your device camera for skin analysis</li>
+      <li><strong>Face data used for scan alignment</strong> -- a face bounding box, approximate face size, head angle, and facial landmark or mesh coordinates processed on-device during live camera preview so scans are framed consistently. We do not use this data for face recognition or identity verification.</li>
+      <li><strong>Health metrics</strong> -- skin scores, condition assessments, and trend data generated by our AI analysis</li>
+      <li><strong>Product usage data</strong> -- skincare products you log, including barcode scans and usage patterns</li>
+      <li><strong>Demographic information</strong> -- age, skin type, and related details you provide during onboarding</li>
+      <li><strong>Device information</strong> -- device type, operating system, and app version for compatibility and troubleshooting</li>
+    </ul>
+  </div>
+
+  <!-- 2. How We Use Your Data -->
+  <div class="card an an3">
+    <h2><span class="num">2</span> How We Use Your Data</h2>
+    <p>Your data is used exclusively to deliver and improve the Glowlytics service:</p>
+    <ul>
+      <li><strong>Skin analysis</strong> -- processing your scan photos through our fine-tuned AI model to identify conditions and generate scores</li>
+      <li><strong>Face alignment</strong> -- using live face-position and landmark data on your device to guide framing, distance, and angle before a scan is captured</li>
+      <li><strong>Trend tracking</strong> -- monitoring changes in your skin health over time to surface meaningful insights</li>
+      <li><strong>Personalized recommendations</strong> -- providing evidence-based guidance informed by AAD and ACOG clinical guidelines via our RAG pipeline</li>
+      <li><strong>Service improvement</strong> -- understanding aggregate usage patterns to improve app functionality and accuracy</li>
+    </ul>
+    <p><strong>We do not sell your data. We do not use your data for advertising.</strong></p>
+  </div>
+
+  <!-- 3A. Face Data -->
+  <div class="card an an4">
+    <h2><span class="num">3A</span> Face Data</h2>
+    <p>When you open the guided camera, Glowlytics processes limited face data on-device so it can align your scan consistently. This face data may include a face bounding box, approximate face size, head angle, and facial landmark or mesh coordinates during live preview.</p>
+    <ul>
+      <li><strong>Purpose</strong> -- center your face, confirm distance, and keep scan framing consistent over time</li>
+      <li><strong>Retention</strong> -- live face-alignment data is discarded when the camera session ends and is not stored as a reusable biometric template</li>
+      <li><strong>Sharing</strong> -- live face-alignment data is not shared with third parties. Captured scan photos may be processed by our secure backend and OpenAI under our API agreement to generate non-diagnostic skin insights</li>
+      <li><strong>What we do not do</strong> -- Glowlytics does not use face data for identity verification, face recognition, emotion detection, advertising, or profiling</li>
+    </ul>
+  </div>
+
+  <!-- 3. Data Storage and Security -->
+  <div class="card an an5">
+    <h2><span class="num">3</span> Data Storage and Security</h2>
+    <p>Your data is stored using a combination of local and server-side storage:</p>
+    <ul>
+      <li><strong>Local device storage</strong> -- scan history, preferences, and cached data are stored on your device using AsyncStorage</li>
+      <li><strong>Ephemeral face alignment data</strong> -- live face bounding boxes and landmark or mesh coordinates stay on-device during camera preview and are discarded after the session ends</li>
+      <li><strong>Encrypted backend</strong> -- data synced to our servers is stored in PostgreSQL with TLS encryption in transit</li>
+    </ul>
+    <p>We employ industry-standard security practices to protect your information, including encrypted connections, secure authentication via Clerk, and server-side API key management to prevent exposure of credentials.</p>
+  </div>
+
+  <!-- 4. Third-Party Services -->
+  <div class="card an an6">
+    <h2><span class="num">4</span> Third-Party Services</h2>
+    <p>Glowlytics integrates the following third-party services:</p>
+    <ul>
+      <li><strong>Clerk</strong> -- handles authentication, account management, and secure session tokens. Subject to <a href="https://clerk.com/privacy" target="_blank" rel="noopener">Clerk's Privacy Policy</a></li>
+      <li><strong>OpenAI</strong> -- powers our vision-based skin analysis via their API. Captured scan photos may include your face and are processed under our API agreement. Photos sent to OpenAI are not stored or used for model training by OpenAI</li>
+    </ul>
+    <p>No third-party service receives your scan photos for marketing, advertising, or model training purposes.</p>
+  </div>
+
+  <!-- 5. Your Rights -->
+  <div class="card an an7">
+    <h2><span class="num">5</span> Your Rights (GDPR / CCPA)</h2>
+    <p>You have the following rights regarding your personal data:</p>
+    <ul>
+      <li><strong>Right of access</strong> -- request a copy of the personal data we hold about you</li>
+      <li><strong>Right to deletion</strong> -- request that we delete your personal data</li>
+      <li><strong>Right to portability</strong> -- receive your data in a structured, machine-readable format</li>
+      <li><strong>Right to rectification</strong> -- request correction of inaccurate personal data</li>
+      <li><strong>Right to restrict processing</strong> -- limit how we process your data</li>
+      <li><strong>Right to object</strong> -- object to certain types of data processing</li>
+      <li><strong>Right to opt out of sale</strong> -- we do not sell personal data, but you may exercise this right at any time</li>
+    </ul>
+    <p>To exercise any of these rights, use Profile &gt; Delete account in the app or contact <a href="mailto:drmustafa@bdqholdings.com">drmustafa@bdqholdings.com</a>. We will respond to all verified requests within 30 days.</p>
+  </div>
+
+  <!-- 6. Data Retention -->
+  <div class="card an an8">
+    <h2><span class="num">6</span> Data Retention</h2>
+    <p>We retain your personal data for as long as your account remains active. You may delete your data at any time through Profile &gt; Delete account in the app or by contacting us at <a href="mailto:drmustafa@bdqholdings.com">drmustafa@bdqholdings.com</a>.</p>
+    <p>Upon receiving a deletion request, all associated personal data will be permanently removed from our systems within 30 days.</p>
+    <p>Live face-alignment data is not retained beyond the active camera session. Captured scan photos that include your face are retained until you delete your account or request deletion.</p>
+  </div>
+
+  <!-- 7. Camera and Photo Permissions -->
+  <div class="card an an9">
+    <h2><span class="num">7</span> Camera and Photo Permissions</h2>
+    <p>Glowlytics requires camera access to perform skin scans. Photos captured during scans may include your face and are handled as follows:</p>
+    <ul>
+      <li>Processed on-device for real-time lesion detection during camera alignment</li>
+      <li>Stored locally on your device</li>
+      <li>Sent to our secure backend for AI-powered analysis, encrypted in transit via TLS</li>
+      <li>Photos are never shared with third parties for marketing or advertising purposes</li>
+      <li>Photos are never posted publicly or made accessible to other users</li>
+      <li>You can revoke camera permissions at any time through your device settings</li>
+    </ul>
+  </div>
+
+  <!-- 8. Health Data Disclaimer -->
+  <div class="card an an10">
+    <h2><span class="num">8</span> Health Data Disclaimer</h2>
+    <p>Glowlytics provides skin health insights for informational purposes only. Important limitations:</p>
+    <ul>
+      <li>Our analysis is <strong>non-diagnostic</strong> and does not constitute medical advice</li>
+      <li>Results should not be used as a substitute for professional medical consultation</li>
+      <li>Health data is never shared with insurance companies or employers</li>
+      <li>Always consult a qualified healthcare professional for medical concerns about your skin</li>
+    </ul>
+  </div>
+
+  <!-- 9. Children's Privacy -->
+  <div class="card an an11">
+    <h2><span class="num">9</span> Children's Privacy</h2>
+    <p>Glowlytics is not intended for use by individuals under the age of 13. We do not knowingly collect personal information from children under 13.</p>
+    <p>If you believe that a child under 13 has provided personal data to Glowlytics, please contact us immediately at <a href="mailto:drmustafa@bdqholdings.com">drmustafa@bdqholdings.com</a> and we will take steps to delete that information.</p>
+  </div>
+
+  <!-- 10. Changes to This Policy -->
+  <div class="card an an12">
+    <h2><span class="num">10</span> Changes to This Policy</h2>
+    <p>We may update this Privacy Policy from time to time. When we do:</p>
+    <ul>
+      <li>The updated policy will be posted in the app and on this page</li>
+      <li>The effective date at the top of this page will be updated</li>
+      <li>For material changes, we will provide prominent notice within the app</li>
+    </ul>
+  </div>
+
+  <!-- 11. Contact -->
+  <div class="card an an13">
+    <h2><span class="num">11</span> Contact Us</h2>
+    <p>If you have any questions about this Privacy Policy or our data practices, please contact us:</p>
+    <ul>
+      <li><strong>Company:</strong> BDQ Holdings LLC</li>
+      <li><strong>Email:</strong> <a href="mailto:drmustafa@bdqholdings.com?subject=Glowlytics%20Privacy%20Inquiry">drmustafa@bdqholdings.com</a></li>
+      <li><strong>Subject line:</strong> Glowlytics Privacy Inquiry</li>
+      <li><strong>Terms of Use:</strong> <a href="/terms">glowlytics.ai/terms</a></li>
+      <li><strong>Apple Standard EULA:</strong> <a href="https://www.apple.com/legal/internet-services/itunes/dev/stdeula/" target="_blank" rel="noopener">apple.com/legal/internet-services/itunes/dev/stdeula</a></li>
+    </ul>
+  </div>
+
+</div>
+
+<!-- ===== FOOTER ===== -->
+<footer>
+  <span class="c">&copy; 2026 BDQ Holdings LLC</span>
+  <div class="fl">
+    <a href="/privacy">Privacy</a>
+    <a href="/terms">Terms</a>
+    <a href="mailto:drmustafa@bdqholdings.com">Contact</a>
+  </div>
+</footer>
+
+</body>
+</html>

@@ -620,6 +620,9 @@ app.post('/api/rag/seed', async (req, res) => {
 // verified against JWKS), independent of the legacy session cookie middleware.
 const { mcpConfig: _mcpCfg } = require('./mcp/config');
 if (_mcpCfg().enabled) {
+  // Order matters: oauth-proxy before well-known because well-known reads
+  // isProxyEnabled() to decide which auth_server to advertise.
+  require('./mcp/oauth-proxy').mountOAuthProxy(app);
   require('./mcp/well-known').mountWellKnown(app);
   require('./mcp/transport').mountMcp(app);
 }
@@ -1076,8 +1079,16 @@ app.post('/api/users', async (req, res) => {
 });
 
 // Issue #2: Account deletion (Apple App Store Guideline 5.1.1(v))
+//
+// Two-phase delete: app-data cascade in a transaction first, then a best-effort
+// Clerk user delete. The Clerk delete is intentionally outside the DB transaction —
+// if it fails (network blip, key rotation), the user's app data is still gone and
+// we surface a 200 with a flag so the client can sign out cleanly. Apple 5.1.1(v)
+// requires both auth identity and app data to be removable; the client also calls
+// signOut() so the session is invalidated even if the Clerk DELETE retries later.
 app.delete('/api/users/:id', async (req, res) => {
   if (!authorizeUser(req, res, req.params.id)) return;
+  const userId = req.params.id;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -1085,15 +1096,15 @@ app.delete('/api/users/:id', async (req, res) => {
     await client.query(
       `DELETE FROM model_outputs WHERE daily_id IN
        (SELECT daily_id FROM daily_records WHERE user_id = $1)`,
-      [req.params.id]
+      [userId]
     );
-    await client.query('DELETE FROM daily_records WHERE user_id = $1', [req.params.id]);
-    await client.query('DELETE FROM product_catalog WHERE user_id = $1', [req.params.id]);
-    await client.query('DELETE FROM scan_protocols WHERE user_id = $1', [req.params.id]);
-    await client.query('DELETE FROM report_artifacts WHERE user_id = $1', [req.params.id]);
+    await client.query('DELETE FROM daily_records WHERE user_id = $1', [userId]);
+    await client.query('DELETE FROM product_catalog WHERE user_id = $1', [userId]);
+    await client.query('DELETE FROM scan_protocols WHERE user_id = $1', [userId]);
+    await client.query('DELETE FROM report_artifacts WHERE user_id = $1', [userId]);
     const result = await client.query(
       'DELETE FROM user_profiles WHERE user_id = $1 RETURNING user_id',
-      [req.params.id]
+      [userId]
     );
     await client.query('COMMIT');
 
@@ -1101,7 +1112,32 @@ app.delete('/api/users/:id', async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    res.json({ success: true, message: 'Account and all associated data deleted' });
+    // Phase 2: delete the Clerk user record so auth identity is gone too.
+    // Best-effort — log and continue on failure rather than leaving partial state.
+    let clerkDeleted = false;
+    if (process.env.CLERK_SECRET_KEY) {
+      try {
+        const clerkApiBase = process.env.CLERK_API_BASE || 'https://api.clerk.com';
+        const url = `${clerkApiBase}/v1/users/${encodeURIComponent(userId)}`;
+        const clerkRes = await fetch(url, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${process.env.CLERK_SECRET_KEY}` },
+        });
+        // 200 = deleted, 404 = already gone (treat as success)
+        clerkDeleted = clerkRes.ok || clerkRes.status === 404;
+        if (!clerkDeleted) {
+          log.warn('[delete-user]', `Clerk delete returned ${clerkRes.status} for ${userId}`);
+        }
+      } catch (e) {
+        log.warn('[delete-user]', 'Clerk delete request failed:', e?.message || e);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: 'Account and all associated data deleted',
+      clerk_deleted: clerkDeleted,
+    });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     res.status(500).json({ error: safeErrorMessage(err) });

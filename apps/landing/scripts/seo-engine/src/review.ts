@@ -3,6 +3,7 @@ import path from "path";
 import http from "http";
 import { fileURLToPath } from "url";
 import matter from "gray-matter";
+import { getCurrentDateString } from "./lib/pipeline.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CONTENT_DIR = path.resolve(__dirname, "../../../content");
@@ -15,8 +16,14 @@ interface DraftInfo {
   wordCount: number;
   dateGenerated: string;
   keywords: string[];
+  previewUrl: string;
   filePath: string;
   content: string;
+}
+
+function getPreviewPath(type: string, slug: string): string {
+  const segment = type === "guide" ? "guides" : type;
+  return `http://localhost:3000/preview/${segment}/${slug}`;
 }
 
 function getAllDrafts(): DraftInfo[] {
@@ -41,6 +48,7 @@ function getAllDrafts(): DraftInfo[] {
         wordCount: content.split(/\s+/).length,
         dateGenerated: data.dateGenerated || "",
         keywords: data.keywords || [],
+        previewUrl: getPreviewPath(data.type || dir, data.slug || file.replace(".mdx", "")),
         filePath,
         content,
       });
@@ -55,7 +63,7 @@ function updateStatus(filePath: string, newStatus: string): void {
   const { data, content } = matter(raw);
   data.status = newStatus;
   if (newStatus === "approved") {
-    data.dateModified = new Date().toISOString().split("T")[0];
+    data.dateModified = getCurrentDateString();
   }
   const updated = matter.stringify(content, data);
   fs.writeFileSync(filePath, updated);
@@ -161,6 +169,7 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     .btn-approve { background: #1a3a2a; color: #4ce84c; }
     .btn-reject { background: #3a1a1a; color: #e84c4c; }
     .btn-close { background: #1a2a3a; color: #a0b0c0; }
+    .btn-preview { background: #143244; color: #7de7e1; text-decoration: none; display: inline-flex; align-items: center; }
     .content-preview { background: #080e18; border-radius: 8px; padding: 16px; font-size: 14px; line-height: 1.7; white-space: pre-wrap; max-height: 70vh; overflow-y: auto; }
     .empty { text-align: center; padding: 60px; color: #4a5a6a; }
   </style>
@@ -214,7 +223,7 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
       const d = await res.json();
       const det = document.getElementById('detail');
       det.className = 'detail open';
-      det.innerHTML = '<div class="detail-actions"><button class="btn-approve" onclick="approve(\\'' + slug + '\\')">Approve</button><button class="btn-reject" onclick="reject(\\'' + slug + '\\')">Reject</button><button class="btn-close" onclick="closeDetail()">Close</button></div><h2>' + d.title + '</h2><div class="content-preview">' + d.content.replace(/</g, '&lt;') + '</div>';
+      det.innerHTML = '<div class="detail-actions"><a class="btn-preview" href="' + d.previewUrl + '" target="_blank" rel="noreferrer">Open Preview</a><button class="btn-approve" onclick="approve(\\'' + slug + '\\')">Approve</button><button class="btn-reject" onclick="reject(\\'' + slug + '\\')">Reject</button><button class="btn-close" onclick="closeDetail()">Close</button></div><h2>' + d.title + '</h2><div class="content-preview">' + d.content.replace(/</g, '&lt;') + '</div>';
     }
 
     function closeDetail() { document.getElementById('detail').className = 'detail'; }
