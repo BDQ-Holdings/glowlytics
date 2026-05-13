@@ -23,6 +23,7 @@ Glowlytics is a skin health tracking app that enables users to gain insights int
 - **Express.js** API server with JWT authentication middleware
 - **PostgreSQL** database
 - **MCP (Model Context Protocol) server** — Streamable HTTP transport mounted at `/mcp` with JWKS Bearer auth, beta allowlist gate, per-user rate limiter (60/min + 10/sec burst), structured tool-call audit logging. Exposes 9 user-scoped tools to authenticated MCP clients (Claude.ai etc.): `get_latest_scan`, `get_scan_history`, `get_signal_trend`, `compare_scans`, `get_scan_report`, `get_current_routine`, `lookup_ingredient`, `search_ingredients`, `summarize_month`. Connected apps managed via `/api/mcp/clients` GET + DELETE; surfaced in the Profile → Connected Apps (Beta) section.
+- **OAuth DCR proxy** — Clerk doesn't expose `registration_endpoint`, so claude.ai's MCP connector couldn't dynamically register. `backend/mcp/oauth-proxy.js` fronts Clerk with RFC 7591 Dynamic Client Registration + RFC 8414 metadata: `/oauth/register` returns a static pre-registered Clerk client_id, `/oauth/authorize` 302s to Clerk with opaque proxy state + our callback URL, `/oauth/token` Basic-auths to Clerk and rewrites `redirect_uri`. RFC 9728 `WWW-Authenticate` header on `/mcp` 401 with `resource_metadata` for discovery. Feature-flagged on `MCP_OAUTH_PROXY_ENABLED` + `_CLIENT_ID` + `_CLIENT_SECRET`.
 - **Open Beauty Facts API** - skincare product ingredients lookup via barcode (waterfall: Open Beauty Facts → Open Food Facts → UPCitemdb → NIH DailyMed; each source capped at 6s, telemetry on failure)
 - **Vision LLM API** — Fine-tuned GPT-4o for skin image analysis with condition detection (9 types × 8 facial zones), personalized feedback, local fallback
 - **3-layer parallel vision pipeline** — Layer 1: deterministic features (CIELAB, ITA, GLCM, LBP, Gabor, Frangi) + Layer 2: ONNX CV models (structure MobileNetV3, hydration/elasticity EfficientNet-B0, YOLOv8 lesion detector) + Layer 3: fine-tuned GPT-4o. Score merging: L2 overrides > L1+L3 blend.
@@ -437,7 +438,7 @@ Score merging: Layer 2 overrides > Layer 1 + Layer 3 weighted blend (0.6/0.4 for
 
 ---
 
-## Implementation Status (as of 2026-05-11)
+## Implementation Status (as of 2026-05-13)
 
 ### Completed (Ship-Ready)
 - All 3 user journeys fully implemented (onboarding, daily scan, report)
@@ -447,6 +448,7 @@ Score merging: Layer 2 overrides > Layer 1 + Layer 3 weighted blend (0.6/0.4 for
 - **Clerk authentication** with Sign in with Apple, Google, and Email/Password
 - **Glow design language redesign** — full app reskin: 3 palettes (Dusk default, Meadow, Rose); Switzer body + DancingScript italic accent; SF-symbol monoline icons; BreathingGlow + GlowRing + GlowSpark + FadeUp primitives; Today / Story / Shelf / Me tab structure with route files preserved for deep links; 4-facet UI (Hydrated/Calm/Even/Firm) mapped onto the existing 5-signal ML pipeline via `src/constants/facets.ts`. New screens: `app/story.tsx`, `app/today/ritual.tsx`, `app/account.tsx`, `app/routine.tsx`.
 - **MCP server** — Streamable HTTP transport at `/mcp`, JWKS Bearer auth, beta allowlist, per-user rate limiter (60/min + 10/sec burst), 9 user-scoped tools (`get_latest_scan`, `get_scan_history`, `get_signal_trend`, `compare_scans`, `get_scan_report`, `get_current_routine`, `lookup_ingredient`, `search_ingredients`, `summarize_month`), structured tool-call audit logging, cross-tool user-scoping test suite. Connected Apps (Beta) section in Profile lists + revokes clients via `/api/mcp/clients` GET+DELETE.
+- **OAuth DCR proxy for MCP** — RFC 7591 Dynamic Client Registration proxy fronting Clerk (Clerk has no `registration_endpoint`). Live on Railway, feature-flagged on `MCP_OAUTH_PROXY_ENABLED`. 21 tests in `apps/glowlytics/backend/__tests__/mcp/oauth-proxy.test.js`. Smoke-verified end-to-end: claude.ai connector successfully completes RFC 7591 DCR → RFC 8414 metadata → Clerk auth round-trip.
 - **Fortified API client** — `src/services/httpClient.ts` is the single fetch wrapper for every backend + 3rd-party call: exponential backoff with jitter, `Retry-After` honoring, 401 token refresh, `X-Request-ID` correlation, structured `ApiError`. `src/services/syncOutbox.ts` replaces the previous fire-and-forget pattern with a durable retry queue (up to 5 attempts, capped 30s backoff). 3rd-party product lookups capped at 6s with per-source telemetry.
 - **RevenueCat subscription** — "Glow Pro" entitlement, 7-day free trial (started on onboarding paywall skip), monthly/yearly/lifetime products, native paywall UI via RevenueCatUI, Customer Center for subscription management. Error 23 (CONFIGURATION_ERROR) silenced.
 - **Scan gating** — camera tab, camera screen, home scan buttons redirect to paywall when trial expired and not subscribed
@@ -471,10 +473,11 @@ Score merging: Layer 2 overrides > Layer 1 + Layer 3 weighted blend (0.6/0.4 for
 - **App icon** — gradient background (purple-to-cyan) with white G logo
 - **App Store metadata** — description, keywords, screenshot specs for iPhone 15 Pro Max
 - **Demo script** — 7-minute structured walkthrough with talking points
-- **Production build submitted** — v1.1.6 build #106 uploaded to TestFlight 2026-05-09
+- **Production builds submitted** — v1.1.6 build #106 (2026-05-09), v1.1.6 build #107 (2026-05-13, auto-incremented; bundles OAuth DCR proxy + monorepo rename + mcpClients httpJson migration)
 - **361 mobile tests** (24 suites) + **285 backend tests** (24 suites) = 646 total, 0 TypeScript errors
-- 56 screen files, 31 components (37 with nested), 31 services, 7 top-level backend modules (+23 nested), Zustand store
+- 56 screen files, 34 components (31 top-level + 2 glow/ + 1 navigation/), 31 services, 7 top-level backend modules + 12 mcp/ + 4 queries/ helpers, Zustand store
 - EAS dev client + production builds succeeding (latest on TestFlight)
+- Monorepo migration committed (`f7a9c59`): RadianceIQ/ → apps/glowlytics/, 538 files snapshotted, branch `feature/glowlytics-mcp-server` synced with origin. Repo moved from `RadianceIQ/glowlytics` → `BDQ-Holdings/glowlytics` (old URL still works as alias).
 
 ### SDK Migration (SDK 55 → 54)
 - Downgraded to Expo SDK 54 (`expo ~54.0.0`, `react 19.1.0`, `react-native 0.81.5`)

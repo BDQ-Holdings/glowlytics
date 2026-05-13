@@ -1,10 +1,10 @@
 Glowlytics — Build Progress
 ============================
-Last Updated: 2026-05-11
+Last Updated: 2026-05-13
 
-STATUS: 0 TS errors | 56 screens | 31 components | 31 services | 361 mobile tests (24 suites) + 285 backend tests (24 suites) = 646 total | 7 backend top-level modules + 23 nested (mcp/ + queries/ etc.)
+STATUS: 0 TS errors | 56 screens | 34 components (31 top-level + 2 glow/ + 1 navigation/) | 31 services | 361 mobile tests (24 suites) + 285 backend tests (24 suites) = 646 total | 7 backend top-level modules + 12 mcp/ + 4 queries/ nested
 
-MILESTONES (31 shipped):
+MILESTONES (32 shipped):
  1. Foundation (Expo SDK 54, TS, Router, Zustand)
  2. Auth (Clerk Apple/Google/email, JWT backend)
  3. Vision (3-layer: deterministic + ONNX + fine-tuned GPT-4o)
@@ -36,6 +36,7 @@ MILESTONES (31 shipped):
 29. MCP server (Q1) — Streamable HTTP transport at /mcp, JWKS Bearer auth, beta allowlist, per-user rate limiter (60/min + 10/sec burst), structured tool-call logging
 30. MCP tools (Q2/Q3) — get_latest_scan, get_scan_history, get_signal_trend, compare_scans, get_scan_report, get_current_routine, lookup_ingredient, search_ingredients, summarize_month; ingredient lookup with Pinecone chunkId citations; getCurrentRoutine splits product_catalog by AM/PM; Connected Apps (Beta) section in Profile with /api/mcp/clients GET+DELETE
 31. Glow design language redesign + API fortification — full app reskin (Dusk/Meadow/Rose palettes, breathing-glow halos, italic DancingScript accents, SF-symbol monoline icons, Hydrated/Calm/Even/Firm 4-facet UI mapped onto existing 5-signal pipeline); httpClient with retry/backoff/jitter/Retry-After/token cache/401 refresh; syncOutbox replaces fire-and-forget syncToBackend with up-to-5-attempt durable queue; productLookup 3rd-party fetches bounded to 6s; tabs relabeled Today/Story/Shelf/Me (file routes preserved)
+32. OAuth DCR proxy for MCP + monorepo migration committed — RFC 7591 Dynamic Client Registration proxy fronting Clerk (Clerk doesn't expose registration_endpoint natively, so claude.ai's MCP connector couldn't dynamically register); proxy endpoints at /oauth/register, /oauth/authorize, /oauth/callback, /oauth/token with state mapping (24-byte opaque tokens, 10-min TTL); RFC 8414 oauth-authorization-server metadata advertises proxy; RFC 9728 WWW-Authenticate header on /mcp 401 with resource_metadata; feature-flagged on MCP_OAUTH_PROXY_ENABLED + client_id/secret env. 21 oauth-proxy tests across 6 describe blocks. Live on Railway production, smoke-verified end-to-end (DCR registers, authorize 302s to Clerk with proxy callback, token endpoint Basic-auths to Clerk and rejects bogus codes with invalid_grant). Same commit (f7a9c59) snapshots the RadianceIQ → apps/glowlytics monorepo rename (538 files, 318 deletions + 179 additions + 41 modifications) + mcpClients.ts migration from bare fetch to httpJson per CLAUDE.md convention
 
 ML EVAL (all pass):
 - ONNX: Structure r=0.913, Hydration r=0.889, Sun Damage r=0.882, Elasticity r=0.940
@@ -138,5 +139,57 @@ GLOW REDESIGN + API FORTIFICATION (2026-05-09 → 2026-05-11):
   triage (root expo bumped to ~54.0.34, removed @types/react-native +
   @expo/config-plugins, explicit expo-updates-interface@2.0.0 +
   expo-dev-menu-interface + @ide/backoff installs)
+
+OAUTH DCR PROXY + DEPLOY (2026-05-12 → 2026-05-13):
+- claude.ai MCP connector couldn't reach /mcp — Clerk doesn't support
+  RFC 7591 Dynamic Client Registration natively (no registration_endpoint
+  in its oauth-authorization-server metadata)
+- Built a proxy fronting Clerk in apps/glowlytics/backend/mcp/oauth-proxy.js:
+  - POST /oauth/register — RFC 7591, returns our pre-registered Clerk
+    client_id (XszcYauNAWSpoz98) for every caller; static, no per-caller
+    state since we share one Clerk OAuth app
+  - GET /oauth/authorize — 302 to Clerk with rewritten client_id +
+    our /oauth/callback URL, opaque 24-byte state token (10-min TTL)
+    maps to caller's state in-memory; PKCE params forwarded
+  - GET /oauth/callback — looks up caller state, 302s back to original
+    redirect_uri with Clerk's code + caller's original state
+  - POST /oauth/token — Basic-auths to Clerk with client_id+secret,
+    rewrites redirect_uri to our callback so Clerk accepts the swap
+- well-known.js conditionally advertises our backend as auth_server
+  when MCP_OAUTH_PROXY_ENABLED=true; falls back to Clerk otherwise
+- auth.js: WWW-Authenticate header on /mcp 401 (RFC 9728) +
+  cfg.allowedClientIds Set auto-includes MCP_OAUTH_PROXY_CLIENT_ID
+- 21 oauth-proxy.test.js tests across 6 describe blocks; mocks global
+  fetch for token-endpoint coverage; verifies Basic auth + redirect_uri
+  rewrite + opaque-state round-trip + feature-flag-off 404s
+- Railway env: MCP_OAUTH_PROXY_ENABLED=true,
+  MCP_OAUTH_PROXY_CLIENT_ID=XszcYauNAWSpoz98,
+  MCP_OAUTH_PROXY_CLIENT_SECRET=<rotate-soon>
+  Deploy id 7317ece9-cc55-442b-bbc3-ffb840c33b38 (SUCCESS)
+- Smoke-verified end-to-end: all 7 endpoints behave correctly
+  (oauth-protected-resource advertises us, oauth-authorization-server
+  full RFC 8414 metadata, /oauth/register returns Clerk client_id,
+  /oauth/authorize 302s with opaque state, /oauth/token returns
+  invalid_grant for bogus code = proves Clerk accepts our credentials,
+  /mcp 401 carries resource_metadata)
+
+MONOREPO COMMIT + DEPLOY v1.1.6 build #107 (2026-05-13):
+- f7a9c59 — single bundled commit captures everything sitting
+  uncommitted on feature/glowlytics-mcp-server: RadianceIQ → apps/
+  glowlytics rename (538 files, 318 deletions + 179 additions + 41
+  modifications), full OAuth DCR proxy + tests, Glow redesign,
+  v1.1.6 manifest, AuthRedirector fix, persistent scan-result
+  disclaimer, onboarding paywall rebuild
+- Added .claude/ + apps/glowlytics/dist-web-check/ to root .gitignore
+  before staging (local-only state, no need to commit)
+- Refactor: src/services/mcpClients.ts migrated bare fetch → httpJson
+  per CLAUDE.md convention (auth/retry/X-Request-ID/401 refresh now
+  centralized); test mocks rewritten at httpJson layer
+- Build: v1.1.6 production IPA (94.9 MB) via EAS local build, submitted
+  to TestFlight, exit 0; ASC processing
+  (eas submit URL: https://expo.dev/accounts/mufasabrownie/projects/
+  Glowlytics/submissions/43410dd4-4b9b-4067-a7e1-7205885ebce0)
+- Note: GitHub origin reports repo moved to BDQ-Holdings/glowlytics;
+  old URL still works. Update remote URL on next housekeeping pass.
 
 POST-LAUNCH: See POST_LAUNCH_CHECKLIST.md

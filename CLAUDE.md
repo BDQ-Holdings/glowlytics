@@ -20,7 +20,7 @@ apps/
       constants/     # theme.ts (incl. Glow palettes), signals.ts, facets.ts, lesions.ts, ingredients.ts
       utils/, hooks/, types/, config/
     backend/         # Express + PostgreSQL + ONNX + RAG + MCP server
-      mcp/           # MCP Streamable HTTP transport + tools + auth + rate limiter
+      mcp/           # MCP Streamable HTTP transport + tools + auth + rate limiter + OAuth DCR proxy
       queries/       # reusable scan/routine/ingredient query helpers
   landing/       # Marketing website (Next.js)
 research/
@@ -71,10 +71,12 @@ cd backend && npm test       # Backend tests (285 across 24 suites)
 
 **MCP server**: `/mcp` exposes 9 user-scoped tools to authenticated MCP clients (Claude.ai). Auth via Clerk JWKS Bearer + beta allowlist + per-user rate limiter (60/min, 10/sec burst). Tools: `get_latest_scan`, `get_scan_history`, `get_signal_trend`, `compare_scans`, `get_scan_report`, `get_current_routine`, `lookup_ingredient`, `search_ingredients`, `summarize_month`. Profile → Connected Apps (Beta) lists + revokes clients via `/api/mcp/clients`.
 
+**OAuth DCR proxy** (`backend/mcp/oauth-proxy.js`): Clerk has no `registration_endpoint`, so claude.ai's MCP connector can't dynamically register. The proxy fronts Clerk with RFC 7591 DCR + RFC 8414 metadata: `/oauth/register` returns a static pre-registered Clerk `client_id`, `/oauth/authorize` 302s to Clerk with opaque proxy state + our callback URL, `/oauth/token` Basic-auths to Clerk and rewrites `redirect_uri`. Feature-flagged on `MCP_OAUTH_PROXY_ENABLED` + `MCP_OAUTH_PROXY_CLIENT_ID` + `MCP_OAUTH_PROXY_CLIENT_SECRET`; `well-known.js` advertises our backend as auth_server when enabled, falls back to Clerk otherwise. `/mcp` 401 carries RFC 9728 `WWW-Authenticate` with `resource_metadata`.
+
 **API client**: `src/services/httpClient.ts` is the only place fetch is called for backend traffic. Exponential backoff with jitter, honors `Retry-After`, 50s token cache, 401-driven token refresh, `X-Request-ID` on every call, AbortSignal compose polyfill for RN. `src/services/syncOutbox.ts` queues fire-and-forget mutations with up-to-5-attempt retry — replaces the old fire-and-forget pattern that silently dropped writes.
 
 **Design**: See `.impeccable.md`. Background `#FAFAF7`, primary `#3A9E8F` (legacy — Glow accent is `#5A3A5E` dusk plum), WCAG AAA, Switzer font + DancingScript word accent. Signal colors: structure `#7DE7E1`, hydration `#4DA6FF`, inflammation `#FF7A78`, sunDamage `#F2B56A`, elasticity `#B68AFF`. UI surfaces facets (Hydrated/Calm/Even/Firm) but ML pipeline stays on 5 signals.
 
 **Security**: CORS, rate limiting (per-user MCP + per-IP detect/analyze/photo), timing-safe admin secret, cascading deletion (Apple 5.1.1(v)). RAG seed endpoint above JWT wall (admin-secret only).
 
-**Production**: Railway env vars configured. Pinecone seeded (80 chunks). ONNX models auto-downloaded. TestFlight: v1.1.6 build #106 (2026-05-09). ASC ID 6760600635 / bundle `com.glowlytics.app`. See [progress.txt](progress.txt) for full build history and [POST_LAUNCH_CHECKLIST.md](POST_LAUNCH_CHECKLIST.md) for post-ship items.
+**Production**: Railway env vars configured (incl. `MCP_OAUTH_PROXY_*`). Pinecone seeded (80 chunks). ONNX models auto-downloaded. TestFlight: v1.1.6 build #107 submitted 2026-05-13 (auto-incremented from #106). ASC ID 6760600635 / bundle `com.glowlytics.app`. Repo moved to `BDQ-Holdings/glowlytics` (old `RadianceIQ/glowlytics` remote still works). See [progress.txt](progress.txt) for full build history and [POST_LAUNCH_CHECKLIST.md](POST_LAUNCH_CHECKLIST.md) for post-ship items.
