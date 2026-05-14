@@ -203,6 +203,12 @@ export interface BoneStructureResult {
   sex: 'male' | 'female' | null;
   generated_at: string;
   latency_ms?: number;
+  /**
+   * True when the server wrote `bone_structure` to the model_outputs row.
+   * False when the related row hasn't synced yet — the client should queue
+   * a retry through syncOutbox so MCP queries eventually see this scan.
+   */
+  persisted?: boolean;
 }
 
 export interface ScanResult {

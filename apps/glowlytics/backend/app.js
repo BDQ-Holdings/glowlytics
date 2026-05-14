@@ -1055,38 +1055,80 @@ function downsampleMesh(vertices, target = 200) {
   return out;
 }
 
+// Mesh size cap — derived from the largest source (ARKit's canonical face
+// geometry has 1220 vertices). We accept up to that × 3 floats for safety.
+const MAX_MESH_VERTICES = 1500;
+
 app.post('/api/vision/bone-structure', analyzeRateLimit, async (req, res) => {
   const start = Date.now();
   try {
     const { mesh, daily_id, sex_override } = req.body || {};
+    const userId = req.auth?.userId || null;
 
+    // ----- Mesh shape + content validation -----
     if (!mesh || !Array.isArray(mesh.vertices) || mesh.vertices.length === 0) {
       return res.status(400).json({ error: 'mesh.vertices is required' });
     }
     if (mesh.vertices.length % 3 !== 0) {
       return res.status(400).json({ error: 'mesh.vertices must be a flat xyz array (length divisible by 3)' });
     }
-    if (mesh.vertices.length > 1500 * 3) {
-      return res.status(413).json({ error: 'Mesh too large (max 1500 vertices)' });
+    if (mesh.vertices.length > MAX_MESH_VERTICES * 3) {
+      return res.status(413).json({ error: `Mesh too large (max ${MAX_MESH_VERTICES} vertices)` });
     }
-
-    const source = mesh.source === 'mediapipe' ? 'mediapipe' : 'arkit';
-    const blendShapes = mesh.blendShapes || null;
-
-    // Resolve sex from explicit override or the user's profile.
-    let sex = sex_override === 'male' || sex_override === 'female' ? sex_override : null;
-    if (!sex) {
-      const userId = req.auth?.userId;
-      if (userId && userId !== 'dev-user') {
-        try {
-          const { rows } = await pool.query('SELECT sex FROM user_profiles WHERE user_id = $1', [userId]);
-          if (rows[0]?.sex === 'male' || rows[0]?.sex === 'female') sex = rows[0].sex;
-        } catch (err) {
-          log.warn('[bone-structure] sex lookup failed:', err.message);
-        }
+    for (let i = 0; i < mesh.vertices.length; i++) {
+      if (typeof mesh.vertices[i] !== 'number' || !Number.isFinite(mesh.vertices[i])) {
+        return res.status(400).json({ error: 'mesh.vertices must contain only finite numbers' });
       }
     }
 
+    const source = mesh.source === 'mediapipe' ? 'mediapipe' : 'arkit';
+    const blendShapes = mesh.blendShapes && typeof mesh.blendShapes === 'object' ? mesh.blendShapes : null;
+    // `mesh.indices` is accepted in the schema for forwards-compatibility but
+    // intentionally unused — the math module derives all metrics from vertex
+    // positions, and the viewer renders connectivity from CANONICAL_OUTLINE_EDGES.
+
+    // ----- Authorization: verify daily_id ownership BEFORE running expensive math -----
+    // Returns: 'owned' (proceed + persist), 'pending' (skip persist, still analyse),
+    // 'forbidden' (reject), 'none' (no daily_id supplied, skip persist).
+    let ownership = 'none';
+    if (daily_id) {
+      if (userId && userId !== 'dev-user') {
+        try {
+          const { rows } = await pool.query(
+            'SELECT user_id FROM daily_records WHERE daily_id = $1',
+            [daily_id]
+          );
+          if (rows.length === 0) {
+            // daily_record hasn't synced yet — client should retry once the
+            // sync outbox flushes the addDailyRecord write.
+            ownership = 'pending';
+          } else if (rows[0].user_id !== userId) {
+            return res.status(403).json({ error: 'daily_id does not belong to the authenticated user' });
+          } else {
+            ownership = 'owned';
+          }
+        } catch (err) {
+          log.warn('[bone-structure] ownership check failed:', err.message);
+          ownership = 'pending';
+        }
+      } else {
+        // Dev-mode passthrough — accept without DB check.
+        ownership = 'owned';
+      }
+    }
+
+    // ----- Resolve sex from explicit override or the user's profile -----
+    let sex = sex_override === 'male' || sex_override === 'female' ? sex_override : null;
+    if (!sex && userId && userId !== 'dev-user') {
+      try {
+        const { rows } = await pool.query('SELECT sex FROM user_profiles WHERE user_id = $1', [userId]);
+        if (rows[0]?.sex === 'male' || rows[0]?.sex === 'female') sex = rows[0].sex;
+      } catch (err) {
+        log.warn('[bone-structure] sex lookup failed:', err.message);
+      }
+    }
+
+    // ----- Run the analysis -----
     const result = boneStructure.analyzeBoneStructure({
       vertices: mesh.vertices,
       blendShapes,
@@ -1099,6 +1141,7 @@ app.post('/api/vision/bone-structure', analyzeRateLimit, async (req, res) => {
         ...result,
         interventions: { lifestyle: [], pharmacological: [], interventional: [], procedural_disclaimer: '' },
         downsampled_mesh: null,
+        persisted: false,
         latency_ms: Date.now() - start,
         generated_at: new Date().toISOString(),
       });
@@ -1126,19 +1169,30 @@ app.post('/api/vision/bone-structure', analyzeRateLimit, async (req, res) => {
       latency_ms: Date.now() - start,
     };
 
-    // Persist alongside the related scan when daily_id is provided.
-    if (daily_id) {
+    // ----- Persist alongside the related scan -----
+    // The skin pipeline (addModelOutput) and bone-structure run in parallel
+    // from the client. If the model_outputs row hasn't synced yet, the UPDATE
+    // matches zero rows. We surface this via `persisted` so the client can
+    // queue a retry through syncOutbox.
+    let persisted = false;
+    if (daily_id && ownership === 'owned') {
       try {
-        await pool.query(
+        const upd = await pool.query(
           `UPDATE model_outputs SET bone_structure = $1 WHERE daily_id = $2`,
           [JSON.stringify(payload), daily_id]
         );
+        persisted = upd.rowCount > 0;
+        if (!persisted) {
+          log.warn('[bone-structure] model_outputs row not yet on server:', daily_id);
+        }
       } catch (err) {
         log.warn('[bone-structure] persist failed:', err.message);
       }
+    } else if (daily_id && ownership === 'pending') {
+      log.warn('[bone-structure] daily_record not yet on server:', daily_id);
     }
 
-    res.json(payload);
+    res.json({ ...payload, persisted });
   } catch (err) {
     log.error('[bone-structure] Error:', err.message);
     res.status(500).json({ error: safeErrorMessage(err) });

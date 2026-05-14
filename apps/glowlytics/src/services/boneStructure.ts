@@ -46,10 +46,13 @@ export async function analyzeBoneStructure(
     throw new Error('mesh.vertices must be a flat xyz array (length divisible by 3)');
   }
 
+  // The server doesn't read `mesh.indices` — connectivity is derived from
+  // CANONICAL_OUTLINE_EDGES on the viewer side. Dropping it here saves ~30 KB
+  // of bandwidth per ARKit capture (and removes a confusing accepted-but-unused
+  // field from the wire shape).
   const body: Record<string, unknown> = {
     mesh: {
       vertices: mesh.vertices,
-      indices: mesh.indices,
       blendShapes: mesh.blendShapes,
       source: mesh.source,
     },
@@ -92,5 +95,6 @@ export async function analyzeBoneStructure(
     sex: result.sex === 'male' || result.sex === 'female' ? result.sex : null,
     generated_at: (result.generated_at as string) || new Date().toISOString(),
     latency_ms: typeof result.latency_ms === 'number' ? result.latency_ms : undefined,
+    persisted: typeof result.persisted === 'boolean' ? result.persisted : undefined,
   };
 }

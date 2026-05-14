@@ -27,6 +27,8 @@ import { analyzeWithFallback } from '../../src/services/skinAnalysis';
 import { streamInsights } from '../../src/services/visionAPI';
 import { captureFaceMesh } from '../../src/services/faceMeshCapture';
 import { analyzeBoneStructure } from '../../src/services/boneStructure';
+import { enqueueSync } from '../../src/services/syncOutbox';
+import { ApiError } from '../../src/services/httpClient';
 import { getEstimatedCycleDay } from '../../src/utils/cycleDay';
 import { trackEvent } from '../../src/services/analytics';
 import { env } from '../../src/config/env';
@@ -416,23 +418,40 @@ export default function AnalyzingScreen() {
         zone_severity: analysis.zone_severity,
       });
 
-      // Bone-structure analysis runs in parallel — fire-and-forget. Uses
-      // the canonical mesh when ARKit isn't available so the call still
-      // produces a Harmony score on every device. Failures are silent —
-      // the rest of the scan flow is unaffected.
+      // Bone-structure analysis runs in parallel with the skin pipeline.
+      // The local attach happens immediately so the UI has data; if the
+      // server couldn't persist (model_outputs row hadn't synced yet), we
+      // queue a retry through syncOutbox so MCP queries eventually see it.
       (async () => {
+        const dailyId = dailyRecord.daily_id;
+        const sex = useStore.getState().user?.sex;
+        const sexOverride = sex === 'male' || sex === 'female' ? sex : undefined;
+        let captured;
+        let firstResult;
         try {
-          const captured = await captureFaceMesh();
-          const sex = useStore.getState().user?.sex;
-          const sexOverride = sex === 'male' || sex === 'female' ? sex : undefined;
-          const bone = await analyzeBoneStructure({
-            mesh: captured.mesh,
-            dailyId: dailyRecord.daily_id,
-            sexOverride,
-          });
-          useStore.getState().attachBoneStructure(dailyRecord.daily_id, bone);
+          captured = await captureFaceMesh();
+          firstResult = await analyzeBoneStructure({ mesh: captured.mesh, dailyId, sexOverride });
+          useStore.getState().attachBoneStructure(dailyId, firstResult);
         } catch (err) {
           if (__DEV__) console.warn('[Glowlytics] Bone-structure analysis skipped:', err);
+          return;
+        }
+
+        if (firstResult.persisted === false) {
+          enqueueSync({
+            label: 'bone-structure persist',
+            run: async () => {
+              const retry = await analyzeBoneStructure({ mesh: captured!.mesh, dailyId, sexOverride });
+              if (retry.persisted === false) {
+                throw new Error('bone-structure not yet persisted on server');
+              }
+              useStore.getState().attachBoneStructure(dailyId, retry);
+            },
+            // Don't keep retrying on auth / validation errors — only on the
+            // transient "row not yet there" case (which surfaces as our own
+            // thrown Error, not an ApiError).
+            isTerminalError: (err) => err instanceof ApiError && err.status >= 400 && err.status < 500 && err.status !== 429,
+          });
         }
       })();
 

@@ -647,6 +647,11 @@ const FINDING_RULES = [
 
 const SEVERITY_THRESHOLDS = { mild: 75, moderate: 55, marked: 0 };
 
+// Metrics scoring at or above this threshold do not emit a finding. Tied to
+// `mild` severity so the bands stay coherent — anything that wouldn't even
+// qualify as a mild concern is treated as healthy.
+const FINDING_THRESHOLD = SEVERITY_THRESHOLDS.mild;
+
 function severityFromScore(score) {
   if (score >= SEVERITY_THRESHOLDS.mild) return 'mild';
   if (score >= SEVERITY_THRESHOLDS.moderate) return 'moderate';
@@ -658,7 +663,7 @@ function findingsFromScores(metrics, scored, sex) {
   for (const rule of FINDING_RULES) {
     const metric = metrics[rule.metric];
     const score = scored[rule.metric];
-    if (!metric || score == null || score >= 75) continue;
+    if (!metric || score == null || score >= FINDING_THRESHOLD) continue;
 
     const ideal = resolveIdeal(rule.metric, sex);
     if (!ideal) continue;
@@ -737,6 +742,8 @@ module.exports = {
   METRICS_BY_DOMAIN,
   IDEALS,
   FINDING_RULES,
+  FINDING_THRESHOLD,
+  SEVERITY_THRESHOLDS,
   // Helpers (exported only for tests / downstream lifting)
   buildFaceFrame,
   toLocal,
