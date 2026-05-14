@@ -120,12 +120,16 @@ describe('POST /api/vision/bone-structure — analysis path', () => {
     expect(res.body.persisted).toBe(false); // no daily_id → no persistence attempt
   });
 
-  test('includes downsampled_mesh with ≤200 vertices', async () => {
+  test('includes the captured mesh at full resolution in the response', async () => {
+    // Lossy "every-Nth-vertex" downsampling was removed — it broke the
+    // MediaPipe vertex-index contract that the 3D viewer's outline edges
+    // and measurement overlays depend on. The mesh is now pass-through.
     const res = await request(app).post('/api/vision/bone-structure').send(BODY_BASE());
     expect(res.status).toBe(200);
     expect(res.body.downsampled_mesh).toBeDefined();
     expect(res.body.downsampled_mesh.vertices.length % 3).toBe(0);
-    expect(res.body.downsampled_mesh.vertices.length / 3).toBeLessThanOrEqual(200);
+    // Should match the input size (1500 verts in our fixture)
+    expect(res.body.downsampled_mesh.vertices.length).toBe(1500 * 3);
   });
 
   test('surfaces interventions bundle with procedural disclaimer', async () => {

@@ -17,7 +17,7 @@ import { StyleSheet, View } from 'react-native';
 import Svg, { Circle, Defs, G, Line, RadialGradient, Stop, Text as SvgText } from 'react-native-svg';
 import { GestureDetector, Gesture, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { runOnJS } from 'react-native-reanimated';
-import { CANONICAL_OUTLINE_EDGES } from '../services/canonicalFaceMesh';
+import { buildCanonicalMesh, CANONICAL_OUTLINE_EDGES } from '../services/canonicalFaceMesh';
 import {
   HARMONY_ACCENT,
   MEASUREMENT_LINES,
@@ -89,14 +89,51 @@ function severityColor(severity: BoneFinding['severity']): string {
 // Component
 // ---------------------------------------------------------------------------
 
+// Highest vertex index referenced by any wireframe edge or measurement overlay.
+// If the captured mesh is shorter than this, our index-keyed rendering won't
+// produce a recognisable head — we fall back to the canonical mesh instead.
+const MAX_REFERENCED_INDEX = (() => {
+  let m = 0;
+  for (const [a, b] of CANONICAL_OUTLINE_EDGES) m = Math.max(m, a, b);
+  return m;
+})();
+
+function vertexHasContent(vertices: number[], idx: number): boolean {
+  const o = idx * 3;
+  if (o + 2 >= vertices.length) return false;
+  // Any non-zero coord component counts as "set"
+  return vertices[o] !== 0 || vertices[o + 1] !== 0 || vertices[o + 2] !== 0;
+}
+
 export const Face3DViewer: React.FC<Props> = ({
-  vertices,
+  vertices: rawVertices,
   source,
   mode = 'anatomy',
   size = 320,
   bone,
   lesions,
 }) => {
+  // Guard against meshes that don't honour the MediaPipe-index contract
+  // (e.g. an older server response that dropped every Nth vertex). If the
+  // mesh is too short OR most of the anatomically-named landmark slots are
+  // empty, fall back to the bundled canonical mesh so the viewer still
+  // renders a recognisable head outline + dimension overlays.
+  const vertices = useMemo(() => {
+    const tripleCount = Math.floor(rawVertices.length / 3);
+    if (tripleCount <= MAX_REFERENCED_INDEX) return buildCanonicalMesh();
+    // Spot-check a handful of edge endpoints — if more than half are blank,
+    // the mapping is broken and we replace.
+    let blank = 0;
+    let probed = 0;
+    for (const [a, b] of CANONICAL_OUTLINE_EDGES.slice(0, 12)) {
+      if (!vertexHasContent(rawVertices, a)) blank++;
+      if (!vertexHasContent(rawVertices, b)) blank++;
+      probed += 2;
+    }
+    if (probed > 0 && blank / probed > 0.5) return buildCanonicalMesh();
+    return rawVertices;
+  }, [rawVertices]);
+
   // Orbit + zoom state
   const [yaw, setYaw] = useState(0);
   const [pitch, setPitch] = useState(0);

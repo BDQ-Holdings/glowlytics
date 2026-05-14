@@ -1105,19 +1105,22 @@ app.post('/api/vision/generate-insights', async (req, res) => {
 
 // ==================== BONE STRUCTURE (HARMONY) ANALYSIS ====================
 
-// Compact a captured mesh down to ~200 verts for server-side replay storage.
-// We keep every Nth vertex from the flat xyz stream.
-function downsampleMesh(vertices, target = 200) {
+// Pass-through "downsample" — preserves the vertex-index → anatomical-landmark
+// contract that the viewer's measurement overlays + outline edges rely on.
+//
+// Earlier this function dropped every Nth vertex to keep DB rows small, but
+// that destroys the contract: a viewer drawing an edge between indices 127
+// and 234 (tragion → zygion in MediaPipe topology) would after downsample
+// end up connecting random unmapped slots. The result on-device was a
+// scattered "dot cloud" instead of a head outline.
+//
+// Canonical mesh is ~474 verts (5.7 KB JSON-encoded), ARKit's is 1220 verts
+// (~15 KB). Both fit comfortably in Postgres JSONB; storage cost is not the
+// bottleneck. If we ever need to compress, swap to a delta-encoding scheme
+// or move full meshes to S3 — never index-stripping.
+function downsampleMesh(vertices) {
   if (!vertices) return null;
-  const arr = Array.isArray(vertices) ? vertices : Array.from(vertices);
-  const triples = Math.floor(arr.length / 3);
-  if (triples <= target) return arr;
-  const step = Math.ceil(triples / target);
-  const out = [];
-  for (let i = 0; i < triples; i += step) {
-    out.push(arr[i * 3], arr[i * 3 + 1], arr[i * 3 + 2]);
-  }
-  return out;
+  return Array.isArray(vertices) ? vertices : Array.from(vertices);
 }
 
 // Mesh size cap — derived from the largest source (ARKit's canonical face
@@ -1214,7 +1217,7 @@ app.post('/api/vision/bone-structure', analyzeRateLimit, async (req, res) => {
 
     const interventions = recommendInterventions(result.findings);
     const downsampled_mesh = {
-      vertices: downsampleMesh(mesh.vertices, 200),
+      vertices: downsampleMesh(mesh.vertices),
       source,
     };
 
