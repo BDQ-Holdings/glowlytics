@@ -78,6 +78,7 @@ interface AppState {
   removeProduct: (id: string) => void;
   addDailyRecord: (record: Omit<DailyRecord, 'daily_id' | 'user_id'>) => DailyRecord;
   addModelOutput: (output: Omit<ModelOutput, 'output_id'>) => void;
+  attachBoneStructure: (dailyId: string, bone: NonNullable<ModelOutput['bone_structure']>) => void;
   setPendingScanResult: (result: Partial<ModelOutput> | null) => void;
   clearPendingScanResult: () => void;
   setPendingPhotoBase64: (base64: string | null) => void;
@@ -484,6 +485,15 @@ export const useStore = create<AppState>((set, get) => ({
       await api.addModelOutput({ ...entry, daily_id: backendDailyId });
     });
     get().updatePersonalBests();
+  },
+
+  attachBoneStructure: (dailyId, bone) => {
+    set((s) => ({
+      modelOutputs: s.modelOutputs.map((o) =>
+        o.daily_id === dailyId ? { ...o, bone_structure: bone } : o,
+      ),
+    }));
+    debouncedPersist(() => get().persistData());
   },
 
   addHealthDailyRecord: (record) => {

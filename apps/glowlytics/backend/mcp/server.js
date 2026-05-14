@@ -4,6 +4,7 @@ const { registerReportTools } = require('./tools/reports');
 const { registerRoutineTools } = require('./tools/routine');
 const { registerIngredientTools } = require('./tools/ingredients');
 const { registerSummaryTool } = require('./tools/summary');
+const { registerBoneStructureTools } = require('./tools/bone-structure');
 
 const SERVER_INFO = {
   name: 'glowlytics-mcp',
@@ -16,6 +17,7 @@ const TOOL_REGISTRARS = [
   registerRoutineTools,
   registerIngredientTools,
   registerSummaryTool,
+  registerBoneStructureTools,
 ];
 
 function addToolRegistrar(fn) {

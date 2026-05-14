@@ -132,6 +132,77 @@ export interface ModelOutput {
   signal_confidence?: SignalConfidence;
   zone_severity?: ZoneSeverity;
   generated_insights?: GeneratedInsights;
+  bone_structure?: BoneStructureResult;
+}
+
+// ---------------------------------------------------------------------------
+// Bone-structure / Harmony types
+// ---------------------------------------------------------------------------
+
+export type BoneMeshSource = 'arkit' | 'mediapipe';
+
+export type BoneDomain = 'symmetry' | 'periorbital' | 'mandibular' | 'midface' | 'nose' | 'brow';
+
+export type BoneFindingSeverity = 'mild' | 'moderate' | 'marked';
+
+export type BoneFindingCode =
+  | 'canthal_tilt_negative' | 'canthal_tilt_excess'
+  | 'scleral_show_inferior' | 'palpebral_fissure_narrow' | 'ipd_atypical'
+  | 'gonial_angle_obtuse' | 'gonial_angle_acute'
+  | 'lower_face_wide' | 'lower_face_narrow'
+  | 'chin_recessed' | 'chin_excess'
+  | 'bitemporal_narrow' | 'bitemporal_wide' | 'midface_flat'
+  | 'alar_wide' | 'nasolabial_acute' | 'nasolabial_obtuse'
+  | 'brow_low' | 'brow_high' | 'brow_apex_misplaced'
+  | 'thirds_uneven' | 'fifths_uneven' | 'asymmetry_elevated';
+
+export interface BoneFinding {
+  findingCode: BoneFindingCode;
+  metric: string;
+  value: number;
+  score: number;
+  severity: BoneFindingSeverity;
+}
+
+export type BoneInterventionTier = 'lifestyle' | 'pharmacological' | 'interventional';
+
+export interface BoneIntervention {
+  id: string;
+  tier: BoneInterventionTier;
+  title: string;
+  body: string;
+}
+
+export interface InterventionBundle {
+  lifestyle: BoneIntervention[];
+  pharmacological: BoneIntervention[];
+  interventional: BoneIntervention[];
+  procedural_disclaimer: string;
+}
+
+export interface CapturedFaceMesh {
+  vertices: number[];          // flat xyz triples
+  indices?: number[];          // optional triangle indices
+  normals?: number[];          // flat xyz triples, optional
+  blendShapes?: Record<string, number>;
+  source: BoneMeshSource;
+  capturedAt: string;
+}
+
+export interface BoneStructureResult {
+  harmony: number | null;
+  status: 'ok' | 'no_face' | 'insufficient';
+  domain_scores: Partial<Record<BoneDomain, number | null>>;
+  scored_metrics: Record<string, number>;
+  metrics: Record<string, { value: number; raw?: Record<string, unknown> }>;
+  findings: BoneFinding[];
+  interventions: InterventionBundle;
+  dominant_driver: BoneDomain | null;
+  downsampled_mesh?: { vertices: number[]; source: BoneMeshSource } | null;
+  source: BoneMeshSource;
+  sex: 'male' | 'female' | null;
+  generated_at: string;
+  latency_ms?: number;
 }
 
 export interface ScanResult {

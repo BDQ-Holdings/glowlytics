@@ -1,0 +1,358 @@
+/**
+ * Face3DViewer — real 3D face-mesh viewer rendered via SVG + JS projection.
+ *
+ * We avoid pulling expo-gl / expo-three for v1: the mesh is ~80 vertices and
+ * a handful of measurement overlays, well within react-native-svg's
+ * performance envelope. Perspective projection, orbit/zoom gestures, and
+ * per-vertex heatmaps all live here.
+ *
+ * Modes:
+ *   - 'anatomy'      → wireframe outline + landmark dots
+ *   - 'heatmap'      → outline + finding-tinted dots
+ *   - 'measurements' → outline + dimension lines + floating labels
+ *   - 'skin'         → outline + projected lesion bbox centres
+ */
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { StyleSheet, View } from 'react-native';
+import Svg, { Circle, Defs, G, Line, RadialGradient, Stop, Text as SvgText } from 'react-native-svg';
+import { GestureDetector, Gesture, GestureHandlerRootView } from 'react-native-gesture-handler';
+import { runOnJS } from 'react-native-reanimated';
+import { CANONICAL_OUTLINE_EDGES } from '../services/canonicalFaceMesh';
+import {
+  HARMONY_ACCENT,
+  MEASUREMENT_LINES,
+  MEASUREMENT_ANGLES,
+  METRIC_BY_KEY,
+  formatMetricValue,
+  type BoneMetricKey,
+} from '../constants/boneStructure';
+import { Colors, FontFamily, FontSize } from '../constants/theme';
+import type {
+  BoneFinding,
+  BoneMeshSource,
+  BoneStructureResult,
+  DetectedLesion,
+} from '../types';
+
+export type Face3DViewerMode = 'anatomy' | 'heatmap' | 'measurements' | 'skin';
+
+interface Props {
+  vertices: number[];                 // flat xyz
+  source: BoneMeshSource;
+  mode?: Face3DViewerMode;
+  size?: number;                      // square viewport edge in px
+  bone?: BoneStructureResult | null;  // for heatmap + measurements modes
+  lesions?: DetectedLesion[] | null;  // for skin mode
+}
+
+// --- math helpers ---
+
+interface Vec3 { x: number; y: number; z: number }
+
+function vert(verts: number[], i: number): Vec3 | null {
+  const o = i * 3;
+  if (o + 2 >= verts.length) return null;
+  return { x: verts[o], y: verts[o + 1], z: verts[o + 2] };
+}
+
+// Rotate around Y then around X, then project orthographically with
+// foreshortening (perspective). Simple right-handed system.
+function projectVertex(v: Vec3, yaw: number, pitch: number, distance: number, fov: number, size: number): { x: number; y: number; depth: number } {
+  // Rotate around Y (yaw)
+  const cy = Math.cos(yaw), sy = Math.sin(yaw);
+  const x1 = v.x * cy + v.z * sy;
+  const z1 = -v.x * sy + v.z * cy;
+  // Rotate around X (pitch)
+  const cp = Math.cos(pitch), sp = Math.sin(pitch);
+  const y2 = v.y * cp - z1 * sp;
+  const z2 = v.y * sp + z1 * cp;
+  // Perspective project
+  const w = z2 + distance;
+  const denom = w > 0.1 ? w : 0.1;
+  const focal = (size / 2) / Math.tan((fov * Math.PI / 180) / 2);
+  return {
+    x: (x1 * focal) / denom + size / 2,
+    y: -(y2 * focal) / denom + size / 2,
+    depth: w,
+  };
+}
+
+// --- severity → color ---
+
+function severityColor(severity: BoneFinding['severity']): string {
+  if (severity === 'mild') return Colors.warning;
+  if (severity === 'moderate') return Colors.error;
+  return '#7A1A1A';
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
+export const Face3DViewer: React.FC<Props> = ({
+  vertices,
+  source,
+  mode = 'anatomy',
+  size = 320,
+  bone,
+  lesions,
+}) => {
+  // Orbit + zoom state
+  const [yaw, setYaw] = useState(0);
+  const [pitch, setPitch] = useState(0);
+  const [distance, setDistance] = useState(180);
+  const baseRef = useRef({ yaw: 0, pitch: 0, distance: 180 });
+
+  // Auto-rotate when the user hasn't touched the viewer recently. Halts on
+  // any pan and resumes after a short idle window.
+  const idleSince = useRef(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (Date.now() - idleSince.current < 1500) return;
+      setYaw((y) => y + 0.012);
+    }, 40);
+    return () => clearInterval(id);
+  }, []);
+
+  const pan = Gesture.Pan()
+    .onStart(() => {
+      idleSince.current = Date.now();
+      baseRef.current = { yaw, pitch, distance };
+    })
+    .onUpdate((e) => {
+      idleSince.current = Date.now();
+      const newYaw = baseRef.current.yaw + e.translationX / 90;
+      const newPitch = Math.max(-1.0, Math.min(1.0, baseRef.current.pitch - e.translationY / 120));
+      runOnJS(setYaw)(newYaw);
+      runOnJS(setPitch)(newPitch);
+    })
+    .onEnd(() => {
+      idleSince.current = Date.now();
+    });
+
+  const pinch = Gesture.Pinch()
+    .onStart(() => {
+      idleSince.current = Date.now();
+      baseRef.current = { yaw, pitch, distance };
+    })
+    .onUpdate((e) => {
+      idleSince.current = Date.now();
+      const next = Math.max(120, Math.min(360, baseRef.current.distance / e.scale));
+      runOnJS(setDistance)(next);
+    })
+    .onEnd(() => {
+      idleSince.current = Date.now();
+    });
+
+  const composed = Gesture.Simultaneous(pan, pinch);
+
+  // Project every vertex once per render
+  const projected = useMemo(() => {
+    const out: Array<{ x: number; y: number; depth: number } | null> = [];
+    for (let i = 0; i * 3 < vertices.length; i++) {
+      const v = vert(vertices, i);
+      out.push(v ? projectVertex(v, yaw, pitch, distance, 45, size) : null);
+    }
+    return out;
+  }, [vertices, yaw, pitch, distance, size]);
+
+  // Edges
+  const edges = useMemo(() => {
+    const list: Array<{ a: number; b: number }> = [];
+    for (const [a, b] of CANONICAL_OUTLINE_EDGES) list.push({ a, b });
+    return list;
+  }, []);
+
+  // Measurement overlays
+  const measurementLines = MEASUREMENT_LINES[source] || MEASUREMENT_LINES.mediapipe;
+  const measurementAngles = MEASUREMENT_ANGLES[source] || MEASUREMENT_ANGLES.mediapipe;
+
+  // Heatmap: map findings to vertices
+  const findingByVertex = useMemo(() => {
+    if (!bone || mode !== 'heatmap') return new Map<number, BoneFinding>();
+    const map = new Map<number, BoneFinding>();
+    for (const f of bone.findings) {
+      // Map each finding back to its primary vertex through the measurement-line table
+      const line = measurementLines.find((l) => l.metricKey === (f.metric as BoneMetricKey));
+      if (line) {
+        map.set(line.vertices[0], f);
+        map.set(line.vertices[1], f);
+        continue;
+      }
+      const angle = measurementAngles.find((a) => a.metricKey === (f.metric as BoneMetricKey));
+      if (angle) {
+        map.set(angle.vertices[1], f);
+      }
+    }
+    return map;
+  }, [bone, mode, measurementLines, measurementAngles]);
+
+  // Lesion bboxes → project onto the front of the mesh (z = pronasale.z ≈ 22)
+  // The lesion bbox is normalised to image coordinates; we map it to the
+  // canonical mesh's xy range (~[-40, +40], [-50, +50]) and place at depth z=10.
+  const lesionDots = useMemo(() => {
+    if (mode !== 'skin' || !lesions || lesions.length === 0) return [];
+    return lesions.map((les) => {
+      const [bx, by, bw, bh] = les.bbox;
+      const cx = bx + bw / 2;
+      const cy = by + bh / 2;
+      // Map [0,1] image space → mesh xy
+      const mx = (0.5 - cx) * 80;   // flip x so subject-left maps to +X
+      const my = (0.5 - cy) * 100;  // flip y
+      return projectVertex({ x: mx, y: my, z: 10 }, yaw, pitch, distance, 45, size);
+    });
+  }, [lesions, mode, yaw, pitch, distance, size]);
+
+  return (
+    <GestureHandlerRootView style={{ width: size, height: size }}>
+      <GestureDetector gesture={composed}>
+        <View style={[styles.canvas, { width: size, height: size }]}>
+          <Svg width={size} height={size}>
+            <Defs>
+              <RadialGradient id="bgGlow" cx="50%" cy="50%" rx="55%" ry="55%">
+                <Stop offset="0%" stopColor={HARMONY_ACCENT} stopOpacity="0.18" />
+                <Stop offset="100%" stopColor={HARMONY_ACCENT} stopOpacity="0" />
+              </RadialGradient>
+            </Defs>
+
+            <Circle cx={size / 2} cy={size / 2} r={size / 2.1} fill="url(#bgGlow)" />
+
+            {/* Outline edges */}
+            <G>
+              {edges.map(({ a, b }, i) => {
+                const pa = projected[a];
+                const pb = projected[b];
+                if (!pa || !pb) return null;
+                const opacity = Math.max(0.25, 0.9 - Math.abs(pa.depth + pb.depth - 360) / 400);
+                return (
+                  <Line
+                    key={i}
+                    x1={pa.x} y1={pa.y}
+                    x2={pb.x} y2={pb.y}
+                    stroke={Colors.text}
+                    strokeWidth={1.2}
+                    strokeOpacity={opacity}
+                    strokeLinecap="round"
+                  />
+                );
+              })}
+            </G>
+
+            {/* Landmark dots */}
+            <G>
+              {projected.map((p, i) => {
+                if (!p) return null;
+                if (mode === 'heatmap') {
+                  const f = findingByVertex.get(i);
+                  if (!f) return null;
+                  return (
+                    <Circle
+                      key={`l${i}`}
+                      cx={p.x} cy={p.y}
+                      r={6}
+                      fill={severityColor(f.severity)}
+                      fillOpacity={0.85}
+                      stroke={Colors.background}
+                      strokeWidth={1}
+                    />
+                  );
+                }
+                // Default: small landmark dots
+                return (
+                  <Circle
+                    key={`l${i}`}
+                    cx={p.x} cy={p.y}
+                    r={1.6}
+                    fill={HARMONY_ACCENT}
+                    fillOpacity={0.7}
+                  />
+                );
+              })}
+            </G>
+
+            {/* Measurement lines (measurements mode) */}
+            {mode === 'measurements' && bone && (
+              <G>
+                {measurementLines.map((line, i) => {
+                  const pa = projected[line.vertices[0]];
+                  const pb = projected[line.vertices[1]];
+                  const value = bone.metrics?.[line.metricKey]?.value;
+                  if (!pa || !pb) return null;
+                  const labelX = (pa.x + pb.x) / 2;
+                  const labelY = (pa.y + pb.y) / 2 - 6;
+                  return (
+                    <G key={`ml${i}`}>
+                      <Line
+                        x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y}
+                        stroke={HARMONY_ACCENT}
+                        strokeWidth={1.4}
+                        strokeDasharray="3,3"
+                      />
+                      {Number.isFinite(value) && (
+                        <SvgText
+                          x={labelX} y={labelY}
+                          fontSize={FontSize.xxs}
+                          fontFamily={FontFamily.sansMedium}
+                          fill={HARMONY_ACCENT}
+                          textAnchor="middle"
+                        >
+                          {`${line.label}  ${formatMetricValue(line.metricKey, value as number)}`}
+                        </SvgText>
+                      )}
+                    </G>
+                  );
+                })}
+                {measurementAngles.map((arc, i) => {
+                  const pa = projected[arc.vertices[0]];
+                  const pc = projected[arc.vertices[1]];
+                  const pb = projected[arc.vertices[2]];
+                  const value = bone.metrics?.[arc.metricKey]?.value;
+                  if (!pa || !pc || !pb) return null;
+                  return (
+                    <G key={`ma${i}`}>
+                      <Line x1={pc.x} y1={pc.y} x2={pa.x} y2={pa.y} stroke={HARMONY_ACCENT} strokeWidth={1.2} strokeOpacity={0.7} />
+                      <Line x1={pc.x} y1={pc.y} x2={pb.x} y2={pb.y} stroke={HARMONY_ACCENT} strokeWidth={1.2} strokeOpacity={0.7} />
+                      {Number.isFinite(value) && (
+                        <SvgText
+                          x={pc.x + 14} y={pc.y - 4}
+                          fontSize={FontSize.xxs}
+                          fontFamily={FontFamily.sansMedium}
+                          fill={HARMONY_ACCENT}
+                        >
+                          {formatMetricValue(arc.metricKey, value as number)}
+                        </SvgText>
+                      )}
+                    </G>
+                  );
+                })}
+              </G>
+            )}
+
+            {/* Skin mode — lesion dots projected onto mesh */}
+            {mode === 'skin' && lesionDots.length > 0 && (
+              <G>
+                {lesionDots.map((p, i) => (
+                  <Circle
+                    key={`lesion${i}`}
+                    cx={p.x} cy={p.y}
+                    r={4}
+                    fill={Colors.acne}
+                    fillOpacity={0.85}
+                  />
+                ))}
+              </G>
+            )}
+          </Svg>
+        </View>
+      </GestureDetector>
+    </GestureHandlerRootView>
+  );
+};
+
+const styles = StyleSheet.create({
+  canvas: {
+    backgroundColor: 'transparent',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});

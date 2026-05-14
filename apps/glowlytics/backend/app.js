@@ -9,6 +9,8 @@ const OpenAI = require('openai');
 const { seedGuidelines, queryGuidelines, queryGuidelinesMulti } = require('./rag');
 const imageProcessing = require('./image-processing');
 const signalModels = require('./signal-models');
+const boneStructure = require('./bone-structure-3d');
+const { recommendInterventions } = require('./interventions');
 const { searchCuratedProducts, lookupCuratedBarcode, enrichIngredients } = require('./curated-products');
 const scanQueries = require('./queries/scans');
 
@@ -1033,6 +1035,113 @@ app.post('/api/vision/generate-insights', async (req, res) => {
     } else {
       res.status(500).json({ error: safeErrorMessage(err) });
     }
+  }
+});
+
+// ==================== BONE STRUCTURE (HARMONY) ANALYSIS ====================
+
+// Compact a captured mesh down to ~200 verts for server-side replay storage.
+// We keep every Nth vertex from the flat xyz stream.
+function downsampleMesh(vertices, target = 200) {
+  if (!vertices) return null;
+  const arr = Array.isArray(vertices) ? vertices : Array.from(vertices);
+  const triples = Math.floor(arr.length / 3);
+  if (triples <= target) return arr;
+  const step = Math.ceil(triples / target);
+  const out = [];
+  for (let i = 0; i < triples; i += step) {
+    out.push(arr[i * 3], arr[i * 3 + 1], arr[i * 3 + 2]);
+  }
+  return out;
+}
+
+app.post('/api/vision/bone-structure', analyzeRateLimit, async (req, res) => {
+  const start = Date.now();
+  try {
+    const { mesh, daily_id, sex_override } = req.body || {};
+
+    if (!mesh || !Array.isArray(mesh.vertices) || mesh.vertices.length === 0) {
+      return res.status(400).json({ error: 'mesh.vertices is required' });
+    }
+    if (mesh.vertices.length % 3 !== 0) {
+      return res.status(400).json({ error: 'mesh.vertices must be a flat xyz array (length divisible by 3)' });
+    }
+    if (mesh.vertices.length > 1500 * 3) {
+      return res.status(413).json({ error: 'Mesh too large (max 1500 vertices)' });
+    }
+
+    const source = mesh.source === 'mediapipe' ? 'mediapipe' : 'arkit';
+    const blendShapes = mesh.blendShapes || null;
+
+    // Resolve sex from explicit override or the user's profile.
+    let sex = sex_override === 'male' || sex_override === 'female' ? sex_override : null;
+    if (!sex) {
+      const userId = req.auth?.userId;
+      if (userId && userId !== 'dev-user') {
+        try {
+          const { rows } = await pool.query('SELECT sex FROM user_profiles WHERE user_id = $1', [userId]);
+          if (rows[0]?.sex === 'male' || rows[0]?.sex === 'female') sex = rows[0].sex;
+        } catch (err) {
+          log.warn('[bone-structure] sex lookup failed:', err.message);
+        }
+      }
+    }
+
+    const result = boneStructure.analyzeBoneStructure({
+      vertices: mesh.vertices,
+      blendShapes,
+      sex,
+      source,
+    });
+
+    if (result.status !== 'ok') {
+      return res.status(200).json({
+        ...result,
+        interventions: { lifestyle: [], pharmacological: [], interventional: [], procedural_disclaimer: '' },
+        downsampled_mesh: null,
+        latency_ms: Date.now() - start,
+        generated_at: new Date().toISOString(),
+      });
+    }
+
+    const interventions = recommendInterventions(result.findings);
+    const downsampled_mesh = {
+      vertices: downsampleMesh(mesh.vertices, 200),
+      source,
+    };
+
+    const payload = {
+      harmony: result.harmony,
+      status: result.status,
+      domain_scores: result.domainScores,
+      scored_metrics: result.scored,
+      metrics: result.metrics,
+      findings: result.findings,
+      interventions,
+      dominant_driver: result.dominantDriver,
+      downsampled_mesh,
+      source,
+      sex,
+      generated_at: new Date().toISOString(),
+      latency_ms: Date.now() - start,
+    };
+
+    // Persist alongside the related scan when daily_id is provided.
+    if (daily_id) {
+      try {
+        await pool.query(
+          `UPDATE model_outputs SET bone_structure = $1 WHERE daily_id = $2`,
+          [JSON.stringify(payload), daily_id]
+        );
+      } catch (err) {
+        log.warn('[bone-structure] persist failed:', err.message);
+      }
+    }
+
+    res.json(payload);
+  } catch (err) {
+    log.error('[bone-structure] Error:', err.message);
+    res.status(500).json({ error: safeErrorMessage(err) });
   }
 });
 

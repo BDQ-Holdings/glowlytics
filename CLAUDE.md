@@ -5,23 +5,27 @@
 ```
 apps/
   glowlytics/    # Mobile app (Expo + React Native)
-    app/         # 56 screens (Expo Router file-based)
+    app/         # 58 screens (Expo Router file-based)
       (tabs)/    # today, reports (→ Story), camera, products (→ Shelf), profile (→ Me)
       auth/      # sign-in, sign-up, forgot-password (Apple native + Google OAuth + email)
       onboarding/# 8-10 screens (dynamic per sex/menstrual, includes scan-reminder)
-      scan/      # camera -> analyzing -> results (story format)
+      scan/      # camera -> analyzing -> results (story format) + bone-capture, bone-results
       today/     # ritual checklist
+      architecture/  # bone-structure finding detail screens
       story.tsx, account.tsx, routine.tsx  # split out of tab files for Glow redesign
+    modules/         # local Expo native modules (expo-arkit-face for FaceAnchor capture)
     src/
-      components/    # 31 top-level (.tsx) + glow/ + navigation/ = 37 total
+      components/    # 33 top-level (.tsx) incl. Face3DViewer + glow/ + navigation/
       components/glow/  # GlowIcons, GlowPrimitives (BreathingGlow, GlowRing, GlowSpark, FadeUp)
-      services/      # 31 services incl. httpClient.ts, syncOutbox.ts, mcpClients.ts
+      services/      # 34 services incl. httpClient.ts, syncOutbox.ts, mcpClients.ts, faceMeshCapture.ts, boneStructure.ts
       store/         # Zustand (useStore.ts) — sync via outbox, not fire-and-forget
-      constants/     # theme.ts (incl. Glow palettes), signals.ts, facets.ts, lesions.ts, ingredients.ts
+      constants/     # theme.ts (incl. Glow palettes), signals.ts, facets.ts, lesions.ts, ingredients.ts, boneStructure.ts
       utils/, hooks/, types/, config/
     backend/         # Express + PostgreSQL + ONNX + RAG + MCP server
       mcp/           # MCP Streamable HTTP transport + tools + auth + rate limiter + OAuth DCR proxy
-      queries/       # reusable scan/routine/ingredient query helpers
+      queries/       # reusable scan/routine/ingredient/bone-structure query helpers
+      bone-structure-3d.js  # 16-metric Harmony scoring across 6 domains
+      interventions.js      # finding → three-tier (Lifestyle/Pharma/Procedural) lookup
   landing/       # Marketing website (Next.js)
 research/
   ml/            # Training/data notebooks and model tooling
@@ -33,8 +37,8 @@ research/
 cd apps/glowlytics
 npm start                    # Dev server
 npx tsc --noEmit             # Type check (0 errors)
-npm test                     # Mobile tests (361 across 24 suites)
-cd backend && npm test       # Backend tests (285 across 24 suites)
+npm test                     # Mobile tests (369 across 25 suites)
+cd backend && npm test       # Backend tests (326 across 26 suites)
 ```
 
 ## Tech Stack
@@ -69,7 +73,9 @@ cd backend && npm test       # Backend tests (285 across 24 suites)
 
 **Vision**: `/api/vision/analyze` — L1 deterministic (~100ms) + L2 ONNX (~200ms) + L3 GPT-4o+RAG (~3-5s). Score merge: L2 > L1+L3 blend. See `backend/signal-models.js`.
 
-**MCP server**: `/mcp` exposes 9 user-scoped tools to authenticated MCP clients (Claude.ai). Auth via Clerk JWKS Bearer + beta allowlist + per-user rate limiter (60/min, 10/sec burst). Tools: `get_latest_scan`, `get_scan_history`, `get_signal_trend`, `compare_scans`, `get_scan_report`, `get_current_routine`, `lookup_ingredient`, `search_ingredients`, `summarize_month`. Profile → Connected Apps (Beta) lists + revokes clients via `/api/mcp/clients`.
+**MCP server**: `/mcp` exposes 11 user-scoped tools to authenticated MCP clients (Claude.ai). Auth via Clerk JWKS Bearer + beta allowlist + per-user rate limiter (60/min, 10/sec burst). Tools: `get_latest_scan`, `get_scan_history`, `get_signal_trend`, `compare_scans`, `get_scan_report`, `get_current_routine`, `lookup_ingredient`, `search_ingredients`, `summarize_month`, `get_bone_structure`, `get_harmony_trend`. Profile → Connected Apps (Beta) lists + revokes clients via `/api/mcp/clients`.
+
+**Bone structure (Harmony)**: `/api/vision/bone-structure` accepts a captured 3D face mesh (`{ vertices, blendShapes?, source }`) and returns a weighted Harmony composite (0–100) across 6 domains — Symmetry 25, Periorbital 20, Mandibular 20, Midface 15, Nose 10, Brow 10. 16 metrics (canthal tilt, gonial angle, bizygomatic/bitemporal width, facial thirds & fifths, scleral show, eye aperture, IPD ratio, chin projection, nasolabial angle, brow position, …). Sex-aware ideals for `gonial_angle`, `nasolabial_angle`, `brow_position`. Findings map to a three-tier intervention bundle (Lifestyle / Pharma / Procedural) with a strong procedural disclaimer. Persistence via `model_outputs.bone_structure JSONB` (migration v4). Capture: `expo-arkit-face` native module (Swift) for TrueDepth devices; canonical-mesh fallback (`src/services/canonicalFaceMesh.ts`) keeps the pipeline runnable without a native rebuild. Renderer: `Face3DViewer.tsx` (SVG + JS perspective projection + pan/pinch + idle auto-rotate; replaces the old 2D `FacialMesh.tsx`).
 
 **OAuth DCR proxy** (`backend/mcp/oauth-proxy.js`): Clerk has no `registration_endpoint`, so claude.ai's MCP connector can't dynamically register. The proxy fronts Clerk with RFC 7591 DCR + RFC 8414 metadata: `/oauth/register` returns a static pre-registered Clerk `client_id`, `/oauth/authorize` 302s to Clerk with opaque proxy state + our callback URL, `/oauth/token` Basic-auths to Clerk and rewrites `redirect_uri`. Feature-flagged on `MCP_OAUTH_PROXY_ENABLED` + `MCP_OAUTH_PROXY_CLIENT_ID` + `MCP_OAUTH_PROXY_CLIENT_SECRET`; `well-known.js` advertises our backend as auth_server when enabled, falls back to Clerk otherwise. `/mcp` 401 carries RFC 9728 `WWW-Authenticate` with `resource_metadata`.
 

@@ -33,6 +33,7 @@ export const Colors = {
   acne: '#E87474',      // aligned with signal inflammation (soft coral)
   sunDamage: '#E8A64C',  // aligned with signal sunDamage (warm amber)
   skinAge: '#9B7FDB',    // aligned with signal elasticity (soft lavender)
+  harmony: '#C8A2D6',    // bone-structure / Harmony accent — adjacent to elasticity
 
   border: 'rgba(0, 0, 0, 0.08)',
   borderStrong: 'rgba(0, 0, 0, 0.14)',

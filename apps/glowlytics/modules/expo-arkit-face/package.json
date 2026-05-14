@@ -1,0 +1,11 @@
+{
+  "name": "expo-arkit-face",
+  "version": "0.1.0",
+  "description": "ARKit FaceAnchor capture for Glowlytics bone-structure analysis",
+  "main": "index.ts",
+  "types": "index.ts",
+  "private": true,
+  "keywords": ["expo", "arkit", "face-tracking"],
+  "repository": "private",
+  "license": "UNLICENSED"
+}

@@ -178,6 +178,11 @@ ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS sex VARCHAR(20);
 ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS menstrual_status VARCHAR(30);
 `;
 
+// Migration v4: bone-structure (Harmony) analysis results live alongside skin signals
+const migrationV4 = `
+ALTER TABLE model_outputs ADD COLUMN IF NOT EXISTS bone_structure JSONB DEFAULT NULL;
+`;
+
 /**
  * Initialize schema using a provided pool (does NOT close it).
  * Runs CREATE TABLE IF NOT EXISTS + ALTER TABLE for migrations.
@@ -198,6 +203,11 @@ async function initSchema(externalPool) {
     await externalPool.query(migrationV3);
   } catch (err) {
     console.warn('[db-init] Migration v3 warning (may be harmless):', err.message);
+  }
+  try {
+    await externalPool.query(migrationV4);
+  } catch (err) {
+    console.warn('[db-init] Migration v4 warning (may be harmless):', err.message);
   }
 }
 

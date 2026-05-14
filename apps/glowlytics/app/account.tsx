@@ -298,6 +298,18 @@ export default function AccountScreen() {
         </TouchableOpacity>
 
         <View style={styles.divider} />
+        <TouchableOpacity
+          style={styles.modeButton}
+          onPress={() => router.push('/scan/bone-capture')}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Run facial architecture analysis"
+        >
+          <Feather name="hexagon" size={16} color={Colors.harmony} />
+          <Text style={styles.modeButtonText}>Facial architecture (beta)</Text>
+        </TouchableOpacity>
+
+        <View style={styles.divider} />
         <ConnectedAppsSection />
 
         {/* Subscription inline */}

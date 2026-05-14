@@ -25,6 +25,8 @@ import { localDateStr } from '../../src/utils/localDate';
 import { useStore } from '../../src/store/useStore';
 import { analyzeWithFallback } from '../../src/services/skinAnalysis';
 import { streamInsights } from '../../src/services/visionAPI';
+import { captureFaceMesh } from '../../src/services/faceMeshCapture';
+import { analyzeBoneStructure } from '../../src/services/boneStructure';
 import { getEstimatedCycleDay } from '../../src/utils/cycleDay';
 import { trackEvent } from '../../src/services/analytics';
 import { env } from '../../src/config/env';
@@ -413,6 +415,26 @@ export default function AnalyzingScreen() {
         signal_confidence: analysis.signal_confidence,
         zone_severity: analysis.zone_severity,
       });
+
+      // Bone-structure analysis runs in parallel — fire-and-forget. Uses
+      // the canonical mesh when ARKit isn't available so the call still
+      // produces a Harmony score on every device. Failures are silent —
+      // the rest of the scan flow is unaffected.
+      (async () => {
+        try {
+          const captured = await captureFaceMesh();
+          const sex = useStore.getState().user?.sex;
+          const sexOverride = sex === 'male' || sex === 'female' ? sex : undefined;
+          const bone = await analyzeBoneStructure({
+            mesh: captured.mesh,
+            dailyId: dailyRecord.daily_id,
+            sexOverride,
+          });
+          useStore.getState().attachBoneStructure(dailyRecord.daily_id, bone);
+        } catch (err) {
+          if (__DEV__) console.warn('[Glowlytics] Bone-structure analysis skipped:', err);
+        }
+      })();
 
       // Pattern engine post-scan trigger: opportunistic health sync + pattern recompute.
       // syncHealthData has its own reentrancy guard and will short-circuit if a sync

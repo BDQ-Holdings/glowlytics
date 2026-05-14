@@ -21,7 +21,10 @@ import { Feather } from '@expo/vector-icons';
 import { ActionCard } from '../../src/components/ActionCard';
 import { Button } from '../../src/components/Button';
 import { ClinicalSourcesCard } from '../../src/components/ClinicalSourcesCard';
-import { FacialMesh } from '../../src/components/FacialMesh';
+import { Face3DViewer } from '../../src/components/Face3DViewer';
+import { HarmonyScoreReveal } from '../../src/components/HarmonyScoreReveal';
+import { InterventionDrawer } from '../../src/components/InterventionDrawer';
+import { buildCanonicalMesh } from '../../src/services/canonicalFaceMesh';
 import {
   BorderRadius,
   Colors,
@@ -409,20 +412,57 @@ export default function Results({ hideBottomAction: hideBottomActionProp }: { hi
       ),
     });
 
-    // Page 4: Facial analysis (conditional)
+    // Page 4: 3D facial mesh — shows lesion dots on real mesh (or canonical
+    // fallback when no per-user mesh has been captured yet).
     if (latestOutput.conditions?.length || (latestOutput.lesions && latestOutput.lesions.length > 0)) {
+      const meshVerts = latestOutput.bone_structure?.downsampled_mesh?.vertices || buildCanonicalMesh();
+      const meshSource = latestOutput.bone_structure?.downsampled_mesh?.source || 'mediapipe';
       p.push({
-        key: 'deepdive',
+        key: 'mesh3d',
         render: () => (
           <StoryPage screenH={screenH} insets={stableInsets}>
-            <FacialMesh
-              acneScore={latestOutput.acne_score}
-              sunDamageScore={latestOutput.sun_damage_score}
-              skinAgeScore={latestOutput.skin_age_score}
-              conditions={latestOutput.conditions}
-              lesions={latestOutput.lesions}
-              signalConfidence={latestOutput.signal_confidence}
+            <Text style={styles.pageTitle}>Where it's showing</Text>
+            <View style={styles.meshWrap}>
+              <Face3DViewer
+                vertices={meshVerts}
+                source={meshSource}
+                mode="skin"
+                size={Math.min(360, screenH * 0.4)}
+                lesions={latestOutput.lesions}
+              />
+            </View>
+            <Text style={styles.meshHint}>Pinch to zoom · drag to orbit</Text>
+          </StoryPage>
+        ),
+      });
+    }
+
+    // Page 5: Facial architecture (conditional on bone analysis)
+    if (latestOutput.bone_structure?.harmony != null) {
+      const bone = latestOutput.bone_structure;
+      const meshVerts = bone.downsampled_mesh?.vertices || buildCanonicalMesh();
+      const meshSource = bone.downsampled_mesh?.source || 'mediapipe';
+      p.push({
+        key: 'architecture',
+        render: () => (
+          <StoryPage screenH={screenH} insets={stableInsets}>
+            <Text style={styles.pageTitle}>Facial architecture</Text>
+            <View style={styles.meshWrap}>
+              <Face3DViewer
+                vertices={meshVerts}
+                source={meshSource}
+                mode="measurements"
+                size={Math.min(360, screenH * 0.4)}
+                bone={bone}
+              />
+            </View>
+            <HarmonyScoreReveal
+              score={bone.harmony}
+              caption={bone.dominant_driver ? `Strongest opportunity: ${bone.dominant_driver}` : undefined}
             />
+            <View style={styles.interventionWrap}>
+              <InterventionDrawer bundle={bone.interventions} />
+            </View>
           </StoryPage>
         ),
       });
@@ -714,6 +754,21 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   sourcesWrap: {
+    marginTop: Spacing.lg,
+  },
+  meshWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: Spacing.md,
+  },
+  meshHint: {
+    color: Glow.palette.muted,
+    fontFamily: FontFamily.sans,
+    fontSize: FontSize.xs,
+    textAlign: 'center',
+    marginTop: Spacing.sm,
+  },
+  interventionWrap: {
     marginTop: Spacing.lg,
   },
 

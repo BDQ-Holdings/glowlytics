@@ -37,6 +37,15 @@ jest.mock('../../queries/reports', () => ({
 jest.mock('../../queries/routine', () => ({
   getCurrentRoutine: jest.fn().mockResolvedValue({ am: [], pm: [], conflicts: [] }),
 }));
+jest.mock('../../queries/bone-structure', () => ({
+  getLatestBoneStructure: jest.fn().mockResolvedValue({
+    daily_id: 'd1',
+    date: '2026-04-17',
+    bone_structure: { harmony: 78, domain_scores: {}, findings: [], interventions: { lifestyle: [], pharmacological: [], interventional: [] } },
+  }),
+  getBoneStructureForScan: jest.fn().mockResolvedValue(null),
+  computeHarmonyTrend: jest.fn().mockResolvedValue({ series: [], delta: null, direction: 'flat' }),
+}));
 jest.mock('../../queries/ingredients', () => ({
   lookupIngredient: jest.fn().mockResolvedValue({
     name: 'Niacinamide', aliases: ['niacinamide'], function: '', concerns: [],
@@ -121,9 +130,11 @@ const EXPECTED_TOOLS = [
   'lookup_ingredient',
   'search_ingredients',
   'summarize_month',
+  'get_bone_structure',
+  'get_harmony_trend',
 ];
 
-test('initialize succeeds and lists all 9 tools', async () => {
+test('initialize succeeds and lists all 11 tools', async () => {
   const { client, transport } = await newClient(`user_${Math.random().toString(36).slice(2)}`);
   try {
     const tools = await client.listTools();
@@ -145,6 +156,8 @@ test('every tool can be invoked with minimal valid input and returns text conten
     lookup_ingredient: { name: 'niacinamide' },
     search_ingredients: { query: 'vitamin' },
     summarize_month: {},
+    get_bone_structure: {},
+    get_harmony_trend: { period: '90d' },
   };
 
   const { client, transport } = await newClient(`user_${Math.random().toString(36).slice(2)}`);
