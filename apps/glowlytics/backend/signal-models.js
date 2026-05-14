@@ -124,9 +124,12 @@ async function initModels() {
     fs.mkdirSync(MODEL_DIR, { recursive: true });
   }
 
-  // Auto-download models if missing or incomplete (external-data stub)
-  // Pin to commit 18966b9 where models were force-added (removed from HEAD to unblock railway up)
-  const GH_BASE = 'https://raw.githubusercontent.com/RadianceIQ/glowlytics/18966b9/apps/glowlytics/backend/models';
+  // Auto-download models if missing or incomplete (external-data stub).
+  // Pin to commit 18966b9 where models were force-added (removed from HEAD to
+  // unblock `railway up`). NOTE: the path inside that commit is still the
+  // pre-monorepo layout `RadianceIQ/backend/models/`, NOT `apps/glowlytics/...`.
+  // Repo also moved RadianceIQ → BDQ-Holdings.
+  const GH_BASE = 'https://raw.githubusercontent.com/BDQ-Holdings/glowlytics/18966b9/RadianceIQ/backend/models';
   await ensureModel('skin_signals_v2', `${GH_BASE}/skin_signals_v2.onnx`, 10_000_000);
   await ensureModel('acne_detector', `${GH_BASE}/acne_detector.onnx`, 30_000_000);
 
@@ -498,17 +501,22 @@ function mergeSignalScores(layer1Scores, layer2Results, layer3Scores) {
   const signals = ['structure', 'hydration', 'inflammation', 'sunDamage', 'elasticity'];
   const merged = {};
 
+  // When Layer 3 is unavailable (no-LLM mode or quota error), pass null/undefined
+  // and we zero its weight so it contributes nothing to the merge — the formula
+  // collapses cleanly to a Layer 1 + Layer 2 only blend.
+  const l3Available = layer3Scores != null;
+
   for (const signal of signals) {
     const rawL1 = layer1Scores[signal];
     const l1 = Number.isFinite(rawL1) ? rawL1 : 50;
     const rawL2 = overrides?.[signal];
     const l2 = Number.isFinite(rawL2) ? rawL2 : undefined;
-    const rawL3 = layer3Scores?.[signal];
+    const rawL3 = l3Available ? layer3Scores[signal] : undefined;
     const l3 = Number.isFinite(rawL3) ? rawL3 : l1;
 
     const betaL1 = BETA_L1[signal];
     const betaL2 = l2 !== undefined ? BETA_L2_LOADED[signal] : 0;
-    const betaL3 = BETA_L3[signal];
+    const betaL3 = l3Available && Number.isFinite(rawL3) ? BETA_L3[signal] : 0;
 
     const totalBeta = betaL1 + betaL2 + betaL3;
     if (totalBeta === 0) {

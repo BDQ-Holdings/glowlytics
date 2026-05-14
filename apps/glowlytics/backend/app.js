@@ -11,6 +11,7 @@ const imageProcessing = require('./image-processing');
 const signalModels = require('./signal-models');
 const boneStructure = require('./bone-structure-3d');
 const { recommendInterventions } = require('./interventions');
+const noLlmFallback = require('./no-llm-fallback');
 const { searchCuratedProducts, lookupCuratedBarcode, enrichIngredients } = require('./curated-products');
 const scanQueries = require('./queries/scans');
 
@@ -714,64 +715,97 @@ Return ONLY valid JSON matching this schema:
     // ==================== 3-LAYER PARALLEL PIPELINE ====================
     // Layer 1: Deterministic image processing (~100ms)
     // Layer 2: Custom CV models via ONNX Runtime (~200ms)
-    // Layer 3: Fine-tuned GPT-4o (~3-5s)
-    // All 3 layers run in PARALLEL → results merged → single response
+    // Layer 3: Fine-tuned GPT-4o (~3-5s) — skipped or fallback-synthesised
+    //   when OPENAI_DISABLED=true, no API key, or OpenAI returns a non-retryable
+    //   error (429 quota / 401 invalid). The merge tolerates a null L3 by
+    //   zeroing its weight (see signal-models.js mergeSignalScores).
+    const llmDisabled = noLlmFallback.isLLMDisabled();
 
-    const [layer1Result, layer3Result] = await Promise.all([
-      // Layer 1 + Layer 2: deterministic features → CV model scoring
-      imageProcessing.extractFeatures(image_base64).then(async (features) => {
-        const layer1Scores = imageProcessing.featuresToSignalScores(features);
-        const layer2Results = await signalModels.runAllModels(image_base64, features);
-        const summaryFeatures = imageProcessing.extractSummaryFeatures(features);
-        return { features, layer1Scores, layer2Results, summaryFeatures };
-      }).catch((err) => {
-        log.warn('[vision] Layer 1/2 failed, continuing with Layer 3 only:', err.message);
-        return null;
-      }),
+    const layer1Promise = imageProcessing.extractFeatures(image_base64).then(async (features) => {
+      const layer1Scores = imageProcessing.featuresToSignalScores(features);
+      const layer2Results = await signalModels.runAllModels(image_base64, features);
+      const summaryFeatures = imageProcessing.extractSummaryFeatures(features);
+      return { features, layer1Scores, layer2Results, summaryFeatures };
+    }).catch((err) => {
+      log.warn('[vision] Layer 1/2 failed:', err.message);
+      return null;
+    });
 
-      // Layer 3: GPT-4o (30s timeout to prevent hung connections)
-      Promise.race([
-        openai.chat.completions.create({
-          model: modelId,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            {
-              role: 'user',
-              content: [
-                { type: 'text', text: 'Analyze this facial skin photo and return the structured scores.' },
-                {
-                  type: 'image_url',
-                  image_url: {
-                    url: `data:image/jpeg;base64,${image_base64}`,
-                    detail: 'high',
+    const layer3Promise = llmDisabled
+      ? Promise.resolve(null)
+      : Promise.race([
+          openai.chat.completions.create({
+            model: modelId,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              {
+                role: 'user',
+                content: [
+                  { type: 'text', text: 'Analyze this facial skin photo and return the structured scores.' },
+                  {
+                    type: 'image_url',
+                    image_url: {
+                      url: `data:image/jpeg;base64,${image_base64}`,
+                      detail: 'high',
+                    },
                   },
-                },
-              ],
-            },
-          ],
-          max_tokens: 1200,
-          temperature: 0.2,
-        }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('OpenAI request timed out after 30s')), 30_000)),
-      ]),
-    ]);
+                ],
+              },
+            ],
+            max_tokens: 1200,
+            temperature: 0.2,
+          }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('OpenAI request timed out after 30s')), 30_000)),
+        ]).catch((err) => {
+          // Quota / auth / non-retryable errors → fall back deterministically.
+          // Transient transport errors fall back too; the alternative is failing
+          // the entire scan, which is worse than a slightly-degraded result.
+          if (noLlmFallback.isFatalOpenAIError(err)) {
+            log.warn(`[vision] OpenAI fatal (${err.status || err.code}); falling back to L1+L2 only`);
+          } else {
+            log.warn(`[vision] OpenAI error: ${err.message}; falling back to L1+L2 only`);
+          }
+          return null;
+        });
 
-    // ==================== PARSE LAYER 3 (GPT-4o) RESPONSE ====================
-    const content = layer3Result.choices?.[0]?.message?.content;
-    if (!content) {
-      return res.status(502).json({ error: 'Empty response from Vision model' });
-    }
+    const [layer1Result, layer3Result] = await Promise.all([layer1Promise, layer3Promise]);
 
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      return res.status(502).json({ error: 'Could not parse JSON from Vision model response', raw: content });
-    }
-
+    // ==================== PARSE OR SYNTHESISE LAYER 3 ====================
     let parsed;
-    try {
-      parsed = JSON.parse(jsonMatch[0]);
-    } catch (parseErr) {
-      return res.status(502).json({ error: 'Vision model returned malformed JSON' });
+    let layer3Synthesised = false;
+
+    if (layer3Result) {
+      const content = layer3Result.choices?.[0]?.message?.content;
+      if (!content) {
+        log.warn('[vision] Empty L3 response; synthesising from L1+L2');
+        layer3Synthesised = true;
+      } else {
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+          log.warn('[vision] L3 response not parseable as JSON; synthesising from L1+L2');
+          layer3Synthesised = true;
+        } else {
+          try {
+            parsed = JSON.parse(jsonMatch[0]);
+          } catch (parseErr) {
+            log.warn('[vision] L3 JSON malformed; synthesising from L1+L2');
+            layer3Synthesised = true;
+          }
+        }
+      }
+    } else {
+      layer3Synthesised = true;
+    }
+
+    if (layer3Synthesised) {
+      if (!layer1Result) {
+        // We need at least L1 to synthesise a sensible response.
+        return res.status(502).json({ error: 'Vision pipeline unavailable (no LLM and no L1/L2 result)' });
+      }
+      parsed = noLlmFallback.buildLayer3FromDeterministic({
+        layer1Scores: layer1Result.layer1Scores,
+        layer2Results: layer1Result.layer2Results,
+      });
     }
 
     const clamp = (v) => { const n = Number(v); return Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : 50; };
@@ -823,11 +857,13 @@ Return ONLY valid JSON matching this schema:
     let signalScores, signalFeatures, lesions, signalConfidence;
 
     if (layer1Result) {
-      // Full 3-layer uncertainty-weighted merge
+      // Full uncertainty-weighted merge. When L3 was synthesised from L1+L2
+      // we pass null so the merge zeros L3's weight — otherwise we'd be
+      // double-counting deterministic data through the "L3" lane.
       signalScores = signalModels.mergeSignalScores(
         layer1Result.layer1Scores,
         layer1Result.layer2Results,
-        layer3SignalScores,
+        layer3Synthesised ? null : layer3SignalScores,
       );
       signalFeatures = layer1Result.summaryFeatures;
       lesions = layer1Result.layer2Results.lesions || [];
@@ -992,29 +1028,58 @@ app.post('/api/vision/generate-insights', async (req, res) => {
       return res.status(400).json({ error: 'signal_scores is required' });
     }
 
-    const modelId = process.env.VISION_MODEL_ID || 'gpt-4o';
-
     // SSE streaming response
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Accel-Buffering', 'no');
 
+    // No-LLM path — emit a structured template payload as a single SSE chunk.
+    // The client treats SSE as append-only text, so we send the full insight
+    // JSON serialised + a [DONE] marker. mobile streamInsights() collects the
+    // text and parses on completion (same as the GPT-4o path).
+    if (noLlmFallback.isLLMDisabled()) {
+      const insights = noLlmFallback.buildInsightsFromDeterministic({
+        signal_scores, lesions, conditions, scan_count,
+      });
+      res.write(`data: ${JSON.stringify({ text: JSON.stringify(insights) })}\n\n`);
+      res.write('data: [DONE]\n\n');
+      return res.end();
+    }
+
+    const modelId = process.env.VISION_MODEL_ID || 'gpt-4o';
     const insightPrompt = buildInsightPrompt({
       signal_scores, lesions, conditions, zone_severity,
       user_profile, user_goal, products, rag_context, scan_count,
     });
 
-    const stream = await openai.chat.completions.create({
-      model: modelId,
-      messages: [
-        { role: 'system', content: insightPrompt.system },
-        { role: 'user', content: insightPrompt.user },
-      ],
-      max_tokens: 1500,
-      temperature: 0.3,
-      stream: true,
-    });
+    let stream;
+    try {
+      stream = await openai.chat.completions.create({
+        model: modelId,
+        messages: [
+          { role: 'system', content: insightPrompt.system },
+          { role: 'user', content: insightPrompt.user },
+        ],
+        max_tokens: 1500,
+        temperature: 0.3,
+        stream: true,
+      });
+    } catch (err) {
+      // OpenAI rejected before we started streaming — fall back to templates
+      // so the client never sees a broken insights pane.
+      if (noLlmFallback.isFatalOpenAIError(err)) {
+        log.warn(`[generate-insights] OpenAI fatal (${err.status || err.code}); serving template insights`);
+      } else {
+        log.warn(`[generate-insights] OpenAI error: ${err.message}; serving template insights`);
+      }
+      const insights = noLlmFallback.buildInsightsFromDeterministic({
+        signal_scores, lesions, conditions, scan_count,
+      });
+      res.write(`data: ${JSON.stringify({ text: JSON.stringify(insights) })}\n\n`);
+      res.write('data: [DONE]\n\n');
+      return res.end();
+    }
 
     for await (const chunk of stream) {
       const content = chunk.choices?.[0]?.delta?.content;

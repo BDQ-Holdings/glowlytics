@@ -204,7 +204,15 @@ describe('POST /api/vision/analyze', () => {
     expect(mockCreate).not.toHaveBeenCalled();
   });
 
-  test('returns 502 on empty model response', async () => {
+  // ==================== L3 failure handling ====================
+  // New contract: when GPT-4o (Layer 3) returns an empty / unparseable
+  // response, or rejects with 401 / 429, we synthesise a Layer-3 payload
+  // from L1 + L2 instead of failing the whole scan. image-processing has
+  // its own internal fallback (estimateFeaturesFromBase64), so L1 always
+  // produces *something* — even on the bogus test image — which means the
+  // endpoint stays at 200 OK with a sensible-shaped response.
+
+  test('200 with synthesised payload when L3 returns empty content', async () => {
     mockCreate.mockResolvedValueOnce({
       choices: [{ message: { content: '' } }],
     });
@@ -212,12 +220,14 @@ describe('POST /api/vision/analyze', () => {
     const res = await request(app)
       .post('/api/vision/analyze')
       .send(VALID_BODY)
-      .expect(502);
+      .expect(200);
 
-    expect(res.body.error).toMatch(/empty/i);
+    expect(res.body.signal_scores).toBeDefined();
+    expect(typeof res.body.acne_score).toBe('number');
+    expect(typeof res.body.recommended_action).toBe('string');
   });
 
-  test('returns 502 on non-JSON model response', async () => {
+  test('200 with synthesised payload when L3 returns non-JSON content', async () => {
     mockCreate.mockResolvedValueOnce({
       choices: [{ message: { content: 'I cannot analyze this image.' } }],
     });
@@ -225,12 +235,13 @@ describe('POST /api/vision/analyze', () => {
     const res = await request(app)
       .post('/api/vision/analyze')
       .send(VALID_BODY)
-      .expect(502);
+      .expect(200);
 
-    expect(res.body.error).toMatch(/could not parse/i);
+    expect(res.body.signal_scores).toBeDefined();
+    expect(res.body.confidence).toBe('med');
   });
 
-  test('returns 502 on invalid API key', async () => {
+  test('200 with synthesised payload when L3 rejects with invalid_api_key', async () => {
     const err = new Error('Incorrect API key provided');
     err.status = 401;
     err.code = 'invalid_api_key';
@@ -239,12 +250,18 @@ describe('POST /api/vision/analyze', () => {
     const res = await request(app)
       .post('/api/vision/analyze')
       .send(VALID_BODY)
-      .expect(502);
+      .expect(200);
 
-    expect(res.body.error).toMatch(/api key/i);
+    expect(res.body.signal_scores).toBeDefined();
+    // Synthesised scores are derived from L1+L2 only — no NaN leak
+    for (const k of ['structure', 'hydration', 'inflammation', 'sunDamage', 'elasticity']) {
+      expect(typeof res.body.signal_scores[k]).toBe('number');
+      expect(res.body.signal_scores[k]).toBeGreaterThanOrEqual(0);
+      expect(res.body.signal_scores[k]).toBeLessThanOrEqual(100);
+    }
   });
 
-  test('returns 429 on rate limit', async () => {
+  test('200 with synthesised payload when L3 rejects with 429 quota', async () => {
     const err = new Error('Rate limit exceeded');
     err.status = 429;
     mockCreate.mockRejectedValueOnce(err);
@@ -252,9 +269,10 @@ describe('POST /api/vision/analyze', () => {
     const res = await request(app)
       .post('/api/vision/analyze')
       .send(VALID_BODY)
-      .expect(429);
+      .expect(200);
 
-    expect(res.body.error).toMatch(/rate limit/i);
+    expect(res.body.signal_scores).toBeDefined();
+    expect(res.body.personalized_feedback).toMatch(/strongest|actionable|signal/i);
   });
 
   // ==================== Phase 2: Condition detection tests ====================

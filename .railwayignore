@@ -1,0 +1,61 @@
+# Railway upload exclusions.
+#
+# The Railway project root is linked to this monorepo root (per ~/.railway/config.json).
+# We only need apps/glowlytics/backend/ on the server — the Railway service has its
+# rootDirectory set to apps/glowlytics/backend, so files outside that path are not
+# referenced at runtime and waste upload bandwidth (the iOS prebuild output alone
+# is ~767 MB).
+
+# Native iOS / Android — both root-level and per-app dirs exist on this machine
+ios/
+android/
+apps/glowlytics/ios/
+apps/glowlytics/android/
+apps/glowlytics/dist/
+apps/glowlytics/dist-web-check/
+apps/glowlytics/assets/
+apps/glowlytics/build-*.ipa
+apps/glowlytics/build-*.apk
+apps/glowlytics/.expo/
+apps/glowlytics/app/
+apps/glowlytics/src/
+apps/glowlytics/modules/
+apps/glowlytics/__mocks__/
+
+# Legacy symlink — same content as apps/glowlytics; would double-archive
+RadianceIQ/
+
+# Marketing site — both root-level and per-app
+landing/
+apps/landing/
+
+# Loose ML notebooks at root
+ml/
+
+# Research / training notebooks
+research/
+
+# Local workspace metadata
+.git/
+.github/
+.expo/
+.claude/
+.superpowers/
+node_modules/
+
+# IPAs / large binaries
+*.ipa
+*.apk
+*.aab
+
+# Backend models — auto-downloaded from GitHub at startup (signal-models.js ensureModel)
+apps/glowlytics/backend/models/*.onnx
+apps/glowlytics/backend/models/*.pt
+apps/glowlytics/backend/__tests__/
+
+# Docs / marketing artifacts at repo root
+docs/
+*.html
+*.xlsx
+*.docx
+*.pdf
