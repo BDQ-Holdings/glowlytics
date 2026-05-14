@@ -38,7 +38,7 @@ cd apps/glowlytics
 npm start                    # Dev server
 npx tsc --noEmit             # Type check (0 errors)
 npm test                     # Mobile tests (369 across 25 suites)
-cd backend && npm test       # Backend tests (339 across 27 suites)
+cd backend && npm test       # Backend tests (360 across 28 suites)
 ```
 
 ## Tech Stack
