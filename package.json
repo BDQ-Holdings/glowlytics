@@ -6,6 +6,7 @@
     "apps/glowlytics/backend"
   ],
   "scripts": {
+    "start": "node apps/glowlytics/backend/server.js",
     "mobile:start": "npm --prefix apps/glowlytics run start",
     "mobile:typecheck": "npm --prefix apps/glowlytics run typecheck",
     "mobile:test": "npm --prefix apps/glowlytics run test",
