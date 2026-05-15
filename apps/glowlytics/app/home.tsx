@@ -14,6 +14,7 @@ import {
 import { PatternCarousel } from '../src/components/PatternCarousel';
 import { PatternProgressBar } from '../src/components/PatternProgressBar';
 import { PatternExportCard } from '../src/components/PatternExportCard';
+import { HarmonyTrendCard } from '../src/components/HarmonyTrendCard';
 import { exportAndSharePattern } from '../src/services/patternExport';
 import {
   BorderRadius,
@@ -333,8 +334,15 @@ export default function Home() {
         </View>
       </FadeUp>
 
-      {/* Ritual */}
+      {/* Harmony trend — only renders when ≥2 scans with bone data exist */}
       <FadeUp index={3}>
+        <View style={[s.section, s.trendWrap]}>
+          <HarmonyTrendCard />
+        </View>
+      </FadeUp>
+
+      {/* Ritual */}
+      <FadeUp index={4}>
         <View style={s.section}>
           <SectionHead
             title="Today's ritual"
@@ -399,7 +407,7 @@ export default function Home() {
 
       {/* Story preview */}
       {featuredPattern && (
-        <FadeUp index={4}>
+        <FadeUp index={5}>
           <View style={s.section}>
             <SectionHead
               title="Your story"
@@ -428,7 +436,7 @@ export default function Home() {
       )}
 
       {/* Mood */}
-      <FadeUp index={5}>
+      <FadeUp index={6}>
         <View style={s.section}>
           <SectionHead
             title="Note today's mood"
@@ -467,7 +475,7 @@ export default function Home() {
 
       {/* Trends sparkline (only when we have history) */}
       {modelOutputs.length >= 3 && (
-        <FadeUp index={6}>
+        <FadeUp index={7}>
           <View style={s.section}>
             <SectionHead
               title="Glow over time"
@@ -668,6 +676,11 @@ const s = StyleSheet.create({
   section: {
     paddingHorizontal: Spacing.lg,
     marginTop: Spacing.lg,
+  },
+  trendWrap: {
+    // Same horizontal padding as `section`; the card itself handles internal
+    // padding. Renders nothing when the user has <2 scans with bone data —
+    // marginTop above stays harmless because the card collapses to null.
   },
   facetGrid: {
     flexDirection: 'row',
