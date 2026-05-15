@@ -14,7 +14,7 @@
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import Svg, { Circle, Defs, G, Line, RadialGradient, Stop, Text as SvgText } from 'react-native-svg';
+import Svg, { Circle, Defs, G, Line, RadialGradient, Rect, Stop, Text as SvgText } from 'react-native-svg';
 import { GestureDetector, Gesture, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { runOnJS } from 'react-native-reanimated';
 import { buildCanonicalMesh, CANONICAL_OUTLINE_EDGES } from '../services/canonicalFaceMesh';
@@ -254,20 +254,27 @@ export const Face3DViewer: React.FC<Props> = ({
 
             <Circle cx={size / 2} cy={size / 2} r={size / 2.1} fill="url(#bgGlow)" />
 
-            {/* Outline edges */}
+            {/* Outline edges — depth-graded so front-facing geometry reads
+                stronger than the back, giving the 2D wireframe a sense of
+                volume even before any shading. */}
             <G>
               {edges.map(({ a, b }, i) => {
                 const pa = projected[a];
                 const pb = projected[b];
                 if (!pa || !pb) return null;
-                const opacity = Math.max(0.25, 0.9 - Math.abs(pa.depth + pb.depth - 360) / 400);
+                // Depth normalisation: distance + z=80 is the closest a vertex
+                // gets at default camera; distance - 80 is the furthest.
+                const avgDepth = (pa.depth + pb.depth) / 2;
+                const frontness = Math.max(0, Math.min(1, (distance + 80 - avgDepth) / 160));
+                const opacity = 0.25 + 0.65 * frontness;
+                const width = 0.9 + 1.0 * frontness;
                 return (
                   <Line
                     key={i}
                     x1={pa.x} y1={pa.y}
                     x2={pb.x} y2={pb.y}
                     stroke={Colors.text}
-                    strokeWidth={1.2}
+                    strokeWidth={width}
                     strokeOpacity={opacity}
                     strokeLinecap="round"
                   />
@@ -294,14 +301,18 @@ export const Face3DViewer: React.FC<Props> = ({
                     />
                   );
                 }
-                // Default: small landmark dots
+                // Default landmark dots — depth-graded radius + opacity
+                // so the eye reads silhouette as well as mesh density.
+                const frontness = Math.max(0, Math.min(1, (distance + 80 - p.depth) / 160));
+                const r = 1.2 + 1.4 * frontness;
+                const op = 0.35 + 0.55 * frontness;
                 return (
                   <Circle
                     key={`l${i}`}
                     cx={p.x} cy={p.y}
-                    r={1.6}
+                    r={r}
                     fill={HARMONY_ACCENT}
-                    fillOpacity={0.7}
+                    fillOpacity={op}
                   />
                 );
               })}
@@ -316,7 +327,13 @@ export const Face3DViewer: React.FC<Props> = ({
                   const value = bone.metrics?.[line.metricKey]?.value;
                   if (!pa || !pb) return null;
                   const labelX = (pa.x + pb.x) / 2;
-                  const labelY = (pa.y + pb.y) / 2 - 6;
+                  const labelY = (pa.y + pb.y) / 2 - 8;
+                  const labelText = Number.isFinite(value)
+                    ? `${line.label}  ${formatMetricValue(line.metricKey, value as number)}`
+                    : null;
+                  // Approximate label width — rough but good enough for a
+                  // softly-rounded backdrop that stays legible over wireframe.
+                  const labelWidth = labelText ? labelText.length * 4.2 + 10 : 0;
                   return (
                     <G key={`ml${i}`}>
                       <Line
@@ -325,16 +342,27 @@ export const Face3DViewer: React.FC<Props> = ({
                         strokeWidth={1.4}
                         strokeDasharray="3,3"
                       />
-                      {Number.isFinite(value) && (
-                        <SvgText
-                          x={labelX} y={labelY}
-                          fontSize={FontSize.xxs}
-                          fontFamily={FontFamily.sansMedium}
-                          fill={HARMONY_ACCENT}
-                          textAnchor="middle"
-                        >
-                          {`${line.label}  ${formatMetricValue(line.metricKey, value as number)}`}
-                        </SvgText>
+                      {labelText && (
+                        <>
+                          <Rect
+                            x={labelX - labelWidth / 2}
+                            y={labelY - 8}
+                            width={labelWidth}
+                            height={12}
+                            rx={6}
+                            fill={Colors.background}
+                            fillOpacity={0.78}
+                          />
+                          <SvgText
+                            x={labelX} y={labelY}
+                            fontSize={FontSize.xxs}
+                            fontFamily={FontFamily.sansMedium}
+                            fill={HARMONY_ACCENT}
+                            textAnchor="middle"
+                          >
+                            {labelText}
+                          </SvgText>
+                        </>
                       )}
                     </G>
                   );
@@ -345,19 +373,30 @@ export const Face3DViewer: React.FC<Props> = ({
                   const pb = projected[arc.vertices[2]];
                   const value = bone.metrics?.[arc.metricKey]?.value;
                   if (!pa || !pc || !pb) return null;
+                  const labelText = Number.isFinite(value)
+                    ? formatMetricValue(arc.metricKey, value as number)
+                    : null;
                   return (
                     <G key={`ma${i}`}>
                       <Line x1={pc.x} y1={pc.y} x2={pa.x} y2={pa.y} stroke={HARMONY_ACCENT} strokeWidth={1.2} strokeOpacity={0.7} />
                       <Line x1={pc.x} y1={pc.y} x2={pb.x} y2={pb.y} stroke={HARMONY_ACCENT} strokeWidth={1.2} strokeOpacity={0.7} />
-                      {Number.isFinite(value) && (
-                        <SvgText
-                          x={pc.x + 14} y={pc.y - 4}
-                          fontSize={FontSize.xxs}
-                          fontFamily={FontFamily.sansMedium}
-                          fill={HARMONY_ACCENT}
-                        >
-                          {formatMetricValue(arc.metricKey, value as number)}
-                        </SvgText>
+                      {labelText && (
+                        <>
+                          <Rect
+                            x={pc.x + 8} y={pc.y - 12}
+                            width={labelText.length * 4.4 + 8}
+                            height={12} rx={6}
+                            fill={Colors.background} fillOpacity={0.78}
+                          />
+                          <SvgText
+                            x={pc.x + 12} y={pc.y - 4}
+                            fontSize={FontSize.xxs}
+                            fontFamily={FontFamily.sansMedium}
+                            fill={HARMONY_ACCENT}
+                          >
+                            {labelText}
+                          </SvgText>
+                        </>
                       )}
                     </G>
                   );
