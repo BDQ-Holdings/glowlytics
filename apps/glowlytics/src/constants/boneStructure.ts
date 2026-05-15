@@ -86,30 +86,35 @@ export const METRIC_BY_KEY: Record<BoneMetricKey, BoneMetricMeta> = Object.fromE
 // Findings — user-facing copy
 // ---------------------------------------------------------------------------
 
+// User-facing copy for each finding code. Warmer + more specific than purely
+// clinical phrasing — we lead with the visible read ("how it looks") and
+// follow with the technical detail, instead of the other way around. Loaded
+// comparatives like "more attractive" are out; descriptive read-language
+// ("alert", "rested", "balanced") is in.
 export const FINDING_COPY: Record<BoneFindingCode, { title: string; description: string }> = {
-  canthal_tilt_negative:    { title: 'Downward canthal tilt',  description: 'Your outer canthi sit at or below your inner canthi. A neutral-to-positive tilt reads as more youthful.' },
-  canthal_tilt_excess:      { title: 'Steep canthal tilt',     description: 'Outer canthi are noticeably elevated. Most attractive ratings cluster in the 4–8° range.' },
-  scleral_show_inferior:    { title: 'Inferior scleral show',  description: 'White sclera shows under your iris at neutral gaze, which can read as fatigue.' },
-  palpebral_fissure_narrow: { title: 'Narrow eye aperture',    description: 'Your eye opening reads taller than wide is unusual — a height/width near 0.33 is typical.' },
-  ipd_atypical:             { title: 'Atypical IPD',           description: 'Your interpupillary distance is outside the typical "rule of fifths" range. Often genetic and benign.' },
-  gonial_angle_obtuse:      { title: 'Obtuse jaw angle',       description: 'The angle at your mandibular gonion is wider than the typical range, softening lower-face definition.' },
-  gonial_angle_acute:       { title: 'Acute jaw angle',        description: 'Your jaw angle is sharper than the typical range, often from masseter hypertrophy.' },
-  lower_face_wide:          { title: 'Wide lower face',        description: 'Your bigonial width is high relative to cheekbones, giving a square lower-face look.' },
-  lower_face_narrow:        { title: 'Narrow lower face',      description: 'Lower face reads narrow versus your cheekbones — adds an inverted-triangle quality.' },
-  chin_recessed:            { title: 'Recessed chin',          description: 'Your pogonion projects less than the cheekbones and nose, which affects profile.' },
-  chin_excess:              { title: 'Prominent chin',         description: 'Chin projects further forward than is typical for the rest of your facial geometry.' },
-  bitemporal_narrow:        { title: 'Narrow temples',         description: 'Temple width is narrow relative to cheekbones. Subtle but affects the ogee curve.' },
-  bitemporal_wide:          { title: 'Wide temples',           description: 'Temple width exceeds cheekbones, an unusual proportion.' },
-  midface_flat:             { title: 'Flat midface',           description: 'Cheekbones project less than the central face. Often improves with age-related volume changes addressed.' },
-  alar_wide:                { title: 'Wide nasal base',        description: 'Your alar base spans more than ~1/4 of cheekbone width.' },
-  nasolabial_acute:         { title: 'Acute nasolabial angle', description: 'Your columella sits closer to vertical than usual, often associated with a droopy tip on profile.' },
-  nasolabial_obtuse:        { title: 'Obtuse nasolabial angle', description: 'Columella points up more than typical, often associated with an over-rotated tip.' },
-  brow_low:                 { title: 'Low brow position',      description: 'Your brow sits closer to the supraorbital rim than typical; can read as heavy upper-eye.' },
-  brow_high:                { title: 'High brow position',     description: 'Your brow apex sits unusually far above the orbital rim.' },
-  brow_apex_misplaced:      { title: 'Brow apex placement',    description: 'Brow apex is not at the lateral third where it typically sits.' },
-  thirds_uneven:            { title: 'Uneven facial thirds',   description: 'The upper, middle, and lower thirds of your face differ in length.' },
-  fifths_uneven:            { title: 'Uneven facial fifths',   description: 'One or more of the five vertical slices differs noticeably from the others.' },
-  asymmetry_elevated:       { title: 'Elevated asymmetry',     description: 'Left- and right-side landmarks do not mirror well — often habit-driven and reversible.' },
+  canthal_tilt_negative:    { title: 'Downward eye tilt',         description: 'Your eye corners run flat or angle slightly down. Even a few degrees of upward tilt at the outer corner shifts the read toward alert and rested.' },
+  canthal_tilt_excess:      { title: 'Sharp upward eye tilt',     description: 'Your outer corners sit unusually high. The cosmesis sweet spot tends to land between 4° and 8° — yours is just past that.' },
+  scleral_show_inferior:    { title: 'Sclera visible under iris', description: 'A thin band of white shows below your iris at neutral gaze. This often reads as tired regardless of how you actually feel, and it’s among the most reversible items on this list.' },
+  palpebral_fissure_narrow: { title: 'Narrow eye opening',        description: 'Your eye opening is taller relative to its width than is typical. Sometimes this is hereditary; sometimes it shifts with hydration and sleep.' },
+  ipd_atypical:             { title: 'Unusual pupil spacing',     description: 'Your pupils sit slightly outside the classical "rule of fifths" spacing. This is almost always genetic and benign — most people never notice it on themselves.' },
+  gonial_angle_obtuse:      { title: 'Soft jaw angle',            description: 'The angle where your jaw turns up toward your ear is wider than typical, which softens the line between your face and neck. Masseter tone and weight composition can shift this read over months.' },
+  gonial_angle_acute:       { title: 'Sharp jaw angle',           description: 'Your jaw angle is sharper than typical — often the result of masseter hypertrophy from clenching or chewing habits. Frequently reversible with a different jaw-rest pattern.' },
+  lower_face_wide:          { title: 'Square lower face',         description: 'Your jaw width is high relative to your cheekbones, which gives a strong square read in the lower third. Often masseter-driven.' },
+  lower_face_narrow:        { title: 'Narrow lower face',         description: 'Your lower face is narrower than your cheekbones — an inverted-triangle profile. Common, and a matter of taste rather than concern.' },
+  chin_recessed:            { title: 'Set-back chin',             description: 'Your chin projects less forward than the rest of your face on profile. This is the single change with the biggest impact on side-view balance.' },
+  chin_excess:              { title: 'Forward-set chin',          description: 'Your chin extends further forward than your nose and cheekbones, slightly imbalancing the side view.' },
+  bitemporal_narrow:        { title: 'Narrow temples',            description: 'Your temples are narrower than typical relative to your cheekbones. Subtle, but it affects the soft S-curve from forehead to cheek (the "ogee").' },
+  bitemporal_wide:          { title: 'Wide temples',              description: 'Your temples sit wider than your cheekbones — an unusual proportion. Often a head-shape signature rather than something to change.' },
+  midface_flat:             { title: 'Flatter midface',           description: 'Your cheekbones sit closer to the plane of your central face than is typical. The cheekbone read often improves on its own as hydration and sleep recover.' },
+  alar_wide:                { title: 'Wide nasal base',           description: 'The base of your nose is wider than about a quarter of your cheekbone width. Often a defining feature rather than a flaw.' },
+  nasolabial_acute:         { title: 'Tight nasolabial angle',    description: 'On profile, the line from your nose to your lip leans more vertical than typical — often associated with a slight tip droop.' },
+  nasolabial_obtuse:        { title: 'Open nasolabial angle',     description: 'On profile, your nasal column tips upward more than typical — sometimes called an over-rotated tip.' },
+  brow_low:                 { title: 'Low-set brow',              description: 'Your brow sits close to the bony rim above your eye. This can make the upper eye read heavy. Sleep and head-elevation often lift it visibly overnight.' },
+  brow_high:                { title: 'High brow position',        description: 'Your brow apex sits noticeably above the bony rim — usually a natural arch rather than anything to adjust.' },
+  brow_apex_misplaced:      { title: 'Brow arch placement',       description: 'Your brow’s highest point sits inside the lateral third where the typical "open eye" arch lands. Shaping can shift this gently.' },
+  thirds_uneven:            { title: 'Facial thirds differ',      description: 'The three vertical thirds of your face (hairline to brow, brow to nose, nose to chin) don’t come out equal. Mostly a perceptual quirk, but it’s what trained eyes notice first.' },
+  fifths_uneven:            { title: 'Facial fifths differ',      description: 'One or more of the five vertical "fifths" across your face differs in width. Usually small enough that you spot it only when measured.' },
+  asymmetry_elevated:       { title: 'Mirror-side asymmetry',     description: 'Your left and right sides don’t mirror each other as closely as typical. Habit-driven asymmetry (sleep side, chewing side) often softens on its own when those habits change.' },
 };
 
 // ---------------------------------------------------------------------------

@@ -14,6 +14,7 @@ import {
   Surfaces,
 } from '../src/constants/theme';
 import { useStore } from '../src/store/useStore';
+import { harmonyStatusLabel } from '../src/constants/boneStructure';
 import {
   presentPaywall,
   presentCustomerCenter,
@@ -48,6 +49,48 @@ const InfoRow: React.FC<{ label: string; value: string }> = ({ label, value }) =
     <Text style={styles.infoValue} numberOfLines={1}>{value}</Text>
   </View>
 );
+
+// ArchitectureLauncher — entry button into the bone-structure flow. When the
+// user has run at least one scan with bone analysis, the last Harmony score
+// is shown as a trailing badge so the launcher reads as a live data surface
+// rather than dead text.
+const ArchitectureLauncher: React.FC<{ onPress: () => void }> = ({ onPress }) => {
+  const lastHarmony = useStore((s) => {
+    for (let i = s.modelOutputs.length - 1; i >= 0; i--) {
+      const h = s.modelOutputs[i].bone_structure?.harmony;
+      if (typeof h === 'number' && Number.isFinite(h)) return h;
+    }
+    return null;
+  });
+  const hasScan = lastHarmony != null;
+  const statusLabel = hasScan ? harmonyStatusLabel(lastHarmony) : null;
+
+  return (
+    <TouchableOpacity
+      style={styles.modeButton}
+      onPress={onPress}
+      activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityLabel={hasScan
+        ? `Open facial architecture analysis. Last Harmony score ${lastHarmony}, ${statusLabel}.`
+        : 'Run facial architecture analysis'}
+    >
+      <Feather name="hexagon" size={16} color={Colors.harmony} />
+      <Text style={styles.modeButtonText}>Facial architecture</Text>
+      <View style={styles.archBadge}>
+        {hasScan ? (
+          <>
+            <Text style={styles.archBadgeScore}>{lastHarmony}</Text>
+            <Text style={styles.archBadgeDot}> · </Text>
+            <Text style={styles.archBadgeStatus}>{statusLabel}</Text>
+          </>
+        ) : (
+          <Text style={styles.archBadgeBeta}>Beta</Text>
+        )}
+      </View>
+    </TouchableOpacity>
+  );
+};
 
 const getErrorMessage = (err: unknown, fallback = 'Unknown error') => {
   const clerkMessage = (err as any)?.errors?.[0]?.longMessage ?? (err as any)?.errors?.[0]?.message;
@@ -298,16 +341,7 @@ export default function AccountScreen() {
         </TouchableOpacity>
 
         <View style={styles.divider} />
-        <TouchableOpacity
-          style={styles.modeButton}
-          onPress={() => router.push('/scan/bone-capture')}
-          activeOpacity={0.7}
-          accessibilityRole="button"
-          accessibilityLabel="Run facial architecture analysis"
-        >
-          <Feather name="hexagon" size={16} color={Colors.harmony} />
-          <Text style={styles.modeButtonText}>Facial architecture (beta)</Text>
-        </TouchableOpacity>
+        <ArchitectureLauncher onPress={() => router.push('/scan/bone-capture')} />
 
         <View style={styles.divider} />
         <ConnectedAppsSection />
@@ -740,6 +774,38 @@ const styles = StyleSheet.create({
     color: Glow.palette.accent,
     fontFamily: FontFamily.sansSemiBold,
     fontSize: FontSize.sm,
+  },
+  archBadge: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    marginLeft: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.harmony + '20',
+  },
+  archBadgeScore: {
+    color: Colors.harmony,
+    fontFamily: FontFamily.sansBold,
+    fontSize: FontSize.sm,
+  },
+  archBadgeDot: {
+    color: Colors.harmony,
+    fontFamily: FontFamily.sansMedium,
+    fontSize: FontSize.xs,
+    opacity: 0.6,
+  },
+  archBadgeStatus: {
+    color: Colors.harmony,
+    fontFamily: FontFamily.sansMedium,
+    fontSize: FontSize.xs,
+  },
+  archBadgeBeta: {
+    color: Colors.textMuted,
+    fontFamily: FontFamily.sansMedium,
+    fontSize: FontSize.xs,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
   },
   personalBests: {
     marginTop: Spacing.sm,
