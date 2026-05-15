@@ -32,6 +32,7 @@ import { Feather } from '@expo/vector-icons';
 import { Button } from '../../src/components/Button';
 import { DomainRadialChart } from '../../src/components/DomainRadialChart';
 import { Face3DViewer } from '../../src/components/Face3DViewer';
+import { HarmonyIntroOverlay } from '../../src/components/HarmonyIntroOverlay';
 import { HarmonyScoreReveal } from '../../src/components/HarmonyScoreReveal';
 import { InterventionDrawer } from '../../src/components/InterventionDrawer';
 import { ProgressDots, StoryPage } from '../../src/components/StoryCarousel';
@@ -347,6 +348,8 @@ export default function BoneResults() {
           For informational purposes only. Not medical advice.
         </Text>
       </View>
+      {/* One-shot 2-card explainer; only shows on first ever open. */}
+      <HarmonyIntroOverlay />
     </View>
   );
 }

@@ -15,7 +15,7 @@ apps/
       story.tsx, account.tsx, routine.tsx  # split out of tab files for Glow redesign
     modules/         # local Expo native modules (expo-arkit-face for FaceAnchor capture)
     src/
-      components/    # 33 top-level (.tsx) incl. Face3DViewer + glow/ + navigation/
+      components/    # 36 top-level (.tsx) incl. Face3DViewer, DomainRadialChart, HarmonyScoreReveal, HarmonyTrendCard, StoryCarousel + glow/ + navigation/
       components/glow/  # GlowIcons, GlowPrimitives (BreathingGlow, GlowRing, GlowSpark, FadeUp)
       services/      # 34 services incl. httpClient.ts, syncOutbox.ts, mcpClients.ts, faceMeshCapture.ts, boneStructure.ts
       store/         # Zustand (useStore.ts) — sync via outbox, not fire-and-forget
@@ -37,7 +37,7 @@ research/
 cd apps/glowlytics
 npm start                    # Dev server
 npx tsc --noEmit             # Type check (0 errors)
-npm test                     # Mobile tests (369 across 25 suites)
+npm test                     # Mobile tests (370 across 25 suites)
 cd backend && npm test       # Backend tests (360 across 28 suites)
 ```
 
@@ -75,7 +75,7 @@ cd backend && npm test       # Backend tests (360 across 28 suites)
 
 **MCP server**: `/mcp` exposes 11 user-scoped tools to authenticated MCP clients (Claude.ai). Auth via Clerk JWKS Bearer + beta allowlist + per-user rate limiter (60/min, 10/sec burst). Tools: `get_latest_scan`, `get_scan_history`, `get_signal_trend`, `compare_scans`, `get_scan_report`, `get_current_routine`, `lookup_ingredient`, `search_ingredients`, `summarize_month`, `get_bone_structure`, `get_harmony_trend`. Profile → Connected Apps (Beta) lists + revokes clients via `/api/mcp/clients`.
 
-**Bone structure (Harmony)**: `/api/vision/bone-structure` accepts a captured 3D face mesh (`{ vertices, blendShapes?, source }`) and returns a weighted Harmony composite (0–100) across 6 domains — Symmetry 25, Periorbital 20, Mandibular 20, Midface 15, Nose 10, Brow 10. 16 metrics (canthal tilt, gonial angle, bizygomatic/bitemporal width, facial thirds & fifths, scleral show, eye aperture, IPD ratio, chin projection, nasolabial angle, brow position, …). Sex-aware ideals for `gonial_angle`, `nasolabial_angle`, `brow_position`. Findings map to a three-tier intervention bundle (Lifestyle / Pharma / Procedural) with a strong procedural disclaimer. Persistence via `model_outputs.bone_structure JSONB` (migration v4). Capture: `expo-arkit-face` native module (Swift) for TrueDepth devices; canonical-mesh fallback (`src/services/canonicalFaceMesh.ts`) keeps the pipeline runnable without a native rebuild. Renderer: `Face3DViewer.tsx` (SVG + JS perspective projection + pan/pinch + idle auto-rotate; replaces the old 2D `FacialMesh.tsx`).
+**Bone structure (Harmony)**: `/api/vision/bone-structure` accepts a captured 3D face mesh (`{ vertices, blendShapes?, source }`) and returns a weighted Harmony composite (0–100) across 6 domains — Symmetry 25, Periorbital 20, Mandibular 20, Midface 15, Nose 10, Brow 10. 16 metrics (canthal tilt, gonial angle, bizygomatic/bitemporal width, facial thirds & fifths, scleral show, eye aperture, IPD ratio, chin projection, nasolabial angle, brow position, …). Sex-aware ideals for `gonial_angle`, `nasolabial_angle`, `brow_position`. Findings map to a three-tier intervention bundle (Lifestyle / Pharma / Procedural) with a strong procedural disclaimer. Persistence via `model_outputs.bone_structure JSONB` (migration v4). Capture: `expo-arkit-face` native module (Swift) for TrueDepth devices; canonical-mesh fallback (`src/services/canonicalFaceMesh.ts` — Hyper3D-sampled 32 anatomical landmarks via Blender MCP, axis-swapped + symmetry-enforced) keeps the pipeline runnable without a native rebuild. Renderer: `Face3DViewer.tsx` (SVG + JS perspective projection + pan/pinch + idle auto-rotate + depth-graded edges + revealProgress prop; replaces the old 2D `FacialMesh.tsx`). Bone-results screen is a 5-page vertical story carousel (hero · by area · measurements · findings · interventions) using `StoryCarousel` primitives. `HarmonyTrendCard` surfaces the score on the Today screen once ≥2 scans exist; `ArchitectureLauncher` in `account.tsx` shows the latest Harmony as a trailing badge.
 
 **OAuth DCR proxy** (`backend/mcp/oauth-proxy.js`): Clerk has no `registration_endpoint`, so claude.ai's MCP connector can't dynamically register. The proxy fronts Clerk with RFC 7591 DCR + RFC 8414 metadata: `/oauth/register` returns a static pre-registered Clerk `client_id`, `/oauth/authorize` 302s to Clerk with opaque proxy state + our callback URL, `/oauth/token` Basic-auths to Clerk and rewrites `redirect_uri`. Feature-flagged on `MCP_OAUTH_PROXY_ENABLED` + `MCP_OAUTH_PROXY_CLIENT_ID` + `MCP_OAUTH_PROXY_CLIENT_SECRET`; `well-known.js` advertises our backend as auth_server when enabled, falls back to Clerk otherwise. `/mcp` 401 carries RFC 9728 `WWW-Authenticate` with `resource_metadata`.
 
