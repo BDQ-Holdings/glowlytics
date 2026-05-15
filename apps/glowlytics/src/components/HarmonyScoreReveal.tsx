@@ -4,7 +4,7 @@
  * Mirrors the breathing-ring pattern from `app/scan/results.tsx:129` so the
  * skin and bone-structure score reveals feel like siblings.
  */
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
@@ -27,6 +27,10 @@ interface Props {
   caption?: string;
 }
 
+// Cubic-out easing — fast start, soft land.  Reads as confident rather than
+// jittery (linear) or hesitant (cubic-in).
+const easeOutCubic = (t: number): number => 1 - Math.pow(1 - t, 3);
+
 export const HarmonyScoreReveal: React.FC<Props> = ({ score, caption }) => {
   const breathe = useSharedValue(1);
 
@@ -43,6 +47,32 @@ export const HarmonyScoreReveal: React.FC<Props> = ({ score, caption }) => {
       ),
     );
   }, []);
+
+  // Numeric tween: count up from 0 → final score over ~750ms. Bound to the
+  // displayed Text via React state since SVG doesn't render Reanimated style.
+  const [displayed, setDisplayed] = useState<number | null>(score == null ? null : 0);
+  const startedAt = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (score == null) {
+      setDisplayed(null);
+      return;
+    }
+    const duration = 750;
+    const start = score === 0 ? 0 : 0;  // always animate from 0 on first arrival
+    startedAt.current = Date.now();
+    setDisplayed(start);
+    let raf = 0;
+    const step = () => {
+      const elapsed = Date.now() - (startedAt.current ?? Date.now());
+      const t = Math.min(1, elapsed / duration);
+      const eased = easeOutCubic(t);
+      setDisplayed(Math.round(start + (score - start) * eased));
+      if (t < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [score]);
 
   const outerStyle = useAnimatedStyle(() => {
     const t = (breathe.value - 0.93) / 0.14;
@@ -61,7 +91,7 @@ export const HarmonyScoreReveal: React.FC<Props> = ({ score, caption }) => {
       <Animated.View style={[styles.glowOuter, outerStyle]} />
       <Animated.View style={[styles.glowInner, innerStyle]} />
       <Animated.View entering={ZoomIn.duration(550)} style={styles.center}>
-        <Text style={styles.bigScore}>{score == null ? '—' : score}</Text>
+        <Text style={styles.bigScore}>{displayed == null ? '—' : displayed}</Text>
         <Animated.View entering={FadeInUp.duration(450).delay(300)}>
           <Text style={styles.status}>{status}</Text>
         </Animated.View>

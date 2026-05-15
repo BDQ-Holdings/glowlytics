@@ -10,12 +10,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { Button } from '../../src/components/Button';
+import { DomainRadialChart } from '../../src/components/DomainRadialChart';
 import { Face3DViewer } from '../../src/components/Face3DViewer';
 import { HarmonyScoreReveal } from '../../src/components/HarmonyScoreReveal';
 import { InterventionDrawer } from '../../src/components/InterventionDrawer';
-import { AnimatedFillBar } from '../../src/components/AnimatedFillBar';
 import {
-  BONE_DOMAINS,
   BONE_METRICS,
   FINDING_COPY,
   formatMetricValue,
@@ -82,24 +81,16 @@ export default function BoneResults() {
           caption={bone.dominant_driver ? `Strongest opportunity: ${bone.dominant_driver}` : undefined}
         />
 
-        {/* Domain breakdown */}
+        {/* Domain breakdown — radial petal chart. A regular hexagon means
+            balanced; a lopsided shape immediately reads which domain is
+            dragging.  Score dots colour-coded per domain. */}
         <Animated.View entering={FadeInDown.duration(450).delay(200)} style={styles.section}>
           <Text style={styles.sectionTitle}>By area</Text>
-          <View style={styles.domainList}>
-            {BONE_DOMAINS.map((d) => {
-              const score = bone.domain_scores?.[d.key];
-              if (score == null) return null;
-              return (
-                <View key={d.key} style={styles.domainRow}>
-                  <View style={styles.domainHead}>
-                    <Text style={styles.domainLabel}>{d.label}</Text>
-                    <Text style={[styles.domainScore, { color: d.accent }]}>{score}</Text>
-                  </View>
-                  <AnimatedFillBar score={score} color={d.accent} delay={0} />
-                  <Text style={styles.domainHint}>{d.hint}</Text>
-                </View>
-              );
-            })}
+          <View style={styles.radialWrap}>
+            <DomainRadialChart
+              scores={bone.domain_scores || {}}
+              size={Math.min(280, screenW - Spacing.lg * 2)}
+            />
           </View>
         </Animated.View>
 
@@ -197,29 +188,17 @@ const styles = StyleSheet.create({
   },
   hero: { alignItems: 'center', justifyContent: 'center' },
   section: { gap: Spacing.sm },
+  radialWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: Spacing.xs,
+  },
   sectionTitle: {
     color: Glow.palette.muted,
     fontFamily: FontFamily.sansSemiBold,
     fontSize: FontSize.xs,
     textTransform: 'uppercase',
     letterSpacing: 1.2,
-  },
-  domainList: { gap: Spacing.md },
-  domainRow: { gap: Spacing.xs },
-  domainHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  domainLabel: {
-    color: Glow.palette.ink,
-    fontFamily: FontFamily.sansMedium,
-    fontSize: FontSize.md,
-  },
-  domainScore: {
-    fontFamily: FontFamily.sansBold,
-    fontSize: FontSize.lg,
-  },
-  domainHint: {
-    color: Colors.textMuted,
-    fontFamily: FontFamily.sans,
-    fontSize: FontSize.xs,
   },
   metricGrid: {
     flexDirection: 'row',
