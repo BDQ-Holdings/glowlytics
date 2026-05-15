@@ -15,7 +15,19 @@ import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import Animated, { FadeIn, FadeInUp } from 'react-native-reanimated';
+import Animated, {
+  Easing,
+  FadeIn,
+  FadeInUp,
+  FadeOut,
+  ZoomIn,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from 'react-native-reanimated';
+import Svg, { Circle as SvgCircle, Defs, LinearGradient as SvgLG, Stop } from 'react-native-svg';
 import * as Haptics from 'expo-haptics';
 import { Feather } from '@expo/vector-icons';
 import { BoneCaptureSexPrompt } from '../../src/components/BoneCaptureSexPrompt';
@@ -171,6 +183,9 @@ export default function BoneCapture() {
 
   const copy = STAGE_COPY[stage];
   const viewerSize = Math.min(320, screenW - Spacing.xl * 2);
+  const ringSize = viewerSize + 40;
+  const isDone = stage === 'done';
+  const isError = stage === 'error';
 
   return (
     <View style={styles.root}>
@@ -187,22 +202,41 @@ export default function BoneCapture() {
           { paddingTop: insets.top + Spacing.xxl, paddingBottom: insets.bottom + Spacing.xl },
         ]}
       >
-        {/* Hero — the mesh forming */}
-        <View style={styles.heroWrap}>
+        {/* Hero — the mesh forming, wrapped in a stage-driven progress ring */}
+        <View style={[styles.heroWrap, { width: ringSize, height: ringSize }]}>
           <View style={styles.heroGlow} />
-          <Face3DViewer
-            vertices={buildCanonicalMesh()}
-            source="mediapipe"
-            mode="anatomy"
-            size={viewerSize}
-            revealProgress={displayedReveal}
+          <CaptureProgressRing
+            size={ringSize}
+            progress={displayedReveal}
+            done={isDone}
+            error={isError}
           />
+          <View style={styles.meshSlot}>
+            <Face3DViewer
+              vertices={buildCanonicalMesh()}
+              source="mediapipe"
+              mode="anatomy"
+              size={viewerSize}
+              revealProgress={displayedReveal}
+            />
+          </View>
+          {isDone && (
+            <Animated.View
+              entering={ZoomIn.duration(360)}
+              style={styles.doneBadge}
+              pointerEvents="none"
+            >
+              <Feather name="check" size={18} color={Colors.background} />
+            </Animated.View>
+          )}
         </View>
 
-        {/* Stage copy */}
+        {/* Stage copy — crossfades on stage change. key={stage} remounts the
+            node so entering+exiting both fire instead of an abrupt swap. */}
         <Animated.View
           key={stage}
           entering={FadeInUp.duration(380)}
+          exiting={FadeOut.duration(220)}
           style={styles.copyWrap}
         >
           <Text style={styles.title}>{copy.title}</Text>
@@ -247,6 +281,67 @@ export default function BoneCapture() {
   );
 }
 
+// ───────────────────────────────────────────────────────────────────────
+// CaptureProgressRing — thin SVG ring around the mesh that fills as the
+// capture+analyse stages progress. Tinted by state: HARMONY_ACCENT while
+// in flight, Colors.success on done, Colors.error on error. Uses the same
+// `progress` value (0..1) that drives the mesh reveal so visual + ring
+// stay in lock-step.
+// ───────────────────────────────────────────────────────────────────────
+
+interface RingProps {
+  size: number;
+  progress: number;
+  done: boolean;
+  error: boolean;
+}
+
+const CaptureProgressRing: React.FC<RingProps> = ({ size, progress, done, error }) => {
+  const stroke = 2.4;
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  // Land at full when done; on error fade the ring opacity instead of filling.
+  const filled = done ? 1 : Math.max(0, Math.min(1, progress));
+  const accent = error ? Colors.error : done ? Colors.success : HARMONY_ACCENT;
+  // SVG stroke-dasharray starts the ring at 3 o'clock and goes clockwise.
+  // We rotate -90° so it starts at 12 o'clock like a standard progress dial.
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', width: size, height: size }}>
+      <Svg width={size} height={size} style={{ transform: [{ rotate: '-90deg' }] }}>
+        <Defs>
+          <SvgLG id="captureRingFill" x1="0" y1="0" x2="1" y2="1">
+            <Stop offset="0%" stopColor={accent} stopOpacity="0.55" />
+            <Stop offset="100%" stopColor={accent} stopOpacity="1" />
+          </SvgLG>
+        </Defs>
+        {/* Track */}
+        <SvgCircle
+          cx={size / 2} cy={size / 2} r={radius}
+          stroke={accent}
+          strokeOpacity={0.12}
+          strokeWidth={stroke}
+          fill="none"
+        />
+        {/* Fill */}
+        <SvgCircle
+          cx={size / 2} cy={size / 2} r={radius}
+          stroke="url(#captureRingFill)"
+          strokeWidth={stroke}
+          strokeLinecap="round"
+          strokeDasharray={`${circumference} ${circumference}`}
+          strokeDashoffset={circumference * (1 - filled)}
+          fill="none"
+        />
+      </Svg>
+    </View>
+  );
+};
+
+// ───────────────────────────────────────────────────────────────────────
+// StageChip — leading-icon + label pill with a subtle breathing dot when
+// the chip is the active stage. Done chips show the check icon swap.
+// ───────────────────────────────────────────────────────────────────────
+
 interface ChipProps {
   label: string;
   icon: keyof typeof Feather.glyphMap;
@@ -256,10 +351,30 @@ interface ChipProps {
 
 const StageChip: React.FC<ChipProps> = ({ label, icon, active, done }) => {
   const color = done ? Colors.success : active ? HARMONY_ACCENT : Colors.textDim;
+  // Soft pulse on the active dot to signal "working on this".
+  const pulse = useSharedValue(1);
+  useEffect(() => {
+    if (!active) { pulse.value = 1; return; }
+    pulse.value = withRepeat(
+      withSequence(
+        withTiming(1.5, { duration: 600, easing: Easing.inOut(Easing.ease) }),
+        withTiming(1.0, { duration: 600, easing: Easing.inOut(Easing.ease) }),
+      ),
+      -1,
+    );
+  }, [active]);
+  const dotStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: pulse.value }],
+    opacity: 0.55 + (pulse.value - 1) * 0.9,
+  }));
+
   return (
     <View style={[styles.chip, (active || done) && styles.chipActive]}>
       <Feather name={done ? 'check' : icon} size={12} color={color} />
       <Text style={[styles.chipLabel, { color }]}>{label}</Text>
+      {active && !done && (
+        <Animated.View style={[styles.chipDot, { backgroundColor: HARMONY_ACCENT }, dotStyle]} />
+      )}
     </View>
   );
 };
@@ -277,6 +392,23 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: Spacing.lg,
     position: 'relative',
+  },
+  meshSlot: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  doneBadge: {
+    position: 'absolute',
+    top: Spacing.xs,
+    right: Spacing.xs,
+    width: 32, height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.success,
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: Colors.success,
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
   },
   heroGlow: {
     position: 'absolute',
@@ -323,6 +455,11 @@ const styles = StyleSheet.create({
   chipLabel: {
     fontFamily: FontFamily.sansMedium,
     fontSize: FontSize.xs,
+  },
+  chipDot: {
+    width: 5, height: 5,
+    borderRadius: 3,
+    marginLeft: 2,
   },
   stageSep: {
     width: 12,
