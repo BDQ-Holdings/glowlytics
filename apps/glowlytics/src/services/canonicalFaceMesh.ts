@@ -27,41 +27,60 @@ interface LandmarkVertex {
   z: number;
 }
 
-// Mirror of buildIdealMesh from the backend tests — same coordinates so the
-// metric pipeline computes a sensible "default" Harmony score.
+// Anatomical landmark coordinates sampled from a real 3D human head bust
+// generated via Hyper3D Rodin (17k-vert photorealistic male model), then
+// re-projected into Glowlytics axes and normalised to roughly ±50 in Y.
+//
+// Pipeline: Blender → nearest-vertex sampling at 32 known anatomical targets
+// → axis swap (Blender Y forward → Glowlytics Z forward) → scale to canonical
+// units → symmetry-enforce midline + mirror pairs.
+//
+// Compared with the older schematic placement, this set captures real face
+// geometry: the nose tip projects ~3× further forward (z = 62 vs 22), the
+// cheekbones and temples have realistic relative widths, and the eye line
+// has the actual depth offset between inner / outer canthi.
 const CANONICAL_LANDMARKS: LandmarkVertex[] = [
-  { index: 10,  label: 'trichion',           x:  0,    y:  50,   z:   0 },
-  { index: 9,   label: 'glabella',           x:  0,    y:  16.7, z:  10 },
-  { index: 1,   label: 'pronasale',          x:  0,    y: -10,   z:  22 },
-  { index: 2,   label: 'subnasale',          x:  0,    y: -16.7, z:  12 },
-  { index: 152, label: 'menton',             x:  0,    y: -50,   z:   8 },
-  { index: 199, label: 'pogonion',           x:  0,    y: -45,   z:  11 },
-  { index: 0,   label: 'upper_lip_top',      x:  0,    y: -22,   z:  13 },
-  { index: 17,  label: 'lower_lip_bot',      x:  0,    y: -32,   z:  12 },
-  { index: 133, label: 'inner_canthus_L',    x:  9,    y:  20,   z:   8 },
-  { index: 362, label: 'inner_canthus_R',    x: -9,    y:  20,   z:   8 },
-  { index: 33,  label: 'outer_canthus_L',    x:  27,   y:  21.88, z:  6 },
-  { index: 263, label: 'outer_canthus_R',    x: -27,   y:  21.88, z:  6 },
-  { index: 159, label: 'upper_eyelid_L',     x:  18,   y:  23,   z:   7 },
-  { index: 386, label: 'upper_eyelid_R',     x: -18,   y:  23,   z:   7 },
-  { index: 145, label: 'lower_eyelid_L',     x:  18,   y:  17,   z:   7 },
-  { index: 374, label: 'lower_eyelid_R',     x: -18,   y:  17,   z:   7 },
-  { index: 468, label: 'iris_L',             x:  18,   y:  20,   z:   7 },
-  { index: 473, label: 'iris_R',             x: -18,   y:  20,   z:   7 },
-  { index: 105, label: 'brow_apex_L',        x:  20,   y:  26,   z:   6 },
-  { index: 334, label: 'brow_apex_R',        x: -20,   y:  26,   z:   6 },
-  { index: 55,  label: 'brow_inner_L',       x:  11,   y:  25,   z:   7 },
-  { index: 285, label: 'brow_inner_R',       x: -11,   y:  25,   z:   7 },
-  { index: 49,  label: 'alar_L',             x:  11.25,y: -10,   z:  12 },
-  { index: 279, label: 'alar_R',             x: -11.25,y: -10,   z:  12 },
-  { index: 234, label: 'zygion_L',           x:  45,   y:   0,   z:   6 },
-  { index: 454, label: 'zygion_R',           x: -45,   y:   0,   z:   6 },
-  { index: 127, label: 'tragion_L',          x:  39,   y:  10,   z:   0 },
-  { index: 356, label: 'tragion_R',          x: -39,   y:  10,   z:   0 },
-  { index: 172, label: 'gonion_L',           x:  32.5, y: -25,   z:  14 },
-  { index: 397, label: 'gonion_R',           x: -32.5, y: -25,   z:  14 },
-  { index: 61,  label: 'cheilion_L',         x:  18,   y: -32,   z:  11 },
-  { index: 291, label: 'cheilion_R',         x: -18,   y: -32,   z:  11 },
+  // Midline (x forced to 0 for perfect symmetry; metric pipeline depends on it)
+  { index: 10,  label: 'trichion',           x:  0,    y:  48.59, z:   7.11 },
+  { index: 9,   label: 'glabella',           x:  0,    y:  12.82, z:  50.86 },
+  { index: 1,   label: 'pronasale',          x:  0,    y:   2.75, z:  62.48 },
+  { index: 2,   label: 'subnasale',          x:  0,    y:  -7.22, z:  56.55 },
+  { index: 0,   label: 'upper_lip_top',      x:  0,    y: -17.26, z:  54.60 },
+  { index: 17,  label: 'lower_lip_bot',      x:  0,    y: -28.98, z:  51.03 },
+  { index: 199, label: 'pogonion',           x:  0,    y: -30.07, z:  44.10 },
+  { index: 152, label: 'menton',             x:  0,    y: -50.00, z:  16.47 },
+  // Eyes — _L tags get +X (the original file's labelling convention; see
+  // bone-structure-3d.js for why the L/R suffixes don't track subject anatomy).
+  // Pairs are mirrored on X and averaged on Y/Z so left vs right are perfectly
+  // symmetric — fluctuating-asymmetry metric is supposed to be 0 on the canonical.
+  { index: 133, label: 'inner_canthus_L',    x:  7.97, y:   8.87, z:  51.63 },
+  { index: 362, label: 'inner_canthus_R',    x: -7.97, y:   8.87, z:  51.63 },
+  { index: 33,  label: 'outer_canthus_L',    x: 23.60, y:   6.41, z:  39.06 },
+  { index: 263, label: 'outer_canthus_R',    x: -23.60,y:   6.41, z:  39.06 },
+  { index: 159, label: 'upper_eyelid_L',     x: 17.18, y:  10.57, z:  47.11 },
+  { index: 386, label: 'upper_eyelid_R',     x: -17.18,y:  10.57, z:  47.11 },
+  { index: 145, label: 'lower_eyelid_L',     x: 18.03, y:   2.36, z:  47.37 },
+  { index: 374, label: 'lower_eyelid_R',     x: -18.03,y:   2.36, z:  47.37 },
+  { index: 468, label: 'iris_L',             x: 16.61, y:   7.40, z:  48.44 },
+  { index: 473, label: 'iris_R',             x: -16.61,y:   7.40, z:  48.44 },
+  // Brows
+  { index: 105, label: 'brow_apex_L',        x: 20.41, y:  22.95, z:  42.95 },
+  { index: 334, label: 'brow_apex_R',        x: -20.41,y:  22.95, z:  42.95 },
+  { index: 55,  label: 'brow_inner_L',       x:  7.39, y:  13.71, z:  51.61 },
+  { index: 285, label: 'brow_inner_R',       x: -7.39, y:  13.71, z:  51.61 },
+  // Nose base
+  { index: 49,  label: 'alar_L',             x:  5.36, y:  -3.85, z:  58.39 },
+  { index: 279, label: 'alar_R',             x: -5.36, y:  -3.85, z:  58.39 },
+  // Cheekbone (zygion), temple (tragion), jaw angle (gonion)
+  { index: 234, label: 'zygion_L',           x: 30.94, y:   4.45, z:  14.94 },
+  { index: 454, label: 'zygion_R',           x: -30.94,y:   4.45, z:  14.94 },
+  { index: 127, label: 'tragion_L',          x: 19.57, y:   9.00, z:  -4.11 },
+  { index: 356, label: 'tragion_R',          x: -19.57,y:   9.00, z:  -4.11 },
+  { index: 172, label: 'gonion_L',           x: 17.39, y: -27.10, z:  10.93 },
+  { index: 397, label: 'gonion_R',           x: -17.39,y: -27.10, z:  10.93 },
+  // Mouth corners
+  { index: 61,  label: 'cheilion_L',         x:  9.75, y: -20.61, z:  48.50 },
+  { index: 291, label: 'cheilion_R',         x: -9.75, y: -20.61, z:  48.50 },
 ];
 
 // Maximum index present in CANONICAL_LANDMARKS — defines the flat array length.

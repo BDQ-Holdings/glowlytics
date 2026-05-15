@@ -25,12 +25,32 @@ beforeEach(() => {
 describe('canonical face mesh', () => {
   test('buildCanonicalMesh has well-known landmarks at expected indices', () => {
     const m = buildCanonicalMesh();
-    // pronasale at index 1 → x=0, y=-10, z=22
+    // pronasale at index 1 — midline (x=0), projects strongly forward in Z
     expect(m[1 * 3]).toBe(0);
-    expect(m[1 * 3 + 1]).toBe(-10);
-    expect(m[1 * 3 + 2]).toBe(22);
-    // zygion_L at index 234 → x=45
-    expect(m[234 * 3]).toBe(45);
+    expect(m[1 * 3 + 2]).toBeGreaterThan(40);
+    // pronasale Y sits between glabella and subnasale on the sagittal plane
+    expect(m[1 * 3 + 1]).toBeLessThan(m[9 * 3 + 1]);  // < glabella.y
+    expect(m[1 * 3 + 1]).toBeGreaterThan(m[2 * 3 + 1]); // > subnasale.y
+    // zygion_L at index 234 — cheekbone, positive X in a realistic head-width range
+    expect(m[234 * 3]).toBeGreaterThan(20);
+    expect(m[234 * 3]).toBeLessThan(50);
+    // menton at index 152 — chin tip, at the bottom of the face
+    expect(m[152 * 3 + 1]).toBeLessThanOrEqual(-50);
+  });
+
+  test('canonical mesh is mirror-symmetric on the X axis', () => {
+    const m = buildCanonicalMesh();
+    // Picked pairs that the spec says must mirror
+    const PAIRS: Array<[number, number]> = [
+      [133, 362], [33, 263], [159, 386], [145, 374], [468, 473],
+      [105, 334], [55, 285], [49, 279], [234, 454], [127, 356],
+      [172, 397], [61, 291],
+    ];
+    for (const [l, r] of PAIRS) {
+      expect(m[l * 3]).toBeCloseTo(-m[r * 3], 5);     // x mirrored
+      expect(m[l * 3 + 1]).toBeCloseTo(m[r * 3 + 1], 5); // y matches
+      expect(m[l * 3 + 2]).toBeCloseTo(m[r * 3 + 2], 5); // z matches
+    }
   });
 
   test('captureCanonicalMesh wraps the mesh with source mediapipe', () => {
