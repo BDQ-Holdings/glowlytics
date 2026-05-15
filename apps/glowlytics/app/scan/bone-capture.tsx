@@ -3,35 +3,94 @@
  *
  * On TrueDepth devices this drives a brief ARKit FaceAnchor capture.
  * On other devices it returns a deformed canonical mesh keyed by the user's
- * detected facial proportions (currently a coarse jaw / cheek / chin
- * heuristic — replace with a richer 2D-landmark sampler when available).
+ * detected facial proportions. The viewer renders alongside the capture +
+ * analyze stages, with the mesh progressively "forming" via a reveal tween
+ * so the user sees their face being mapped rather than just a spinner.
  *
  * After capture, the mesh is POSTed to /api/vision/bone-structure and the
  * result is attached to the latest scan via `attachBoneStructure`.
  */
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
+import Animated, { FadeIn, FadeInUp } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
+import { Feather } from '@expo/vector-icons';
 import { Button } from '../../src/components/Button';
+import { Face3DViewer } from '../../src/components/Face3DViewer';
+import { buildCanonicalMesh } from '../../src/services/canonicalFaceMesh';
 import { captureFaceMesh } from '../../src/services/faceMeshCapture';
 import { analyzeBoneStructure } from '../../src/services/boneStructure';
 import { useStore } from '../../src/store/useStore';
-import { Colors, FontFamily, FontSize, Glow, Spacing } from '../../src/constants/theme';
+import { HARMONY_ACCENT } from '../../src/constants/boneStructure';
+import { BorderRadius, Colors, FontFamily, FontSize, Glow, Spacing } from '../../src/constants/theme';
 
 type Stage = 'idle' | 'capturing' | 'analysing' | 'done' | 'error';
+
+const STAGE_COPY: Record<Stage, { title: string; subtitle: string }> = {
+  idle:       { title: 'Preparing capture',           subtitle: 'Stand by — we’re initialising the sensors.' },
+  capturing:  { title: 'Mapping your facial geometry', subtitle: 'Stay still for a moment. We’re sampling 32 anatomical landmarks across your face.' },
+  analysing:  { title: 'Composing your Harmony score', subtitle: 'Computing canthal tilt, mandibular contour, midface balance — and what to do about each.' },
+  done:       { title: 'All done',                     subtitle: 'Taking you to the results.' },
+  error:      { title: 'Something went wrong',         subtitle: 'We couldn’t finish the analysis. Try again in a moment.' },
+};
+
+// Reveal animation: the mesh fades in over the capture + analyse window.
+// Tuned so the head silhouette is clearly forming by the time the analyse
+// call typically completes (~600ms) and is fully built at ~1.4s.
+const STAGE_TARGET_REVEAL: Record<Stage, number> = {
+  idle:      0.0,
+  capturing: 0.45,
+  analysing: 0.85,
+  done:      1.0,
+  error:     1.0,
+};
+
+const easeOutCubic = (t: number): number => 1 - Math.pow(1 - t, 3);
 
 export default function BoneCapture() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { width: screenW } = useWindowDimensions();
   const { dailyId } = useLocalSearchParams<{ dailyId?: string }>();
   const sex = useStore((s) => s.user?.sex);
   const attachBoneStructure = useStore((s) => s.attachBoneStructure);
 
   const [stage, setStage] = useState<Stage>('idle');
+  const [reveal, setReveal] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const ranRef = useRef(false);
+
+  // Drive the reveal progress toward the current stage's target. We use a
+  // RAF loop with a soft cubic-out lerp so transitions don't feel mechanical.
+  const targetRef = useRef(0);
+  useEffect(() => {
+    targetRef.current = STAGE_TARGET_REVEAL[stage];
+    let raf = 0;
+    let lastT = Date.now();
+    const step = () => {
+      const now = Date.now();
+      const dt = Math.min(0.12, (now - lastT) / 1000); // seconds, capped
+      lastT = now;
+      setReveal((prev) => {
+        const delta = targetRef.current - prev;
+        if (Math.abs(delta) < 0.001) return targetRef.current;
+        // Approach target at ~3.5/s (smooth, ~0.6s to close most of the gap)
+        return prev + delta * Math.min(1, dt * 3.5);
+      });
+      if (Math.abs(targetRef.current - reveal) > 0.001 || stage === 'capturing' || stage === 'analysing') {
+        raf = requestAnimationFrame(step);
+      }
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [stage]);
+
+  // Apply an `easeOutCubic` curve on top of the linearly-approached reveal so
+  // the mesh appears with a confident "land" rather than a constant trickle.
+  const displayedReveal = easeOutCubic(reveal);
 
   useEffect(() => {
     if (ranRef.current) return;
@@ -58,65 +117,186 @@ export default function BoneCapture() {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 
         setStage('done');
-        router.replace({ pathname: '/scan/bone-results', params: { dailyId: dailyId || '' } });
+        // Linger briefly on the fully-formed mesh before navigating —
+        // gives the user a visual "complete" beat.
+        setTimeout(() => {
+          if (!cancelled) {
+            router.replace({ pathname: '/scan/bone-results', params: { dailyId: dailyId || '' } });
+          }
+        }, 650);
       } catch (err: unknown) {
         if (cancelled) return;
         setError(err instanceof Error ? err.message : String(err));
         setStage('error');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
       }
     })();
 
     return () => { cancelled = true; };
   }, [dailyId]);
 
+  const copy = STAGE_COPY[stage];
+  const viewerSize = Math.min(320, screenW - Spacing.xl * 2);
+
   return (
-    <View style={[styles.root, { paddingTop: insets.top + Spacing.xxl, paddingBottom: insets.bottom + Spacing.xl }]}>
-      <View style={styles.center}>
-        {stage !== 'error' && <ActivityIndicator size="large" color={Glow.palette.accent} />}
-        <Text style={styles.title}>
-          {stage === 'capturing' ? 'Capturing your face mesh' :
-           stage === 'analysing' ? 'Analysing facial architecture' :
-           stage === 'done' ? 'All done' :
-           stage === 'error' ? 'Something went wrong' :
-           'Preparing capture'}
-        </Text>
-        {stage === 'capturing' && (
-          <Text style={styles.subtitle}>Stay still for a moment. We're sampling your face's geometry.</Text>
-        )}
-        {stage === 'analysing' && (
-          <Text style={styles.subtitle}>Computing your Harmony score and personalised recommendations.</Text>
-        )}
+    <View style={styles.root}>
+      <LinearGradient
+        colors={[Glow.palette.bg, Glow.palette.surface, Glow.palette.glow]}
+        start={{ x: 0.1, y: 0 }}
+        end={{ x: 0.95, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+
+      <View
+        style={[
+          styles.container,
+          { paddingTop: insets.top + Spacing.xxl, paddingBottom: insets.bottom + Spacing.xl },
+        ]}
+      >
+        {/* Hero — the mesh forming */}
+        <View style={styles.heroWrap}>
+          <View style={styles.heroGlow} />
+          <Face3DViewer
+            vertices={buildCanonicalMesh()}
+            source="mediapipe"
+            mode="anatomy"
+            size={viewerSize}
+            revealProgress={displayedReveal}
+          />
+        </View>
+
+        {/* Stage copy */}
+        <Animated.View
+          key={stage}
+          entering={FadeInUp.duration(380)}
+          style={styles.copyWrap}
+        >
+          <Text style={styles.title}>{copy.title}</Text>
+          <Text style={styles.subtitle}>{copy.subtitle}</Text>
+        </Animated.View>
+
+        {/* Stage chips — gives a sense of "what step are we on" */}
+        <Animated.View entering={FadeIn.duration(450).delay(200)} style={styles.stagesRow}>
+          <StageChip
+            label="Capture"
+            icon="camera"
+            active={stage === 'capturing'}
+            done={stage === 'analysing' || stage === 'done'}
+          />
+          <View style={styles.stageSep} />
+          <StageChip
+            label="Analyse"
+            icon="cpu"
+            active={stage === 'analysing'}
+            done={stage === 'done'}
+          />
+          <View style={styles.stageSep} />
+          <StageChip
+            label="Compose"
+            icon="check"
+            active={stage === 'done'}
+            done={stage === 'done'}
+          />
+        </Animated.View>
+
         {stage === 'error' && (
-          <>
+          <Animated.View entering={FadeInUp.duration(300)} style={styles.errorWrap}>
             <Text style={styles.errorText}>{error || 'Unknown error'}</Text>
             <Button title="Back" onPress={() => router.back()} />
-          </>
+          </Animated.View>
         )}
       </View>
     </View>
   );
 }
 
+interface ChipProps {
+  label: string;
+  icon: keyof typeof Feather.glyphMap;
+  active: boolean;
+  done: boolean;
+}
+
+const StageChip: React.FC<ChipProps> = ({ label, icon, active, done }) => {
+  const color = done ? Colors.success : active ? HARMONY_ACCENT : Colors.textDim;
+  return (
+    <View style={[styles.chip, (active || done) && styles.chipActive]}>
+      <Feather name={done ? 'check' : icon} size={12} color={color} />
+      <Text style={[styles.chipLabel, { color }]}>{label}</Text>
+    </View>
+  );
+};
+
 const styles = StyleSheet.create({
-  root: {
+  root: { flex: 1 },
+  container: {
     flex: 1,
     paddingHorizontal: Spacing.lg,
-    backgroundColor: Glow.palette.bg,
-    justifyContent: 'center',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  center: { alignItems: 'center', gap: Spacing.lg },
+  heroWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: Spacing.lg,
+    position: 'relative',
+  },
+  heroGlow: {
+    position: 'absolute',
+    width: 320, height: 320,
+    borderRadius: 160,
+    backgroundColor: HARMONY_ACCENT + '14',
+  },
+  copyWrap: {
+    alignItems: 'center',
+    paddingHorizontal: Spacing.md,
+    gap: Spacing.xs,
+  },
   title: {
     color: Glow.palette.ink,
     fontFamily: FontFamily.sansBold,
-    fontSize: FontSize.xl,
+    fontSize: FontSize.xxl,
     textAlign: 'center',
   },
   subtitle: {
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     fontFamily: FontFamily.sans,
     fontSize: FontSize.md,
     lineHeight: 22,
     textAlign: 'center',
+    paddingHorizontal: Spacing.md,
+  },
+  stagesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xxs,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Glow.palette.surface,
+  },
+  chipActive: {
+    backgroundColor: Glow.palette.glow,
+  },
+  chipLabel: {
+    fontFamily: FontFamily.sansMedium,
+    fontSize: FontSize.xs,
+  },
+  stageSep: {
+    width: 12,
+    height: 1,
+    backgroundColor: Colors.borderStrong,
+    opacity: 0.4,
+  },
+  errorWrap: {
+    width: '100%',
+    alignItems: 'center',
+    gap: Spacing.md,
     paddingHorizontal: Spacing.lg,
   },
   errorText: {
@@ -124,6 +304,5 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.sansMedium,
     fontSize: FontSize.sm,
     textAlign: 'center',
-    paddingHorizontal: Spacing.lg,
   },
 });

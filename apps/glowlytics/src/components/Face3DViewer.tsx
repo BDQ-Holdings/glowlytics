@@ -43,6 +43,12 @@ interface Props {
   size?: number;                      // square viewport edge in px
   bone?: BoneStructureResult | null;  // for heatmap + measurements modes
   lesions?: DetectedLesion[] | null;  // for skin mode
+  /**
+   * 0..1 fraction of landmarks + edges to render. Used by the capture
+   * flow to "build" the face mesh progressively while the analyze call
+   * is in flight. Default 1 (full mesh, no animation gating).
+   */
+  revealProgress?: number;
 }
 
 // --- math helpers ---
@@ -112,7 +118,12 @@ export const Face3DViewer: React.FC<Props> = ({
   size = 320,
   bone,
   lesions,
+  revealProgress = 1,
 }) => {
+  // Clamp to [0, 1] — caller may pass NaN/Infinity from a botched animation
+  const reveal = Number.isFinite(revealProgress)
+    ? Math.max(0, Math.min(1, revealProgress))
+    : 1;
   // Guard against meshes that don't honour the MediaPipe-index contract
   // (e.g. an older server response that dropped every Nth vertex). If the
   // mesh is too short OR most of the anatomically-named landmark slots are
@@ -256,17 +267,26 @@ export const Face3DViewer: React.FC<Props> = ({
 
             {/* Outline edges — depth-graded so front-facing geometry reads
                 stronger than the back, giving the 2D wireframe a sense of
-                volume even before any shading. */}
+                volume even before any shading.
+                When `reveal` < 1 (capture-flow animation), edges past the
+                threshold fade out — combined with the dot reveal below
+                this gives the impression of the head "forming" as the
+                analyse call progresses. */}
             <G>
               {edges.map(({ a, b }, i) => {
                 const pa = projected[a];
                 const pb = projected[b];
                 if (!pa || !pb) return null;
+                // Per-edge reveal threshold — edges appear in array order
+                const edgeT = (i + 1) / edges.length;
+                if (edgeT > reveal) return null;
+                // Soft fade-in near the threshold for a smoother appearance
+                const revealFade = Math.max(0, Math.min(1, (reveal - edgeT) * 6 + 0.4));
                 // Depth normalisation: distance + z=80 is the closest a vertex
                 // gets at default camera; distance - 80 is the furthest.
                 const avgDepth = (pa.depth + pb.depth) / 2;
                 const frontness = Math.max(0, Math.min(1, (distance + 80 - avgDepth) / 160));
-                const opacity = 0.25 + 0.65 * frontness;
+                const opacity = (0.25 + 0.65 * frontness) * revealFade;
                 const width = 0.9 + 1.0 * frontness;
                 return (
                   <Line
@@ -303,9 +323,14 @@ export const Face3DViewer: React.FC<Props> = ({
                 }
                 // Default landmark dots — depth-graded radius + opacity
                 // so the eye reads silhouette as well as mesh density.
+                // Per-dot reveal driven by index so the dots appear in a
+                // deterministic order during capture animation.
+                const dotT = projected.length > 0 ? (i + 1) / projected.length : 1;
+                if (dotT > reveal) return null;
+                const revealFade = Math.max(0, Math.min(1, (reveal - dotT) * 6 + 0.4));
                 const frontness = Math.max(0, Math.min(1, (distance + 80 - p.depth) / 160));
                 const r = 1.2 + 1.4 * frontness;
-                const op = 0.35 + 0.55 * frontness;
+                const op = (0.35 + 0.55 * frontness) * revealFade;
                 return (
                   <Circle
                     key={`l${i}`}
