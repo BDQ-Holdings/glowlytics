@@ -15,6 +15,7 @@ import {
 } from '../src/constants/theme';
 import { useStore } from '../src/store/useStore';
 import { harmonyStatusLabel } from '../src/constants/boneStructure';
+import { resetHarmonyIntro } from '../src/components/HarmonyIntroOverlay';
 import {
   presentPaywall,
   presentCustomerCenter,
@@ -342,6 +343,22 @@ export default function AccountScreen() {
 
         <View style={styles.divider} />
         <ArchitectureLauncher onPress={() => router.push('/scan/bone-capture')} />
+        <TouchableOpacity
+          style={styles.archReplayRow}
+          onPress={async () => {
+            await resetHarmonyIntro();
+            Alert.alert(
+              'Intro reset',
+              'The Facial architecture explainer will appear the next time you open your bone-structure results.',
+            );
+          }}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Replay the Facial architecture intro"
+        >
+          <Feather name="rotate-ccw" size={12} color={Colors.textMuted} />
+          <Text style={styles.archReplayText}>Replay architecture intro</Text>
+        </TouchableOpacity>
 
         <View style={styles.divider} />
         <ConnectedAppsSection />
@@ -806,6 +823,19 @@ const styles = StyleSheet.create({
     fontSize: FontSize.xs,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
+  },
+  archReplayRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    paddingVertical: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
+    alignSelf: 'center',
+  },
+  archReplayText: {
+    color: Colors.textMuted,
+    fontFamily: FontFamily.sansMedium,
+    fontSize: FontSize.xs,
   },
   personalBests: {
     marginTop: Spacing.sm,

@@ -99,12 +99,19 @@ export default function BoneCapture() {
     let cancelled = false;
     (async () => {
       try {
+        // Haptic choreography:
+        //   Light  — "we’re taking the picture"  (stage = capturing)
+        //   Medium — "we got it, now thinking"   (stage = analysing)
+        //   Selection — quiet tap on the linger before navigation
+        //   Success — landed on the result      (stage = done)
+        // Failures all fall through to the Error notification in catch.
         setStage('capturing');
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
         const captured = await captureFaceMesh();
         if (cancelled) return;
 
         setStage('analysing');
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
         const sexOverride = sex === 'male' || sex === 'female' ? sex : undefined;
         const result = await analyzeBoneStructure({
           mesh: captured.mesh,
@@ -118,9 +125,11 @@ export default function BoneCapture() {
 
         setStage('done');
         // Linger briefly on the fully-formed mesh before navigating —
-        // gives the user a visual "complete" beat.
+        // gives the user a visual "complete" beat. Quiet selection tick
+        // right before nav so the transition feels intentional.
         setTimeout(() => {
           if (!cancelled) {
+            Haptics.selectionAsync().catch(() => {});
             router.replace({ pathname: '/scan/bone-results', params: { dailyId: dailyId || '' } });
           }
         }, 650);
