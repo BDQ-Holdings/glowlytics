@@ -32,19 +32,64 @@ export default function BoneResults() {
 
   const modelOutputs = useStore((s) => s.modelOutputs);
 
-  const output = useMemo(() => {
-    if (!dailyId) return modelOutputs[modelOutputs.length - 1] || null;
-    return modelOutputs.find((o) => o.daily_id === dailyId) || modelOutputs[modelOutputs.length - 1] || null;
+  const { output, previousBone } = useMemo(() => {
+    if (modelOutputs.length === 0) return { output: null, previousBone: null };
+    // Find the requested scan (or the latest with bone data)
+    const target = dailyId
+      ? modelOutputs.find((o) => o.daily_id === dailyId) ?? modelOutputs[modelOutputs.length - 1]
+      : modelOutputs[modelOutputs.length - 1];
+    // Find the most recent previous scan that ALSO has bone data — used for
+    // delta + ghost-petal comparison on the hero. Skip the target itself.
+    let prev: typeof modelOutputs[number]['bone_structure'] | null = null;
+    const targetIndex = target ? modelOutputs.indexOf(target) : -1;
+    for (let i = targetIndex - 1; i >= 0; i--) {
+      const b = modelOutputs[i]?.bone_structure;
+      if (b && typeof b.harmony === 'number' && Number.isFinite(b.harmony)) {
+        prev = b;
+        break;
+      }
+    }
+    return { output: target ?? null, previousBone: prev };
   }, [modelOutputs, dailyId]);
 
   const bone = output?.bone_structure;
 
   if (!bone) {
     return (
-      <View style={[styles.root, { paddingTop: insets.top + Spacing.xxl }]}>
-        <Text style={styles.emptyTitle}>No facial architecture data yet</Text>
-        <Text style={styles.emptyCopy}>Run a bone-structure capture to see your breakdown.</Text>
-        <Button title="Back" onPress={() => router.back()} />
+      <View style={styles.root}>
+        <LinearGradient
+          colors={[Glow.palette.bg, Glow.palette.surface, Glow.palette.glow]}
+          start={{ x: 0.1, y: 0 }}
+          end={{ x: 0.95, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+        <View
+          style={[
+            styles.emptyContainer,
+            { paddingTop: insets.top + Spacing.xxl, paddingBottom: insets.bottom + Spacing.xxl },
+          ]}
+        >
+          <View style={styles.emptyMeshWrap}>
+            <View style={styles.emptyMeshGlow} />
+            <Face3DViewer
+              vertices={buildCanonicalMesh()}
+              source="mediapipe"
+              mode="anatomy"
+              size={Math.min(260, screenW - Spacing.xl * 2)}
+              revealProgress={0.55}
+            />
+          </View>
+          <View style={styles.emptyCopyWrap}>
+            <Text style={styles.emptyTitle}>Your facial architecture, waiting</Text>
+            <Text style={styles.emptyCopy}>
+              Run a quick scan to map 32 anatomical landmarks across your face. We’ll compose your Harmony score and what to do about each finding.
+            </Text>
+          </View>
+          <View style={styles.emptyActions}>
+            <Button title="Start capture" onPress={() => router.replace('/scan/bone-capture')} size="lg" />
+            <Button title="Back" variant="secondary" onPress={() => router.back()} />
+          </View>
+        </View>
       </View>
     );
   }
@@ -78,6 +123,7 @@ export default function BoneResults() {
 
         <HarmonyScoreReveal
           score={bone.harmony}
+          previousScore={previousBone?.harmony ?? null}
           caption={bone.dominant_driver ? `Strongest opportunity: ${bone.dominant_driver}` : undefined}
         />
 
@@ -89,8 +135,21 @@ export default function BoneResults() {
           <View style={styles.radialWrap}>
             <DomainRadialChart
               scores={bone.domain_scores || {}}
+              previousScores={previousBone?.domain_scores}
               size={Math.min(280, screenW - Spacing.lg * 2)}
             />
+            {previousBone && (
+              <View style={styles.radialLegend}>
+                <View style={styles.radialLegendItem}>
+                  <View style={[styles.radialLegendSwatch, styles.radialLegendSwatchSolid]} />
+                  <Text style={styles.radialLegendText}>This scan</Text>
+                </View>
+                <View style={styles.radialLegendItem}>
+                  <View style={[styles.radialLegendSwatch, styles.radialLegendSwatchDashed]} />
+                  <Text style={styles.radialLegendText}>Previous scan</Text>
+                </View>
+              </View>
+            )}
           </View>
         </Animated.View>
 
@@ -192,6 +251,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: Spacing.xs,
+    gap: Spacing.sm,
+  },
+  radialLegend: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+  },
+  radialLegendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  radialLegendSwatch: {
+    width: 14, height: 2,
+    borderRadius: 1,
+  },
+  radialLegendSwatchSolid: {
+    backgroundColor: Colors.harmony,
+  },
+  radialLegendSwatchDashed: {
+    borderTopWidth: 1.2,
+    borderTopColor: Colors.textMuted,
+    borderStyle: 'dashed',
+    width: 18,
+    height: 0,
+  },
+  radialLegendText: {
+    color: Colors.textMuted,
+    fontFamily: FontFamily.sansMedium,
+    fontSize: FontSize.xs,
   },
   sectionTitle: {
     color: Glow.palette.muted,
@@ -289,6 +377,29 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     textAlign: 'center',
   },
+  emptyContainer: {
+    flex: 1,
+    paddingHorizontal: Spacing.lg,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  emptyMeshWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: Spacing.lg,
+    position: 'relative',
+  },
+  emptyMeshGlow: {
+    position: 'absolute',
+    width: 260, height: 260,
+    borderRadius: 130,
+    backgroundColor: Colors.harmony + '14',
+  },
+  emptyCopyWrap: {
+    alignItems: 'center',
+    paddingHorizontal: Spacing.md,
+    gap: Spacing.sm,
+  },
   emptyTitle: {
     color: Glow.palette.ink,
     fontFamily: FontFamily.sansBold,
@@ -296,11 +407,16 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   emptyCopy: {
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     fontFamily: FontFamily.sans,
     fontSize: FontSize.md,
+    lineHeight: 22,
     textAlign: 'center',
-    paddingHorizontal: Spacing.xl,
-    marginVertical: Spacing.md,
+    paddingHorizontal: Spacing.sm,
+  },
+  emptyActions: {
+    width: '100%',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.md,
   },
 });

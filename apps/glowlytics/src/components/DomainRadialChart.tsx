@@ -21,10 +21,13 @@ import type { BoneDomain } from '../types';
 
 interface Props {
   scores: Partial<Record<BoneDomain, number | null>>;
+  /** Optional previous-scan scores — drawn as a ghost outline behind the
+   *  live petal so the user can see per-domain movement at a glance. */
+  previousScores?: Partial<Record<BoneDomain, number | null>>;
   size?: number;
 }
 
-export const DomainRadialChart: React.FC<Props> = ({ scores, size = 240 }) => {
+export const DomainRadialChart: React.FC<Props> = ({ scores, previousScores, size = 240 }) => {
   const center = size / 2;
   const radius = size / 2 - 28; // padding for outside labels
 
@@ -64,6 +67,28 @@ export const DomainRadialChart: React.FC<Props> = ({ scores, size = 240 }) => {
     [axes],
   );
 
+  // Previous-scan petal anchors (ghost outline). null when no comparison.
+  const previousPoints = useMemo(() => {
+    if (!previousScores) return null;
+    const hasAny = BONE_DOMAINS.some((d) => {
+      const v = previousScores[d.key];
+      return typeof v === 'number' && Number.isFinite(v);
+    });
+    if (!hasAny) return null;
+    return BONE_DOMAINS
+      .map((d, i) => {
+        const angle = -Math.PI / 2 + (i * 2 * Math.PI) / BONE_DOMAINS.length;
+        const score = previousScores[d.key];
+        const r = typeof score === 'number' && Number.isFinite(score)
+          ? Math.max(0, Math.min(100, score)) / 100 * radius
+          : 0;
+        const x = center + Math.cos(angle) * r;
+        const y = center + Math.sin(angle) * r;
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      })
+      .join(' ');
+  }, [previousScores, center, radius]);
+
   // Reference rings (25/50/75) — drawn as concentric polygons matching the
   // axis count so they stay visually consistent with the petal shape.
   const ringPoints = useMemo(() => {
@@ -101,7 +126,21 @@ export const DomainRadialChart: React.FC<Props> = ({ scores, size = 240 }) => {
           ))}
         </G>
 
-        {/* Filled petal — user's scores */}
+        {/* Previous-scan ghost outline — sits behind the live petal so the
+            eye can compare without losing the new shape. */}
+        {previousPoints && (
+          <Polygon
+            points={previousPoints}
+            fill="none"
+            stroke={Colors.textMuted}
+            strokeOpacity={0.55}
+            strokeWidth={1.2}
+            strokeDasharray="3,3"
+            strokeLinejoin="round"
+          />
+        )}
+
+        {/* Filled petal — current scan's scores */}
         <Polygon
           points={petalPoints}
           fill={HARMONY_ACCENT}
