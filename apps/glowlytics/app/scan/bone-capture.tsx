@@ -18,6 +18,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeIn, FadeInUp } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { Feather } from '@expo/vector-icons';
+import { BoneCaptureSexPrompt } from '../../src/components/BoneCaptureSexPrompt';
 import { Button } from '../../src/components/Button';
 import { Face3DViewer } from '../../src/components/Face3DViewer';
 import { buildCanonicalMesh } from '../../src/services/canonicalFaceMesh';
@@ -26,6 +27,7 @@ import { analyzeBoneStructure } from '../../src/services/boneStructure';
 import { useStore } from '../../src/store/useStore';
 import { HARMONY_ACCENT } from '../../src/constants/boneStructure';
 import { BorderRadius, Colors, FontFamily, FontSize, Glow, Spacing } from '../../src/constants/theme';
+import type { BiologicalSex } from '../../src/types';
 
 type Stage = 'idle' | 'capturing' | 'analysing' | 'done' | 'error';
 
@@ -56,11 +58,20 @@ export default function BoneCapture() {
   const { width: screenW } = useWindowDimensions();
   const { dailyId } = useLocalSearchParams<{ dailyId?: string }>();
   const sex = useStore((s) => s.user?.sex);
+  const updateUser = useStore((s) => s.updateUser);
   const attachBoneStructure = useStore((s) => s.attachBoneStructure);
+
+  // Gate the auto-run on a known sex value. If the user has explicitly chosen
+  // anything (including 'prefer_not' or 'other') we don't ask again.
+  const needsSexPrompt = sex == null;
 
   const [stage, setStage] = useState<Stage>('idle');
   const [reveal, setReveal] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [sexPromptVisible, setSexPromptVisible] = useState(needsSexPrompt);
+  // The choice the user just made — captured in-component so the analyse call
+  // can pass it even before the store update has hit Postgres.
+  const [pendingSexChoice, setPendingSexChoice] = useState<BiologicalSex | null>(null);
   const ranRef = useRef(false);
 
   // Drive the reveal progress toward the current stage's target. We use a
@@ -93,6 +104,8 @@ export default function BoneCapture() {
   const displayedReveal = easeOutCubic(reveal);
 
   useEffect(() => {
+    // Hold off on auto-run until the sex prompt resolves (if it was shown).
+    if (sexPromptVisible) return;
     if (ranRef.current) return;
     ranRef.current = true;
 
@@ -112,7 +125,10 @@ export default function BoneCapture() {
 
         setStage('analysing');
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-        const sexOverride = sex === 'male' || sex === 'female' ? sex : undefined;
+        // Effective sex for this scan — prefer the just-picked choice, else
+        // the stored profile value, else undefined (server uses unisex).
+        const effectiveSex = pendingSexChoice ?? sex;
+        const sexOverride = effectiveSex === 'male' || effectiveSex === 'female' ? effectiveSex : undefined;
         const result = await analyzeBoneStructure({
           mesh: captured.mesh,
           dailyId,
@@ -142,7 +158,16 @@ export default function BoneCapture() {
     })();
 
     return () => { cancelled = true; };
-  }, [dailyId]);
+  }, [dailyId, sexPromptVisible]);
+
+  const handleSexChoice = (choice: BiologicalSex) => {
+    setPendingSexChoice(choice);
+    setSexPromptVisible(false);
+    // Persist so we don't ask again. updateUser is a no-op when the user
+    // record hasn't been created yet (still in onboarding) — the in-component
+    // pendingSexChoice covers that case for the analyse call.
+    try { updateUser({ sex: choice }); } catch { /* no-op */ }
+  };
 
   const copy = STAGE_COPY[stage];
   const viewerSize = Math.min(320, screenW - Spacing.xl * 2);
@@ -215,6 +240,9 @@ export default function BoneCapture() {
           </Animated.View>
         )}
       </View>
+
+      {/* One-time sex baseline prompt — gates the auto-run useEffect above. */}
+      <BoneCaptureSexPrompt visible={sexPromptVisible} onChoose={handleSexChoice} />
     </View>
   );
 }
