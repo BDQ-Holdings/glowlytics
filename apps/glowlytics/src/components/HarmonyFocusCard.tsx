@@ -38,12 +38,17 @@ interface FocusData {
 export const HarmonyFocusCard: React.FC = () => {
   const router = useRouter();
 
-  const focus = useStore<FocusData | null>((s) => {
-    // Walk from latest scan backwards — surface the first scan that has
-    // bone-structure data AND at least one finding with a lifestyle
-    // intervention. Most recent scans win.
-    for (let i = s.modelOutputs.length - 1; i >= 0; i--) {
-      const out = s.modelOutputs[i];
+  // Stable-ref selector pattern: pull primitive array reference, derive via
+  // useMemo. A selector that returns a fresh object every call would force
+  // a re-render every time the store changes — and during sign-in the store
+  // churns through user / profile / dailies / modelOutputs in quick
+  // succession, which can crash the consumer tree.
+  const modelOutputs = useStore((s) => s.modelOutputs);
+  const focus = useMemo<FocusData | null>(() => {
+    const outputs = modelOutputs ?? [];
+    for (let i = outputs.length - 1; i >= 0; i--) {
+      const out = outputs[i];
+      if (!out) continue;
       const bone = out.bone_structure;
       if (!bone || !bone.findings || bone.findings.length === 0) continue;
       const topFinding = bone.findings[0]; // already sorted most-severe-first
@@ -61,7 +66,7 @@ export const HarmonyFocusCard: React.FC = () => {
       };
     }
     return null;
-  });
+  }, [modelOutputs]);
 
   // Truncate the body for the card surface — full text is on the detail page.
   const trimmedBody = useMemo(() => {

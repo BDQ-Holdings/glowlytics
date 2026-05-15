@@ -31,16 +31,24 @@ interface Props {
 export const HarmonyTrendCard: React.FC<Props> = ({ maxPoints = 10 }) => {
   const router = useRouter();
 
-  const points: SamplePoint[] = useStore((s) => {
+  // Pull the raw outputs reference (stable across renders unless the array
+  // actually changes); derive the sparkline series via useMemo so each
+  // render of THIS component doesn't synthesise a fresh array reference.
+  // Zustand v5 selectors that return new array/object refs each call cause
+  // unnecessary re-renders and, in render-storms during sign-in / store
+  // hydration, can crash the consumer tree.
+  const modelOutputs = useStore((s) => s.modelOutputs);
+  const points: SamplePoint[] = useMemo(() => {
     const out: SamplePoint[] = [];
-    for (const m of s.modelOutputs) {
+    for (const m of modelOutputs ?? []) {
+      if (!m) continue;
       const h = m.bone_structure?.harmony;
       if (typeof h === 'number' && Number.isFinite(h)) {
         out.push({ dailyId: m.daily_id, score: h });
       }
     }
     return out.slice(-maxPoints);
-  });
+  }, [modelOutputs, maxPoints]);
 
   if (points.length < 2) return null;
 

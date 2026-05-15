@@ -57,8 +57,9 @@ const InfoRow: React.FC<{ label: string; value: string }> = ({ label, value }) =
 // rather than dead text.
 const ArchitectureLauncher: React.FC<{ onPress: () => void }> = ({ onPress }) => {
   const lastHarmony = useStore((s) => {
-    for (let i = s.modelOutputs.length - 1; i >= 0; i--) {
-      const h = s.modelOutputs[i].bone_structure?.harmony;
+    const outputs = s.modelOutputs ?? [];
+    for (let i = outputs.length - 1; i >= 0; i--) {
+      const h = outputs[i]?.bone_structure?.harmony;
       if (typeof h === 'number' && Number.isFinite(h)) return h;
     }
     return null;

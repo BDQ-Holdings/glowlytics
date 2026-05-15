@@ -31,9 +31,14 @@ interface DomainSeries {
 }
 
 export const DomainHistoryStrip: React.FC<Props> = ({ maxPoints = 12 }) => {
-  const series: DomainSeries[] = useStore((s) => {
+  // Stable-ref pattern — see HarmonyTrendCard / HarmonyFocusCard for the
+  // full rationale.  Returning a fresh array of objects from a Zustand
+  // selector every call thrashes the consumer tree under store churn.
+  const modelOutputs = useStore((s) => s.modelOutputs);
+  const series: DomainSeries[] = useMemo(() => {
     const points: Array<Partial<Record<BoneDomain, number>>> = [];
-    for (const m of s.modelOutputs) {
+    for (const m of modelOutputs ?? []) {
+      if (!m) continue;
       const ds = m.bone_structure?.domain_scores;
       if (!ds) continue;
       const point: Partial<Record<BoneDomain, number>> = {};
@@ -54,7 +59,7 @@ export const DomainHistoryStrip: React.FC<Props> = ({ maxPoints = 12 }) => {
       accent: d.accent,
       scores: trimmed.map((p) => p[d.key]).filter((v): v is number => typeof v === 'number'),
     }));
-  });
+  }, [modelOutputs, maxPoints]);
 
   const enoughHistory = series.some((s) => s.scores.length >= 2);
   if (!enoughHistory) return null;
