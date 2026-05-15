@@ -30,6 +30,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { Button } from '../../src/components/Button';
+import { DomainHistoryStrip } from '../../src/components/DomainHistoryStrip';
 import { DomainRadialChart } from '../../src/components/DomainRadialChart';
 import { Face3DViewer } from '../../src/components/Face3DViewer';
 import { HarmonyIntroOverlay } from '../../src/components/HarmonyIntroOverlay';
@@ -197,6 +198,10 @@ export default function BoneResults() {
             </View>
           </View>
         )}
+      </Animated.View>
+      {/* Per-domain sparkline strip — renders null when <2 scans exist. */}
+      <Animated.View entering={FadeInDown.duration(450).delay(300)} style={styles.domainStripWrap}>
+        <DomainHistoryStrip />
       </Animated.View>
     </StoryPage>
   );
@@ -435,6 +440,9 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     fontFamily: FontFamily.sansMedium,
     fontSize: FontSize.xs,
+  },
+  domainStripWrap: {
+    marginTop: Spacing.md,
   },
 
   // Measurements
