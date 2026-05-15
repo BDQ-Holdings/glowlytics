@@ -15,7 +15,7 @@ apps/
       story.tsx, account.tsx, routine.tsx  # split out of tab files for Glow redesign
     modules/         # local Expo native modules (expo-arkit-face for FaceAnchor capture)
     src/
-      components/    # 38 top-level (.tsx) incl. Face3DViewer, DomainRadialChart, DomainHistoryStrip, HarmonyScoreReveal, HarmonyTrendCard, HarmonyIntroOverlay, BoneCaptureSexPrompt, StoryCarousel + glow/ + navigation/
+      components/    # 39 top-level (.tsx) incl. Face3DViewer, DomainRadialChart, DomainHistoryStrip, HarmonyScoreReveal, HarmonyTrendCard, HarmonyFocusCard, HarmonyIntroOverlay, BoneCaptureSexPrompt, StoryCarousel + glow/ + navigation/
       components/glow/  # GlowIcons, GlowPrimitives (BreathingGlow, GlowRing, GlowSpark, FadeUp)
       services/      # 34 services incl. httpClient.ts, syncOutbox.ts, mcpClients.ts, faceMeshCapture.ts, boneStructure.ts
       store/         # Zustand (useStore.ts) — sync via outbox, not fire-and-forget
@@ -37,7 +37,7 @@ research/
 cd apps/glowlytics
 npm start                    # Dev server
 npx tsc --noEmit             # Type check (0 errors)
-npm test                     # Mobile tests (384 across 28 suites)
+npm test                     # Mobile tests (390 across 29 suites)
 cd backend && npm test       # Backend tests (360 across 28 suites)
 ```
 

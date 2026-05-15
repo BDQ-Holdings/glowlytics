@@ -14,6 +14,7 @@ import {
 import { PatternCarousel } from '../src/components/PatternCarousel';
 import { PatternProgressBar } from '../src/components/PatternProgressBar';
 import { PatternExportCard } from '../src/components/PatternExportCard';
+import { HarmonyFocusCard } from '../src/components/HarmonyFocusCard';
 import { HarmonyTrendCard } from '../src/components/HarmonyTrendCard';
 import { exportAndSharePattern } from '../src/services/patternExport';
 import {
@@ -334,9 +335,13 @@ export default function Home() {
         </View>
       </FadeUp>
 
-      {/* Harmony trend — only renders when ≥2 scans with bone data exist */}
+      {/* Harmony focus + trend — both render null when their data
+          preconditions aren't met. Focus card needs a scan with at least
+          one finding; trend needs ≥2 scans. Stacked: action → context. */}
       <FadeUp index={3}>
         <View style={[s.section, s.trendWrap]}>
+          <HarmonyFocusCard />
+          <View style={{ height: 8 }} />
           <HarmonyTrendCard />
         </View>
       </FadeUp>
