@@ -5,6 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlowIcon, GlowSpark } from '../src/components/glow/GlowIcons';
 import { FadeUp, SectionHead } from '../src/components/glow/GlowPrimitives';
+import { HarmonyTrendCard } from '../src/components/HarmonyTrendCard';
 import {
   BorderRadius,
   Colors,
@@ -131,7 +132,27 @@ export default function StoryScreen() {
         </View>
       </FadeUp>
 
-      <FadeUp index={2}>
+      {/* Facial architecture — only renders when ≥2 scans with bone data
+          exist (HarmonyTrendCard returns null otherwise). The section title
+          + container collapse with it so an empty user doesn't see an
+          orphan heading. */}
+      {modelOutputs.filter((o) => typeof o.bone_structure?.harmony === 'number').length >= 2 && (
+        <FadeUp index={2}>
+          <View style={s.section}>
+            <SectionHead
+              title="Facial architecture"
+              hint="Tap to open"
+              ink={palette.ink}
+              muted={palette.muted}
+            />
+            <View style={{ marginTop: 12 }}>
+              <HarmonyTrendCard />
+            </View>
+          </View>
+        </FadeUp>
+      )}
+
+      <FadeUp index={3}>
         <View style={s.section}>
           <SectionHead
             title="What we noticed"
@@ -192,7 +213,7 @@ export default function StoryScreen() {
       </FadeUp>
 
       {photoStrip.length > 0 && (
-        <FadeUp index={3}>
+        <FadeUp index={4}>
           <View style={s.section}>
             <SectionHead
               title="Your face, week by week"
@@ -246,7 +267,7 @@ export default function StoryScreen() {
         </FadeUp>
       )}
 
-      <FadeUp index={4}>
+      <FadeUp index={5}>
         <View style={s.section}>
           <TouchableOpacity
             activeOpacity={0.9}
