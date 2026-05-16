@@ -183,6 +183,77 @@ export function deformCanonicalMesh(traits: FaceTraits): CapturedFaceMesh {
 }
 
 /**
+ * Triangle faces used by the 3D viewer to render the canonical head as a
+ * semi-transparent clay sculpt behind the wireframe — gives the mesh
+ * dimensional weight rather than a "wire-only" feel.
+ *
+ * Winding convention: each triangle is listed so that when viewed from the
+ * camera at +z (looking at the face front), the screen-space cross product
+ * of (B - A) × (C - A) is NEGATIVE. Triangles whose cross flips to positive
+ * during rotation are currently back-facing and skipped by the viewer.
+ *
+ * Coverage: forehead → brow → eyes → nose → cheeks → mouth → chin → jaw.
+ * Side-of-face wrap triangles (zygion ↔ tragion ↔ gonion) included so the
+ * silhouette has volume when the mesh rotates past ±45°.
+ */
+export const CANONICAL_TRIANGLES: ReadonlyArray<[number, number, number]> = [
+  // ── Forehead ──
+  [10,  55, 285],
+  [10, 105,  55],
+  [10, 334, 285],
+  [10, 127, 105],
+  [10, 356, 334],
+  // ── Brow / glabella ──
+  [ 9,  55, 285],
+  [55, 105, 159],
+  [285, 334, 386],
+  // ── Eye region ──
+  [55, 159, 133],
+  [285, 386, 362],
+  [33, 159, 145],
+  [263, 386, 374],
+  [33, 145, 133],
+  [263, 374, 362],
+  [105, 33, 159],
+  [334, 263, 386],
+  // ── Nose ──
+  [ 9,   1,  55],
+  [ 9, 285,   1],
+  [ 1,  49,   2],
+  [ 1,   2, 279],
+  [133,   1,  49],
+  [362, 279,   1],
+  // ── Cheek / midface ──
+  [33, 234,  49],
+  [263, 279, 454],
+  [49, 234,  61],
+  [279, 291, 454],
+  // ── Upper lip / philtrum ──
+  [ 2,  49,  61],
+  [ 2, 291, 279],
+  [ 2,  61,   0],
+  [ 2,   0, 291],
+  // ── Lower lip / chin ──
+  [ 0,  61,  17],
+  [ 0,  17, 291],
+  [17,  61, 199],
+  [17, 199, 291],
+  // ── Jaw ──
+  [61, 172, 199],
+  [291, 199, 397],
+  [61, 234, 172],
+  [291, 397, 454],
+  // ── Chin → menton ──
+  [199, 172, 152],
+  [199, 152, 397],
+  // ── Silhouette wrap (visible during yaw) ──
+  [127, 234, 172],
+  [356, 397, 454],
+  [127, 172, 152],
+  [356, 152, 397],
+];
+
+/**
  * Indices used by the 3D viewer to draw a wireframe outline of the canonical
  * head. Order matters: front-facing edges first, so the capture-flow reveal
  * animation paints the face features (eyes / nose / mouth) before the

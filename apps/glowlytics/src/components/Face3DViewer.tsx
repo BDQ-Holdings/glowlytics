@@ -14,10 +14,10 @@
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import Svg, { Circle, Defs, G, Line, RadialGradient, Rect, Stop, Text as SvgText } from 'react-native-svg';
+import Svg, { Circle, Defs, G, Line, Polygon, RadialGradient, Rect, Stop, Text as SvgText } from 'react-native-svg';
 import { GestureDetector, Gesture, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { runOnJS } from 'react-native-reanimated';
-import { buildCanonicalMesh, CANONICAL_OUTLINE_EDGES } from '../services/canonicalFaceMesh';
+import { buildCanonicalMesh, CANONICAL_OUTLINE_EDGES, CANONICAL_TRIANGLES } from '../services/canonicalFaceMesh';
 import {
   HARMONY_ACCENT,
   MEASUREMENT_LINES,
@@ -223,6 +223,39 @@ export const Face3DViewer: React.FC<Props> = ({
     return list;
   }, []);
 
+  // Triangle face fills — give the mesh a clay-sculpt look behind the
+  // wireframe. Back-half culling via centroid depth (winding-agnostic, so
+  // I don't have to audit 40+ hand-listed triangles for consistency).
+  // Painter's algorithm sorts back-to-front so closer faces overpaint
+  // farther ones. Alpha modulated by `frontness` so the silhouette gets
+  // darker toward the rim — pseudo ambient occlusion without lighting math.
+  const triangleFaces = useMemo(() => {
+    const faces: Array<{ points: string; centroidDepth: number; alpha: number; key: string }> = [];
+    for (let i = 0; i < CANONICAL_TRIANGLES.length; i++) {
+      const [ai, bi, ci] = CANONICAL_TRIANGLES[i];
+      const pa = projected[ai];
+      const pb = projected[bi];
+      const pc = projected[ci];
+      if (!pa || !pb || !pc) continue;
+
+      const centroidDepth = (pa.depth + pb.depth + pc.depth) / 3;
+      // Depth > distance means the triangle's centroid is in the back half
+      // (z2 < 0 in mesh-local space after rotation). Skip those — they
+      // belong to the side of the head facing away from the camera.
+      if (centroidDepth > distance) continue;
+
+      const frontness = Math.max(0, Math.min(1, (distance + 80 - centroidDepth) / 160));
+      // Triangle alpha base 0.04 (just-visible) up to 0.16 (clear plane).
+      // Multiplied by `reveal` so the fill grows alongside the wireframe
+      // during the capture animation.
+      const alpha = (0.04 + 0.12 * frontness) * reveal;
+      const points = `${pa.x.toFixed(1)},${pa.y.toFixed(1)} ${pb.x.toFixed(1)},${pb.y.toFixed(1)} ${pc.x.toFixed(1)},${pc.y.toFixed(1)}`;
+      faces.push({ points, centroidDepth, alpha, key: `t${i}` });
+    }
+    faces.sort((a, b) => b.centroidDepth - a.centroidDepth);
+    return faces;
+  }, [projected, distance, reveal]);
+
   // Measurement overlays
   const measurementLines = MEASUREMENT_LINES[source] || MEASUREMENT_LINES.mediapipe;
   const measurementAngles = MEASUREMENT_ANGLES[source] || MEASUREMENT_ANGLES.mediapipe;
@@ -276,6 +309,22 @@ export const Face3DViewer: React.FC<Props> = ({
             </Defs>
 
             <Circle cx={size / 2} cy={size / 2} r={size / 2.1} fill="url(#bgGlow)" />
+
+            {/* Clay-sculpt face fills — back-to-front, back-faces culled.
+                Sits behind the wireframe so the wireframe still defines
+                the head's structure, but the head reads as a 3D form
+                rather than a wire-only diagram. */}
+            <G>
+              {triangleFaces.map((f) => (
+                <Polygon
+                  key={f.key}
+                  points={f.points}
+                  fill={HARMONY_ACCENT}
+                  fillOpacity={f.alpha}
+                  stroke="none"
+                />
+              ))}
+            </G>
 
             {/* Outline edges — depth-graded so front-facing geometry reads
                 stronger than the back, giving the 2D wireframe a sense of
