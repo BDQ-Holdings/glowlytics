@@ -158,14 +158,25 @@ export const Face3DViewer: React.FC<Props> = ({
   const baseRef = useRef({ yaw: 0, pitch: 0, distance: 180 });
 
   // Auto-rotate when the user hasn't touched the viewer recently. Halts on
-  // any pan and resumes after a short idle window.
+  // any pan and resumes after a short idle window. RAF-driven so the
+  // rotation rate is constant across devices and the motion is smoother
+  // than the previous 25fps setInterval.
   const idleSince = useRef(Date.now());
   useEffect(() => {
-    const id = setInterval(() => {
-      if (Date.now() - idleSince.current < 1500) return;
-      setYaw((y) => y + 0.012);
-    }, 40);
-    return () => clearInterval(id);
+    let raf = 0;
+    let lastT = Date.now();
+    const step = () => {
+      const now = Date.now();
+      const dt = (now - lastT) / 1000;
+      lastT = now;
+      if (now - idleSince.current >= 1500) {
+        // 0.3 rad/sec ≈ 17°/sec, ~21s per full rotation
+        setYaw((y) => y + 0.3 * Math.min(dt, 0.05));
+      }
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
   }, []);
 
   const pan = Gesture.Pan()
@@ -245,16 +256,27 @@ export const Face3DViewer: React.FC<Props> = ({
       if (centroidDepth > distance) continue;
 
       const frontness = Math.max(0, Math.min(1, (distance + 80 - centroidDepth) / 160));
-      // Triangle alpha base 0.04 (just-visible) up to 0.16 (clear plane).
+
+      // Fake key light from the upper-left of the viewport (screen-fixed,
+      // so as the mesh rotates the bright cheek follows the light rather
+      // than the geometry — sells the 3D form better than physical
+      // shading for a stylised clay sculpt at this fidelity).
+      const cx = (pa.x + pb.x + pc.x) / 3;
+      const cy = (pa.y + pb.y + pc.y) / 3;
+      const lightDist = Math.hypot(cx - size * 0.28, cy - size * 0.28);
+      const lightFactor = Math.max(0.45, Math.min(1.15, 1.25 - lightDist / (size * 0.75)));
+
+      // Triangle alpha base 0.04 (just-visible) up to 0.18 (clear plane).
       // Multiplied by `reveal` so the fill grows alongside the wireframe
-      // during the capture animation.
-      const alpha = (0.04 + 0.12 * frontness) * reveal;
+      // during the capture animation, then by `lightFactor` so upper-left
+      // triangles read brighter than lower-right.
+      const alpha = (0.04 + 0.14 * frontness) * lightFactor * reveal;
       const points = `${pa.x.toFixed(1)},${pa.y.toFixed(1)} ${pb.x.toFixed(1)},${pb.y.toFixed(1)} ${pc.x.toFixed(1)},${pc.y.toFixed(1)}`;
       faces.push({ points, centroidDepth, alpha, key: `t${i}` });
     }
     faces.sort((a, b) => b.centroidDepth - a.centroidDepth);
     return faces;
-  }, [projected, distance, reveal]);
+  }, [projected, distance, reveal, size]);
 
   // Measurement overlays
   const measurementLines = MEASUREMENT_LINES[source] || MEASUREMENT_LINES.mediapipe;
@@ -370,16 +392,23 @@ export const Face3DViewer: React.FC<Props> = ({
                 if (mode === 'heatmap') {
                   const f = findingByVertex.get(i);
                   if (!f) return null;
+                  // Halo + core. The halo is a larger, much-fainter circle
+                  // that draws the eye to the finding region without
+                  // overpowering the wireframe behind it.
+                  const c = severityColor(f.severity);
                   return (
-                    <Circle
-                      key={`l${i}`}
-                      cx={p.x} cy={p.y}
-                      r={6}
-                      fill={severityColor(f.severity)}
-                      fillOpacity={0.85}
-                      stroke={Colors.background}
-                      strokeWidth={1}
-                    />
+                    <G key={`l${i}`}>
+                      <Circle cx={p.x} cy={p.y} r={14} fill={c} fillOpacity={0.18} />
+                      <Circle cx={p.x} cy={p.y} r={9} fill={c} fillOpacity={0.35} />
+                      <Circle
+                        cx={p.x} cy={p.y}
+                        r={6}
+                        fill={c}
+                        fillOpacity={0.92}
+                        stroke={Colors.background}
+                        strokeWidth={1.2}
+                      />
+                    </G>
                   );
                 }
                 // Default landmark dots — depth-graded radius + opacity
