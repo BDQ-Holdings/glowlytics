@@ -138,8 +138,15 @@ export default function BoneResults() {
     );
   }
 
-  const meshVerts = bone.downsampled_mesh?.vertices || buildCanonicalMesh();
-  const meshSource = bone.downsampled_mesh?.source || 'mediapipe';
+  // Visualization always uses the canonical mesh — the captured ARKit mesh
+  // is in metres (~±0.07 range) so projecting it directly collapses every
+  // vertex into a 5-pixel cluster at viewport centre. ARKit topology also
+  // doesn't share index-keyed landmarks with our outline+measurement tables.
+  // The captured mesh's role is to feed the backend metric math, not to
+  // drive the viewer's wireframe — measurement labels (rendered on the
+  // canonical) show the user's actual numerical values regardless.
+  const meshVerts = buildCanonicalMesh();
+  const meshSource = 'mediapipe' as const;
   const viewerSize = Math.min(340, screenW - Spacing.lg * 2);
   const radialSize = Math.min(280, screenW - Spacing.lg * 2);
 

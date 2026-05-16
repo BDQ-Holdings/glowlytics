@@ -182,22 +182,54 @@ export function deformCanonicalMesh(traits: FaceTraits): CapturedFaceMesh {
   };
 }
 
-/** Indices used by the 3D viewer to draw a wireframe outline of the canonical head. */
+/**
+ * Indices used by the 3D viewer to draw a wireframe outline of the canonical
+ * head. Order matters: front-facing edges first, so the capture-flow reveal
+ * animation paints the face features (eyes / nose / mouth) before the
+ * silhouette and the rear-bracing edges land.
+ */
 export const CANONICAL_OUTLINE_EDGES: ReadonlyArray<[number, number]> = [
-  // Jawline outline
-  [127, 234], [234, 172], [172, 199], [199, 397], [397, 454], [454, 356],
-  // Upper face outline
-  [127, 356], [10, 9], [9, 1], [1, 2], [2, 0], [0, 17], [17, 199],
-  // Left eye
+  // ── Front-facing features (drawn first; revealed first in capture flow) ──
+
+  // Nose (centre-front pyramid)
+  [9, 1], [1, 2], [49, 1], [1, 279], [49, 2], [279, 2],
+  [49, 133], [279, 362], [49, 279],
+
+  // Left eye + iris spokes
   [33, 159], [159, 133], [133, 145], [145, 33],
-  // Right eye
+  [468, 159], [468, 145], [468, 133], [468, 33],
+  // Right eye + iris spokes
   [263, 386], [386, 362], [362, 374], [374, 263],
-  // Left brow
-  [55, 105], [105, 33],
-  // Right brow
+  [473, 386], [473, 374], [473, 362], [473, 263],
+
+  // Brows + brow-to-eye anchoring
+  [55, 105], [105, 33], [55, 285],
   [285, 334], [334, 263],
-  // Mouth
+  [9, 55], [9, 285], [55, 159], [285, 386],
+
+  // Mouth (cheilion ↔ midlines ↔ chin)
   [61, 0], [0, 291], [61, 17], [17, 291],
-  // Nose
-  [49, 1], [1, 279],
+  [61, 49], [291, 279], [61, 199], [291, 199],
+
+  // ── Cheek + midface planes ──
+  [234, 33],  [454, 263],        // zygion ↔ outer canthus
+  [234, 49],  [454, 279],        // zygion ↔ alar
+  [234, 61],  [454, 291],        // zygion ↔ mouth corner
+  [234, 172], [454, 397],        // zygion ↔ gonion
+  [33, 263],                     // outer canthus span (intercanthal vault)
+  [49, 279],                     // alar span — already; nasal base width
+
+  // ── Forehead ──
+  [10, 9],                        // hairline → glabella midline
+  [10, 55], [10, 285],            // hairline → brow inners
+  [10, 105], [10, 334],           // hairline → brow apexes
+  [10, 127], [10, 356],           // hairline → temples
+  [9, 105], [9, 334],             // glabella → brow apex
+
+  // ── Jaw silhouette + chin bracing ──
+  [127, 234], [234, 172], [172, 199], [199, 397], [397, 454], [454, 356],
+  [127, 356],                     // ear-to-ear over the top (skull arc)
+  [172, 152], [397, 152], [199, 152],    // jawline → menton
+  [127, 172], [356, 397],         // tragion → gonion (ramus)
+  [199, 17],                      // chin → lower lip
 ];

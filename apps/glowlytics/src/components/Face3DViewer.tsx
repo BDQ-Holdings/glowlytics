@@ -61,23 +61,29 @@ function vert(verts: number[], i: number): Vec3 | null {
   return { x: verts[o], y: verts[o + 1], z: verts[o + 2] };
 }
 
-// Rotate around Y then around X, then project orthographically with
-// foreshortening (perspective). Simple right-handed system.
+// Rotate around Y then around X, then project with perspective foreshortening.
+//
+// Mesh convention (matches backend bone-structure-3d.js + canonicalFaceMesh.ts):
+//   +X = subject's right (away from viewer when looking at the face)
+//   +Y = up
+//   +Z = out of the face, toward the camera
+//
+// Camera sits at world z = +distance looking toward -Z. So the eye-space depth
+// of a vertex is `distance - z2` (front-of-face → small w, back → large w).
+// We also negate screen x because subject-right should appear on screen-left
+// (mirror-image expectation when looking at a face).
 function projectVertex(v: Vec3, yaw: number, pitch: number, distance: number, fov: number, size: number): { x: number; y: number; depth: number } {
-  // Rotate around Y (yaw)
   const cy = Math.cos(yaw), sy = Math.sin(yaw);
   const x1 = v.x * cy + v.z * sy;
   const z1 = -v.x * sy + v.z * cy;
-  // Rotate around X (pitch)
   const cp = Math.cos(pitch), sp = Math.sin(pitch);
   const y2 = v.y * cp - z1 * sp;
   const z2 = v.y * sp + z1 * cp;
-  // Perspective project
-  const w = z2 + distance;
+  const w = distance - z2;
   const denom = w > 0.1 ? w : 0.1;
   const focal = (size / 2) / Math.tan((fov * Math.PI / 180) / 2);
   return {
-    x: (x1 * focal) / denom + size / 2,
+    x: -(x1 * focal) / denom + size / 2,
     y: -(y2 * focal) / denom + size / 2,
     depth: w,
   };
@@ -194,12 +200,18 @@ export const Face3DViewer: React.FC<Props> = ({
 
   const composed = Gesture.Simultaneous(pan, pinch);
 
-  // Project every vertex once per render
+  // Project every vertex once per render. Zero-coord slots (placeholder
+  // padding between named landmark indices) are skipped so 442 dots don't
+  // stack at the viewport centre.
   const projected = useMemo(() => {
     const out: Array<{ x: number; y: number; depth: number } | null> = [];
     for (let i = 0; i * 3 < vertices.length; i++) {
       const v = vert(vertices, i);
-      out.push(v ? projectVertex(v, yaw, pitch, distance, 45, size) : null);
+      if (!v || (v.x === 0 && v.y === 0 && v.z === 0)) {
+        out.push(null);
+        continue;
+      }
+      out.push(projectVertex(v, yaw, pitch, distance, 45, size));
     }
     return out;
   }, [vertices, yaw, pitch, distance, size]);
