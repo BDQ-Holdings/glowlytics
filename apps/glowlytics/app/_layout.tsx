@@ -177,7 +177,13 @@ function AuthRedirector() {
     || root === 'skin-metrics'
     || root === 'paywall'
     || root === 'privacy-policy'
-    || root === 'home';
+    || root === 'home'
+    || root === 'settings'
+    || root === 'architecture'
+    || root === 'account'
+    || root === 'routine'
+    || root === 'story'
+    || root === 'today';
 
   if (!isLoaded) {
     if (__DEV__) console.log('[AuthRedirector] Clerk not loaded yet');
