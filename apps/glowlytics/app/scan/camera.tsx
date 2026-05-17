@@ -618,17 +618,37 @@ export default function CameraScreen() {
         )}
       </View>
 
-      {/* Status text — italic Glow copy */}
+      {/* Status text — italic Glow copy, with "5 of 5 landmarks" lock chip */}
       <View style={styles.statusContainer}>
-        <Text style={styles.statusText}>
-          {trackingState.status === 'no_face'
-            ? 'Soft natural light, chin level.'
-            : trackingState.status === 'misaligned'
-              ? trackingState.issues[0] || 'A small adjustment.'
-              : autoCountdown > 0
-                ? `Hold still · ${autoCountdown}`
-                : 'Ready when you are.'}
-        </Text>
+        {trackingState.status === 'aligned' && (
+          <View
+            style={styles.landmarkChip}
+            accessibilityLabel="Landmarks locked"
+          >
+            <Text style={styles.landmarkChipText}>5 of 5 landmarks</Text>
+          </View>
+        )}
+        {trackingState.status === 'aligned' && autoCountdown === 0 ? (
+          <Text style={styles.statusText}>
+            We've{' '}
+            <Text style={styles.statusAccent}>found you</Text>.
+          </Text>
+        ) : (
+          <Text style={styles.statusText}>
+            {trackingState.status === 'no_face'
+              ? 'Soft natural light, chin level.'
+              : trackingState.status === 'misaligned'
+                ? trackingState.issues[0] || 'A small adjustment.'
+                : autoCountdown > 0
+                  ? `Hold still · ${autoCountdown}`
+                  : 'Ready when you are.'}
+          </Text>
+        )}
+        {trackingState.status === 'aligned' && (
+          <Text style={styles.statusSub}>
+            Three slow breaths. We'll do the rest.
+          </Text>
+        )}
       </View>
 
       {/* Bottom controls */}
@@ -752,6 +772,22 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     alignItems: 'center',
+    gap: 10,
+  },
+  landmarkChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.full,
+    backgroundColor: 'rgba(217,162,139,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(217,162,139,0.50)',
+  },
+  landmarkChipText: {
+    fontFamily: FontFamily.sansMedium,
+    fontSize: 10,
+    color: Glow.palette.accent2,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
   },
   statusText: {
     color: Glow.palette.surface,
@@ -764,6 +800,16 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.full,
     overflow: 'hidden',
     letterSpacing: 0.2,
+    textAlign: 'center',
+  },
+  statusAccent: {
+    color: Glow.palette.accent2,
+    fontFamily: FontFamily.accent,
+  },
+  statusSub: {
+    color: 'rgba(255,255,255,0.6)',
+    fontFamily: FontFamily.sans,
+    fontSize: 12,
   },
   bottomControls: {
     position: 'absolute',

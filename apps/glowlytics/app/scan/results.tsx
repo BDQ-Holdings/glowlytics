@@ -502,6 +502,12 @@ export default function Results({ hideBottomAction: hideBottomActionProp }: { hi
 
             {!hideBottomAction && (
               <Animated.View entering={FadeIn.duration(300).delay(600)} style={styles.doneAction}>
+                <Button
+                  title="View face map"
+                  variant="secondary"
+                  size="lg"
+                  onPress={() => router.push('/scan/face-map')}
+                />
                 <Button title="Done" onPress={handleDone} size="lg" />
               </Animated.View>
             )}
@@ -806,6 +812,7 @@ const styles = StyleSheet.create({
   doneAction: {
     width: '100%',
     paddingHorizontal: Spacing.lg,
+    gap: Spacing.sm,
   },
   alertStrip: {
     flexDirection: 'row',

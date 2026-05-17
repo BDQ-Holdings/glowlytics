@@ -21,6 +21,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Colors, FontFamily, FontSize, Glow, Spacing } from '../../src/constants/theme';
 import { Button } from '../../src/components/Button';
+import { StagePills, Dot } from '../../src/components/scan/ScanAtoms';
 import { localDateStr } from '../../src/utils/localDate';
 import { useStore } from '../../src/store/useStore';
 import { analyzeWithFallback } from '../../src/services/skinAnalysis';
@@ -182,6 +183,31 @@ const messageForStage = (stage: number): string =>
 
 const CALM_EASING = Easing.out(Easing.cubic);
 const API_STAGE = 6;
+
+// Map the 9-stage internal pipeline to the design's 4 story beats.
+// Stages 0-1 → Captured, 2-3 → Mapped, 4-6 → Compared, 7-8 → Composed.
+function stageStory(stage: number): Array<{ label: string; done: boolean | 'live' }> {
+  const beats: Array<[string, number]> = [
+    ['Captured', 1],
+    ['Mapped', 3],
+    ['Compared', 6],
+    ['Composed', 8],
+  ];
+  let activeIdx = beats.findIndex(([, end]) => stage <= end);
+  if (activeIdx < 0) activeIdx = beats.length - 1;
+  return beats.map(([label], i) => ({
+    label,
+    done: i < activeIdx ? true : i === activeIdx ? 'live' : false,
+  }));
+}
+
+// Orbiting findings — fade in as stages progress.
+const ORBIT_FINDINGS: Array<{ text: string; color: string; x: number; y: number; minStage: number }> = [
+  { text: 'Hydration · +4',  color: Glow.palette.accent2, x: -130, y: -90,  minStage: 1 },
+  { text: 'Tone · steady',   color: Glow.palette.glow,    x: 130,  y: -50,  minStage: 2 },
+  { text: 'No new redness',  color: Glow.palette.accent2, x: -150, y: 40,   minStage: 4 },
+  { text: 'Pores · soft',    color: Glow.palette.glow,    x: 140,  y: 90,   minStage: 5 },
+];
 
 // ---------------------------------------------------------------------------
 // Main screen
@@ -763,6 +789,24 @@ export default function AnalyzingScreen() {
       <View style={styles.content}>
         <Animated.View style={[styles.infinityContainer, infinityAnimStyle]}>
           <InfinityLoop progress={ringProgress} />
+
+          {/* Orbiting findings — glass chips that fade in as stages advance */}
+          {ORBIT_FINDINGS.map((f) =>
+            currentStage >= f.minStage ? (
+              <Animated.View
+                key={f.text}
+                entering={FadeIn.duration(500)}
+                style={[
+                  styles.orbitChip,
+                  { transform: [{ translateX: f.x }, { translateY: f.y }] },
+                ]}
+                pointerEvents="none"
+              >
+                <Dot color={f.color} />
+                <Text style={styles.orbitChipText}>{f.text}</Text>
+              </Animated.View>
+            ) : null,
+          )}
         </Animated.View>
 
         <View style={styles.messageContainer}>
@@ -774,6 +818,10 @@ export default function AnalyzingScreen() {
           >
             {displayedMessage}
           </Animated.Text>
+        </View>
+
+        <View style={styles.stageStrip}>
+          <StagePills stages={stageStory(currentStage)} />
         </View>
 
         {isStreaming && streamedText.length > 0 && (
@@ -836,6 +884,27 @@ const styles = StyleSheet.create({
     height: INF_H,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  orbitChip: {
+    position: 'absolute',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+  },
+  orbitChipText: {
+    fontFamily: FontFamily.sansMedium,
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.85)',
+  },
+  stageStrip: {
+    paddingTop: Spacing.md,
+    width: '100%',
   },
   messageContainer: {
     height: 40,
