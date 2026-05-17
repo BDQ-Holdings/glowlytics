@@ -65,6 +65,11 @@ interface AppState {
   // Pattern notification tracking
   patternNotifications: PatternNotificationsState;
 
+  // Ritual: keyed by local YYYY-MM-DD → stepId → true (only stores positives).
+  // stepId is either `product:<user_product_id>:am|pm` or `habit:<slug>` — see
+  // `services/ritual.ts`.
+  ritualCompletions: Record<string, Record<string, boolean>>;
+
   // Actions
   setOnboardingStep: (step: number) => void;
   setOnboardingFlow: (flow: OnboardingScreenName[]) => void;
@@ -108,6 +113,7 @@ interface AppState {
   setFirstLookInsight: (insight: FirstLookInsight | null) => void;
   runPatternDetection: () => void;
   setFirstUnlockNotifSent: (sent: boolean) => void;
+  toggleRitualStep: (stepId: string, dateStr?: string) => void;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -254,6 +260,7 @@ export const useStore = create<AppState>((set, get) => ({
   patterns: [],
   firstLookInsight: null,
   patternNotifications: { first_pattern_unlock_sent: false },
+  ritualCompletions: {},
 
   setOnboardingStep: (step) => set({ onboardingStep: step }),
   setOnboardingFlow: (flow) => set({ onboardingFlow: flow }),
@@ -606,6 +613,27 @@ export const useStore = create<AppState>((set, get) => ({
     debouncedPersist(() => get().persistData());
   },
 
+  toggleRitualStep: (stepId, dateStr) => {
+    const date = dateStr ?? localDateStr(new Date());
+    set((s) => {
+      const dayMap = s.ritualCompletions[date] ?? {};
+      const next: Record<string, boolean> = { ...dayMap };
+      if (next[stepId]) {
+        delete next[stepId];
+      } else {
+        next[stepId] = true;
+      }
+      const updated = { ...s.ritualCompletions };
+      if (Object.keys(next).length === 0) {
+        delete updated[date];
+      } else {
+        updated[date] = next;
+      }
+      return { ritualCompletions: updated };
+    });
+    debouncedPersist(() => get().persistData());
+  },
+
   runPatternDetection: () => {
     const state = get();
     if (!state.user) return;
@@ -880,6 +908,7 @@ export const useStore = create<AppState>((set, get) => ({
           patterns: parsed.patterns || [],
           firstLookInsight: parsed.firstLookInsight || null,
           patternNotifications: parsed.patternNotifications || { first_pattern_unlock_sent: false },
+          ritualCompletions: parsed.ritualCompletions || {},
         });
 
         // Backfill: upgraded users from pre-paywall builds may have no trial dates.
@@ -908,7 +937,7 @@ export const useStore = create<AppState>((set, get) => ({
         user, protocol, products, dailyRecords, modelOutputs, gamification,
         subscription, notificationSettings, onboardingFlow, onboardingFlowIndex,
         healthDailyRecords, healthSyncStatus, patterns, firstLookInsight,
-        patternNotifications,
+        patternNotifications, ritualCompletions,
       } = get();
       // Cap stored records to last 365 days to prevent AsyncStorage bloat
       const cutoff = new Date();
@@ -918,6 +947,9 @@ export const useStore = create<AppState>((set, get) => ({
       const cappedDailyIds = new Set(cappedDailyRecords.map((r) => r.daily_id));
       const cappedModelOutputs = modelOutputs.filter((o) => cappedDailyIds.has(o.daily_id));
       const cappedHealthRecords = healthDailyRecords.filter((r) => r.date >= cutoffStr);
+      const cappedRitualCompletions = Object.fromEntries(
+        Object.entries(ritualCompletions).filter(([date]) => date >= cutoffStr),
+      );
       await AsyncStorage.setItem('glowlytics_data', JSON.stringify({
         user, protocol, products,
         dailyRecords: cappedDailyRecords,
@@ -926,6 +958,7 @@ export const useStore = create<AppState>((set, get) => ({
         onboardingFlow, onboardingFlowIndex,
         healthDailyRecords: cappedHealthRecords,
         healthSyncStatus, patterns, firstLookInsight, patternNotifications,
+        ritualCompletions: cappedRitualCompletions,
       }));
     } catch (e) {
       console.log('Failed to persist data', e);
@@ -960,6 +993,7 @@ export const useStore = create<AppState>((set, get) => ({
       patterns: [],
       firstLookInsight: null,
       patternNotifications: { first_pattern_unlock_sent: false },
+      ritualCompletions: {},
     });
     try {
       await AsyncStorage.removeItem('glowlytics_data');

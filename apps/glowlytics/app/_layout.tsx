@@ -182,6 +182,7 @@ function AuthRedirector() {
     || root === 'architecture'
     || root === 'account'
     || root === 'routine'
+    || root === 'ritual'
     || root === 'story'
     || root === 'today';
 
@@ -362,6 +363,7 @@ function ClerkGatedApp() {
           <Stack.Screen name="paywall" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
           <Stack.Screen name="pattern" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="settings" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="ritual" options={{ animation: 'slide_from_right' }} />
         </Stack>
         <AuthRedirector />
         <DemoSeeder />

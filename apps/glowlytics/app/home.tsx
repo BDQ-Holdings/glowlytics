@@ -33,6 +33,8 @@ import { useStore } from '../src/store/useStore';
 import { gateWithPaywall } from '../src/services/subscription';
 import { GLOW_FACETS, facetValues, type GlowFacetKey } from '../src/constants/facets';
 import { safeClamp } from '../src/utils/safeClamp';
+import { buildRitualSteps, type RitualStep } from '../src/services/ritual';
+import { localDateStr } from '../src/utils/localDate';
 import type { Pattern } from '../src/types';
 
 let useClerkUser: (() => { user: { firstName?: string | null } | null | undefined }) | undefined;
@@ -67,6 +69,8 @@ export default function Home() {
   const dailyRecords = useStore((s) => s.dailyRecords);
   const modelOutputs = useStore((s) => s.modelOutputs);
   const patterns = useStore((s) => s.patterns);
+  const products = useStore((s) => s.products);
+  const ritualCompletions = useStore((s) => s.ritualCompletions);
   const getStreak = useStore((s) => s.getStreak);
   const insets = useSafeAreaInsets();
   const palette = Glow.palette;
@@ -146,9 +150,17 @@ export default function Home() {
     ? Math.round(overallInsight.score - baselineInsight.score)
     : 0;
 
-  const ritualPreview = useMemo(() => buildRitualPreview(latestDaily, dailyRecords.length), [latestDaily, dailyRecords.length]);
-  const ritualDone = ritualPreview.filter((r) => r.done).length;
-  const ritualTotal = ritualPreview.length;
+  const todayStr = localDateStr(new Date());
+  const dayCompletions = ritualCompletions[todayStr] ?? {};
+  const ritualSteps = useMemo(() => buildRitualSteps(products), [products]);
+  const ritualPreview = useMemo<RitualStep[]>(() => {
+    const unfinished = ritualSteps.filter((step) => !dayCompletions[step.id]);
+    // Show the next 3 unfinished steps; if all are done, fall back to the first
+    // 3 so the user still sees progress instead of an empty preview.
+    return (unfinished.length > 0 ? unfinished : ritualSteps).slice(0, 3);
+  }, [ritualSteps, dayCompletions]);
+  const ritualDone = ritualSteps.filter((step) => dayCompletions[step.id]).length;
+  const ritualTotal = ritualSteps.length;
   const ritualPct = ritualTotal === 0 ? 0 : (ritualDone / ritualTotal) * 100;
 
   const heroCopy = useMemo(() => {
@@ -357,7 +369,7 @@ export default function Home() {
           />
           <TouchableOpacity
             activeOpacity={0.9}
-            onPress={() => router.push('/today/ritual' as any)}
+            onPress={() => router.push('/ritual' as any)}
             style={[s.ritualCard, { backgroundColor: palette.surface, borderColor: palette.glow }]}
           >
             <View style={[s.ritualTrack, { backgroundColor: palette.bg }]}>
@@ -370,38 +382,65 @@ export default function Home() {
                 }}
               />
             </View>
-            {ritualPreview.slice(0, 3).map((r, i) => (
-              <View
-                key={r.id}
-                style={[
-                  s.ritualRow,
-                  i < 2 && { borderBottomWidth: 1, borderBottomColor: palette.bg },
-                ]}
-              >
-                <View
-                  style={[
-                    s.ritualDot,
-                    r.done
-                      ? { backgroundColor: palette.accent, borderWidth: 0 }
-                      : { borderColor: palette.muted, borderWidth: 1.5 },
-                  ]}
-                >
-                  {r.done && <GlowIcon name="check" size={14} color={palette.surface} stroke={2} />}
-                </View>
+            {ritualPreview.length === 0 ? (
+              <View style={s.ritualRow}>
                 <View style={{ flex: 1 }}>
-                  <Text
-                    style={[
-                      s.ritualTitle,
-                      { color: palette.ink },
-                      r.done && { textDecorationLine: 'line-through', opacity: 0.5 },
-                    ]}
-                  >
-                    {r.title}
+                  <Text style={[s.ritualTitle, { color: palette.ink }]}>
+                    Build your shelf
                   </Text>
-                  <Text style={[s.ritualMeta, { color: palette.muted }]}>{r.t}</Text>
+                  <Text style={[s.ritualMeta, { color: palette.muted }]}>
+                    Add products and they show up here
+                  </Text>
                 </View>
               </View>
-            ))}
+            ) : (
+              ritualPreview.map((step, i) => {
+                const isDone = Boolean(dayCompletions[step.id]);
+                return (
+                  <View
+                    key={step.id}
+                    style={[
+                      s.ritualRow,
+                      i < ritualPreview.length - 1 && {
+                        borderBottomWidth: 1,
+                        borderBottomColor: palette.bg,
+                      },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        s.ritualDot,
+                        isDone
+                          ? { backgroundColor: palette.accent, borderWidth: 0 }
+                          : { borderColor: palette.muted, borderWidth: 1.5 },
+                      ]}
+                    >
+                      {isDone && (
+                        <GlowIcon name="check" size={14} color={palette.surface} stroke={2} />
+                      )}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={[
+                          s.ritualTitle,
+                          { color: palette.ink },
+                          isDone && { textDecorationLine: 'line-through', opacity: 0.5 },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {step.title}
+                      </Text>
+                      <Text
+                        style={[s.ritualMeta, { color: palette.muted }]}
+                        numberOfLines={1}
+                      >
+                        {step.subtitle ? `${step.subtitle} · ${step.time}` : step.time}
+                      </Text>
+                    </View>
+                  </View>
+                );
+              })
+            )}
             <View style={s.ritualMore}>
               <Text style={[s.ritualMoreText, { color: palette.accent }]}>See full ritual</Text>
               <GlowIcon name="arrow" size={13} color={palette.accent} stroke={1.8} />
@@ -528,27 +567,6 @@ export default function Home() {
       )}
     </ScrollView>
   );
-}
-
-interface RitualItem {
-  id: string;
-  t: string;
-  title: string;
-  done: boolean;
-}
-
-function buildRitualPreview(latestDaily: any, totalRecords: number): RitualItem[] {
-  // SPF is the only ritual flag DailyRecord persists today; the rest read as
-  // optional defaults until we add per-step tracking to the daily check-in.
-  const spf = Boolean(latestDaily?.sunscreen_used);
-  const tookCheckIn = totalRecords > 0;
-  return [
-    { id: 'cleanse',  t: '7:00 AM', title: 'Gentle cleanse',   done: tookCheckIn },
-    { id: 'serum',    t: '7:05 AM', title: 'Serum + hydrate',  done: tookCheckIn },
-    { id: 'spf',      t: '7:10 AM', title: 'SPF 50',           done: spf },
-    { id: 'water',    t: 'all day', title: 'Water, 8 glasses', done: false },
-    { id: 'evening',  t: '9:30 PM', title: 'Evening routine',  done: false },
-  ];
 }
 
 function facetToRouteKey(facet: GlowFacetKey): string {
