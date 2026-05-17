@@ -38,12 +38,14 @@ interface MeGoal {
 }
 
 const SETTINGS_ROWS = [
-  { key: 'account',       label: 'Account & subscription', route: '/account' as const },
-  { key: 'connected',     label: 'Connected health',       route: '/account' as const },
-  { key: 'notifications', label: 'Notifications',          route: '/account' as const },
-  { key: 'privacy',       label: 'Privacy',                route: '/privacy-policy' as const },
-  { key: 'export',        label: 'Export your data',       route: '/account' as const },
-  { key: 'help',          label: 'Help & feedback',        route: '/account' as const },
+  { key: 'all',           label: 'All settings',           route: '/settings' as const },
+  { key: 'skin',          label: 'Skin profile',           route: '/settings/skin-profile' as const },
+  { key: 'notifications', label: 'Notifications',          route: '/settings/notifications' as const },
+  { key: 'camera',        label: 'Camera & photos',        route: '/settings/camera' as const },
+  { key: 'privacy',       label: 'Privacy & data',         route: '/settings/privacy' as const },
+  { key: 'appearance',    label: 'Appearance',             route: '/settings/appearance' as const },
+  { key: 'export',        label: 'Export your data',       route: '/settings/export' as const },
+  { key: 'help',          label: 'Help & feedback',        route: '/settings/help' as const },
 ];
 
 export default function MeTab() {
