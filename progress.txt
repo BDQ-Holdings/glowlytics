@@ -1,10 +1,10 @@
 Glowlytics — Build Progress
 ============================
-Last Updated: 2026-05-13
+Last Updated: 2026-05-18
 
-STATUS: 0 TS errors | 56 screens | 34 components (31 top-level + 2 glow/ + 1 navigation/) | 31 services | 361 mobile tests (24 suites) + 285 backend tests (24 suites) = 646 total | 7 backend top-level modules + 12 mcp/ + 4 queries/ nested
+STATUS: 0 TS errors | v1.2.0 | 74 screens (63 + 11 _layout) | 40 top-level components + glow/ + navigation/ + scan/ (FaceMapZones, ScanAtoms) + settings/ (SettingsPrimitives) | 35 services | 747 tests across 56 suites (combined mobile + backend) | 10 backend top-level modules + 12 mcp/ + 5 queries/ nested | 2 pre-existing infra-only test-suite failures (patternFixtures.ts has no tests, backend protocol-e2e missing pkce-challenge dep)
 
-MILESTONES (32 shipped):
+MILESTONES (38 shipped):
  1. Foundation (Expo SDK 54, TS, Router, Zustand)
  2. Auth (Clerk Apple/Google/email, JWT backend)
  3. Vision (3-layer: deterministic + ONNX + fine-tuned GPT-4o)
@@ -37,6 +37,21 @@ MILESTONES (32 shipped):
 30. MCP tools (Q2/Q3) — get_latest_scan, get_scan_history, get_signal_trend, compare_scans, get_scan_report, get_current_routine, lookup_ingredient, search_ingredients, summarize_month; ingredient lookup with Pinecone chunkId citations; getCurrentRoutine splits product_catalog by AM/PM; Connected Apps (Beta) section in Profile with /api/mcp/clients GET+DELETE
 31. Glow design language redesign + API fortification — full app reskin (Dusk/Meadow/Rose palettes, breathing-glow halos, italic DancingScript accents, SF-symbol monoline icons, Hydrated/Calm/Even/Firm 4-facet UI mapped onto existing 5-signal pipeline); httpClient with retry/backoff/jitter/Retry-After/token cache/401 refresh; syncOutbox replaces fire-and-forget syncToBackend with up-to-5-attempt durable queue; productLookup 3rd-party fetches bounded to 6s; tabs relabeled Today/Story/Shelf/Me (file routes preserved)
 32. OAuth DCR proxy for MCP + monorepo migration committed — RFC 7591 Dynamic Client Registration proxy fronting Clerk (Clerk doesn't expose registration_endpoint natively, so claude.ai's MCP connector couldn't dynamically register); proxy endpoints at /oauth/register, /oauth/authorize, /oauth/callback, /oauth/token with state mapping (24-byte opaque tokens, 10-min TTL); RFC 8414 oauth-authorization-server metadata advertises proxy; RFC 9728 WWW-Authenticate header on /mcp 401 with resource_metadata; feature-flagged on MCP_OAUTH_PROXY_ENABLED + client_id/secret env. 21 oauth-proxy tests across 6 describe blocks. Live on Railway production, smoke-verified end-to-end (DCR registers, authorize 302s to Clerk with proxy callback, token endpoint Basic-auths to Clerk and rejects bogus codes with invalid_grant). Same commit (f7a9c59) snapshots the RadianceIQ → apps/glowlytics monorepo rename (538 files, 318 deletions + 179 additions + 41 modifications) + mcpClients.ts migration from bare fetch to httpJson per CLAUDE.md convention
+33. Bone structure / Harmony analysis — full feature ground-up: 16 anatomical metrics (canthal tilt, gonial angle, bizygomatic/bitemporal, facial thirds/fifths, scleral show, eye aperture, IPD ratio, chin projection, nasolabial angle, brow position, …) across 6 weighted domains (Symmetry 25, Periorbital 20, Mandibular 20, Midface 15, Nose 10, Brow 10) producing a 0–100 Harmony composite with sex-aware ideals; findings map to three-tier interventions (Lifestyle / Pharma / Procedural) with strong procedural disclaimer. Capture: `expo-arkit-face` Swift native module for TrueDepth devices + canonical-mesh fallback (`canonicalFaceMesh.ts` — 32 Hyper3D Rodin-sampled anatomical landmarks via Blender MCP, axis-swapped + symmetry-enforced, ~42 outline edges, ~42 triangle faces). Renderer: `Face3DViewer.tsx` (SVG + JS perspective projection, pan/pinch/orbit, idle auto-rotate, clay-sculpt triangle fills with painter's algorithm + back-half culling, fake key-light from upper-left, depth-graded edges, revealProgress prop). Capture screen: 5-stage progress ring (idle→capturing→analysing→done→error), breathing chip dots, staged haptics (Light→Medium→Selection→Success), copy crossfade, done badge, sex-baseline prompt. Results screen: 5-page vertical story carousel (hero + measurements + by area + findings + interventions) using `StoryCarousel` primitives. Surfaces: HarmonyTrendCard on Today (sparkline, delta vs first scan), HarmonyFocusCard on Today (top finding + one lifestyle action), DomainRadialChart + DomainHistoryStrip (per-domain sparklines) on results, ArchitectureLauncher trailing badge on account.tsx, Facial architecture section on Story tab. New backend endpoint POST /api/vision/bone-structure (auth + rate limit + vertex-content validation + ownership-aware persistence via `model_outputs.bone_structure JSONB` migration v4). Two new MCP tools: `get_bone_structure`, `get_harmony_trend`. No-LLM fallback mode (`no-llm-fallback.js`) lets the analyze pipeline run on deterministic L1+L2 only when OPENAI_DISABLED or API key absent. New tests: bone-structure-3d, interventions, no-llm-fallback, faceMeshCapture, boneStructure client, 4 chart smoke tests (+75 backend, +29 mobile)
+34. Build 117 + 118 deploys (2026-05-15) — 117 fixes sign-in crash from unstable Zustand selectors in HarmonyTrendCard / HarmonyFocusCard / DomainHistoryStrip (selectors returned fresh array/object refs each call, render-stormed during sign-in store churn); refactored to stable-ref pattern (primitive selector + useMemo + ?? [] / ?. guards). 118 fixes the 3D viewer rendering the back of the head (perspective had `w = z2 + distance`, putting camera implicitly at -z; the schematic-flat z range in the original canonical mesh hid this until the Hyper3D-sampled mesh exposed it). Three commits: 303e6d3 (projection fix + x-mirror + zero-coord padding skip + outline densified 31→65 edges + bone-results always uses canonical mesh visually because raw ARKit captures are in metres and collapse to centre), 7034c5f (42 clay-sculpt triangle face fills with back-half culling + painter's-algo sort), 35371c7 (screen-fixed fake key-light from upper-left + RAF auto-rotate replacing setInterval + heatmap halo+core treatment for findings). Submission 6f499a3f-3469-463f-bc86-eb6d5974f7fd at App Store Connect
+35. Scan Flow design hand-off (2026-05-16, build 119, commit a6401d5) — implements the claude.ai/design Scan Flow surfaces while leaving the production ML pipeline untouched. New SVG primitive `src/components/scan/FaceMapZones.tsx` (face silhouette + 7 toggleable zones, optional sweep line, annotated landmarks, warm halo). New atoms `src/components/scan/ScanAtoms.tsx` (Chip dark-glass + cream variants, Dot, StagePills). Three new results screens: `app/scan/face-map.tsx` (composite + by-area cards backed by signal_scores), `app/scan/zone-detail.tsx` (ghosted face, "what we noticed", 2-week sparkline), `app/scan/method.tsx` (three-source transparency with weighted bars + confidence). Existing screens refreshed: camera.tsx grew a "5 of 5 landmarks" lock chip + italic *"found you"* copy when alignment locks; analyzing.tsx added Captured → Mapped → Compared → Composed StagePills strip + four orbiting findings chips that fade in by stage. results.tsx gained a "View face map" entry into the new flow.
+36. Settings Flow design hand-off (2026-05-16, build 119, commit d0e15eb) — ports the Settings Flow design as a dedicated `/settings` stack with shared primitives. New `src/components/settings/SettingsPrimitives.tsx` (SettingsPage, SettingsHeader, ListGroup, Row with onPress/value/sub/control/danger, Toggle with dusk-plum thumb, Chip, Pill, PrimaryButton, GhostButton, SectionLabel). Ten new screens: hub (`settings/index.tsx`), skin-profile (type chips + sensitivity multi-chips + ranked concerns), notifications ("two nudges a day, never more" with routine + nudges + quiet hours + email), privacy ("Your face never leaves your phone" pledge hero on dark plum), camera (storage card with 3-segment bar + capture toggles + muted-danger wipe), appearance (Dusk/Meadow/Rose/Auto palette grid + Light/Dark/Auto segmented + text-size slider + app-icon picker), export (checkbox items with sizes + PDF/Raw/Markdown format pills), help (search + top questions + freeform feedback with type chips + reach-a-human + status row), about (logo + why card + legal + credits with version from expo-constants), delete-account (warning hero + what-goes-away + two off-ramps (Export/Pause) + reason chips + danger CTA with Alert). Me-tab `SETTINGS_ROWS` rewired to the new screens. Skipped: account, connected-health, sign-out modal, subscription (existing impls cover them).
+37. Build 120 (2026-05-17, commit 546efda) — AuthRedirector route-allowlist fix. The trailing fall-through in `app/_layout.tsx`'s redirector pushed every signed-in user to `/(tabs)/today` unless their segment root was on a hard-coded whitelist. Tapping any settings row, the Today's Focus card, the architecture launcher, or several pre-existing routes therefore mounted briefly then bounced back to Today (the "page opens → lags → home" behaviour user reported). Fix: added `settings`, `architecture`, `account`, `routine`, `story`, `today` to `inLoggedInRoute`. Local production IPA + TestFlight submission b2a65ffa, processing at submission time.
+
+POST-BUILD-120 (2026-05-17):
+- Ritual rewire (ef67e14, version bump 1.1.6 → 1.2.0) — moved /today/ritual → /ritual (one-level route to dodge a resolver collision with (tabs)/today.tsx that was bouncing pushes back to home). New `src/services/ritual.ts` (95 lines) derives ritual steps from `useStore.products` (Morning/Evening/Both), plus water + SPF habits when no sunscreen is on shelf. Persistent daily check-offs live in `ritualCompletions` keyed by local date; tap toggles, long-press product row removes from shelf. Inline AddProductSheet on ritual screen for write-from-ritual.
+- EAS local appVersionSource (ba09974) — switched eas.json from `appVersionSource: remote` + autoIncrement to `local` + autoIncrement: false. Required so 1.2.0 (1) lands on TestFlight from app.json/Info.plist/pbxproj rather than EAS's remote registry (which kept incrementing from 120).
+
+38. Pattern surfaces + HealthKit pipeline upgrade (2026-05-18, uncommitted as of this writing) — two coordinated improvements off a `/arrange` + `/review` audit:
+  - UI: PatternCard, PatternCarousel, PatternProgressBar repalette to Glow (was on the legacy teal Colors.primary stack while the rest of home was on dusk plum). Carousel header migrated to `<SectionHead>` for Today-rhythm consistency. home.tsx restructured so the featured pattern shows once (the Glow-styled "Your story" card) instead of twice (story card + first carousel slot); PatternProgressBar moved INSIDE the story card so the "Day X of 14" primer is anchored to what it describes. Carousel only renders when patterns.length > 1, filtered to exclude the featured pattern.
+  - Pipeline: patternEngine.detectHealthSignalLag driver list extended from 3 → 7 — sleep_deep, sleep_rem, steps (movement), mindful_minutes were captured by healthSync.pullLastNDays and stored in healthDailyRecords but never read by the engine. Correlation search space grew 12 → 28 candidates at no extra HealthKit cost.
+  - New helper buildHealthkitRollup(records, windowDays) returns 7-day averages (sleep total/deep/REM, HRV, RHR, steps, mindful) + most-severe menstrual flow + today's cycle day. visionAPI.streamInsights gained a typed `healthkit_context` payload field; scan/analyzing.tsx builds the rollup and passes it; backend/app.js buildInsightPrompt renders a conditional `HealthKit signals` block in the L3 prompt with formatted values (e.g. "Sleep avg over last 7d: 6h 12m, 1h 4m deep") plus an instruction to ground pattern-level insights in those values rather than fabricate trends. Block is omitted entirely when every signal is null so the prompt stays clean for users without HealthKit.
+  - app/account.tsx HealthKit grant path now branches: first-time grant outside onboarding (no existing healthDailyRecords) calls syncHealthDataInitial (14-day backfill); re-grants fall back to the 2-day delta. Closes the gap where users who skipped HealthKit at onboarding and connected later sat with only 2 days of paired data.
 
 ML EVAL (all pass):
 - ONNX: Structure r=0.913, Hydration r=0.889, Sun Damage r=0.882, Elasticity r=0.940
@@ -191,5 +206,92 @@ MONOREPO COMMIT + DEPLOY v1.1.6 build #107 (2026-05-13):
   Glowlytics/submissions/43410dd4-4b9b-4067-a7e1-7205885ebce0)
 - Note: GitHub origin reports repo moved to BDQ-Holdings/glowlytics;
   old URL still works. Update remote URL on next housekeeping pass.
+
+BONE STRUCTURE BUILD + DEPLOY v1.1.6 build #117 + #118 (2026-05-14 → 2026-05-16):
+- ac24385: scaffolded the whole feature in one commit — backend math
+  (bone-structure-3d.js, interventions.js), POST /api/vision/bone-structure
+  endpoint with auth + rate-limit + vertex content validation + ownership
+  check, MCP tools (get_bone_structure, get_harmony_trend),
+  model_outputs.bone_structure JSONB column (migration v4), mobile capture
+  (faceMeshCapture.ts unifying expo-arkit-face native module with canonical
+  fallback), Face3DViewer SVG renderer (initial wireframe-only), bone-capture
+  + bone-results screens, architecture/[finding] detail
+- e0eb491: canonical face mesh upgraded from schematic placement to
+  Hyper3D Rodin-sampled real anatomy (32 anatomical targets via Blender MCP,
+  axis swap + symmetry enforcement). This is what later exposed the
+  projection bug in 303e6d3 — the original mesh's near-flat z values
+  masked that the camera was rendering the back of the head.
+- 88128bb: bone-results converted to 5-page vertical story carousel
+  matching the skin pipeline rhythm (hero + by area + measurements +
+  findings + interventions)
+- fad94fa: HarmonyTrendCard on Today screen — small sparkline + delta
+  surfacing once ≥2 scans exist
+- 2b7ad0c: HarmonyFocusCard on Today — picks top finding from latest
+  scan, surfaces its first lifestyle action; null when zero findings
+- a46c891: DomainHistoryStrip — 6 inline sparklines (one per domain)
+  on bone-results page 2
+- 13e0c99: DomainRadialChart — hexagonal radar with optional ghost
+  outline of previous scan; Harmony score numeric tween
+- 44a0947: BoneCaptureSexPrompt — one-shot baseline collection for
+  sex-aware ideal anchors (gonial_angle, nasolabial_angle, brow_position)
+- 128290e + 6beb773 + 694047e: capture screen polish — depth-graded
+  wireframe + measurement label pills, mesh forms progressively during
+  analyze (revealProgress prop), progress ring + breathing chip dots
+  + done badge + copy crossfade + staged haptics
+- 5cdadde: HarmonyIntroOverlay — one-shot 2-card explainer that fires
+  on first ever open of bone-results
+- ac309e1: Facial architecture section on Story tab (links into latest
+  bone-results from the report carousel)
+- 5b35381: comparison view + polished empty state for bone-results
+- ArchitectureLauncher in account.tsx shows latest Harmony as a
+  trailing badge
+
+- Build 117 (342ed8c, 2026-05-15): sign-in crash hotfix. Three new Today/
+  results-screen consumers (HarmonyTrendCard, HarmonyFocusCard, DomainHistoryStrip)
+  used Zustand v5 selectors that returned fresh array refs each call.
+  During sign-in the store churns through user/dailies/modelOutputs/
+  gamification in quick succession — each consumer re-ran its selector,
+  render-stormed the consumer tree, and crashed. Fix: stable-ref pattern
+  (primitive `s.modelOutputs` selector, derive via useMemo, ?? [] /
+  ?. guards on the account.tsx launcher). Submission eb224bfd.
+
+- Build 118 (303e6d3 + 7034c5f + 35371c7, 2026-05-15→16): 3D viewer fixes.
+  User reported "this only has like 2-3 vertices; we had a whole change
+  wtf happened" — projection had `w = z2 + distance` which puts the
+  camera implicitly at -z (back of head). The original schematic-flat
+  canonical mesh (z range 6..14) hid this; the Hyper3D-sampled real
+  anatomy (z range -4..62) exposed it. Fixes:
+  - 303e6d3: w = distance - z2, screen-x negation for mirror expectation,
+    skip zero-coord padding so 442 dots don't stack at viewport centre,
+    bone-results always uses canonical mesh (raw ARKit captures are in
+    metres and collapse to a 5px cluster), outline densified 31→65 edges
+    with cross-bracing (iris spokes, cheek-plane, forehead fan, chin/
+    menton struts)
+  - 7034c5f: 42 clay-sculpt triangle face fills behind the wireframe,
+    low-alpha HARMONY_ACCENT modulated by frontness × reveal, back-half
+    culling via centroid depth (winding-agnostic), painter's-algorithm
+    sort back-to-front
+  - 35371c7: fake key-light from upper-left of viewport (screen-fixed
+    so each rotation reveals a different bright cheek), RAF auto-rotate
+    replacing setInterval(40ms) for constant 17°/sec across devices,
+    heatmap halo+core treatment for finding markers (3 stacked circles
+    at radii 14/9/6)
+  Submission 6f499a3f at App Store Connect.
+
+NO-LLM FALLBACK + MISC FIXES (2026-05-14):
+- 5db14a0: backend no-LLM fallback (no-llm-fallback.js). isLLMDisabled
+  checks OPENAI_DISABLED env or empty key; on fatal OpenAI errors the
+  analyze pipeline degrades to L1 deterministic + L2 ONNX + template
+  insights with zero recurring OpenAI cost. Plus fix dead ONNX URL —
+  GH_BASE was pointing to a moved repo path; updated to pinned commit
+  on BDQ-Holdings/glowlytics
+- eb2eb8c: backend review fixes (auth bypass on bone-structure UPDATE,
+  race condition with parallel scan flow now returns persisted:false
+  so client retries via syncOutbox, vertex content validation, magic
+  threshold named FINDING_THRESHOLD, unused indices removed)
+- ccdf400: stop index-stripping the mesh in downsampleMesh — the
+  lossy "every Nth vertex" broke the MediaPipe vertex-index → landmark
+  contract; now pass-through with MAX_MESH_VERTICES=1500 cap
+- 3de3535: add root npm start script for Railway Railpack builder
 
 POST-LAUNCH: See POST_LAUNCH_CHECKLIST.md
