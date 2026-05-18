@@ -221,7 +221,17 @@ export default function AccountScreen() {
       updateHealthConnection(conn);
 
       if (conn.status === 'granted') {
-        const { added, errors } = await useStore.getState().syncHealthData();
+        // First-time grant outside onboarding: backfill 14 days so the pattern
+        // engine has paired data immediately. If we already have HealthKit
+        // records (the user toggled off then back on, or this is just a
+        // permission re-confirmation), fall back to the 2-day delta sync so
+        // we don't redo work.
+        const isFirstGrant =
+          useStore.getState().healthDailyRecords.length === 0;
+        const sync = isFirstGrant
+          ? useStore.getState().syncHealthDataInitial
+          : useStore.getState().syncHealthData;
+        const { added, errors } = await sync();
         if (errors.length > 0) {
           console.warn('[Health] Sync completed with errors:', errors[0]);
         }

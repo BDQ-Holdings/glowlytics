@@ -310,6 +310,86 @@ export async function pullLastNDays(
   return { records, errors };
 }
 
+/**
+ * Build a rolling N-day average of HealthKit signals from already-stored
+ * records, plus the most-severe menstrual flow seen in that window. The
+ * backend insights endpoint takes this so its L3 prompt can ground
+ * pattern-level copy ("your sleep dropped 1h on average this week")
+ * instead of only seeing the single scan's lifestyle log.
+ *
+ * Returns null fields when no record carried a value — never falls back to
+ * a default, so the prompt can omit the line rather than lie.
+ */
+export function buildHealthkitRollup(
+  records: HealthDailyRecord[],
+  windowDays: number = 7,
+  today: Date = new Date(),
+): {
+  window_days: number;
+  sleep_total_minutes_avg: number | null;
+  sleep_deep_minutes_avg: number | null;
+  sleep_rem_minutes_avg: number | null;
+  hrv_sdnn_ms_avg: number | null;
+  resting_hr_bpm_avg: number | null;
+  steps_avg: number | null;
+  mindful_minutes_avg: number | null;
+  menstrual_flow_last7: string | null;
+  cycle_day: number | null;
+} {
+  const cutoff = new Date(today);
+  cutoff.setDate(cutoff.getDate() - windowDays);
+  const cutoffStr = localDateStr(cutoff);
+  const todayStr = localDateStr(today);
+  const recent = records.filter((r) => r.date >= cutoffStr && r.date <= todayStr);
+
+  const avg = (key: keyof HealthDailyRecord): number | null => {
+    let sum = 0;
+    let n = 0;
+    for (const r of recent) {
+      const v = r[key];
+      if (typeof v === 'number' && Number.isFinite(v)) {
+        sum += v;
+        n += 1;
+      }
+    }
+    return n > 0 ? Math.round((sum / n) * 10) / 10 : null;
+  };
+
+  // Most-severe flow tag across the window — heaviness is what's clinically
+  // useful, and severity_rank lets us pick "heavy" over "light" without
+  // averaging categorical labels.
+  let flow: string | null = null;
+  let flowRank = -1;
+  for (const r of recent) {
+    if (!r.menstrual_flow) continue;
+    const rank: Record<string, number> = {
+      none: 0, unspecified: 1, light: 2, medium: 3, heavy: 4,
+    };
+    const score = rank[r.menstrual_flow] ?? -1;
+    if (score > flowRank) {
+      flowRank = score;
+      flow = r.menstrual_flow;
+    }
+  }
+
+  // Cycle day on today's record, if we have one.
+  const todayRecord = recent.find((r) => r.date === todayStr);
+  const cycleDay = todayRecord?.cycle_day_estimated ?? null;
+
+  return {
+    window_days: windowDays,
+    sleep_total_minutes_avg: avg('sleep_total_minutes'),
+    sleep_deep_minutes_avg: avg('sleep_deep_minutes'),
+    sleep_rem_minutes_avg: avg('sleep_rem_minutes'),
+    hrv_sdnn_ms_avg: avg('hrv_sdnn_ms'),
+    resting_hr_bpm_avg: avg('resting_hr_bpm'),
+    steps_avg: avg('steps'),
+    mindful_minutes_avg: avg('mindful_minutes'),
+    menstrual_flow_last7: flow,
+    cycle_day: cycleDay,
+  };
+}
+
 export async function detectCycleFromHealthKit(): Promise<{
   detected: boolean;
   lastPeriodStart: Date | null;

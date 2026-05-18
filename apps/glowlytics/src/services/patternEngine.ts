@@ -159,8 +159,12 @@ function detectHealthSignalLag(slices: DaySlice[]): Pattern[] {
     label: string;
   }> = [
     { key: 'sleep_total_minutes', label: 'sleep' },
-    { key: 'hrv_sdnn_ms', label: 'HRV' },
-    { key: 'resting_hr_bpm', label: 'resting heart rate' },
+    { key: 'sleep_deep_minutes',  label: 'deep sleep' },
+    { key: 'sleep_rem_minutes',   label: 'REM sleep' },
+    { key: 'hrv_sdnn_ms',         label: 'HRV' },
+    { key: 'resting_hr_bpm',      label: 'resting heart rate' },
+    { key: 'steps',               label: 'movement' },
+    { key: 'mindful_minutes',     label: 'mindful minutes' },
   ];
   const signals: PatternSignal[] = ['inflammation', 'hydration', 'structure', 'overall'];
 

@@ -954,7 +954,7 @@ Return ONLY valid JSON matching this schema:
  * Build the system prompt for Stage 2 insight generation.
  * Receives all merged data from Stage 1 + RAG context + user profile.
  */
-function buildInsightPrompt({ signal_scores, lesions, conditions, zone_severity, user_profile, user_goal, products, rag_context, scan_count }) {
+function buildInsightPrompt({ signal_scores, lesions, conditions, zone_severity, user_profile, user_goal, products, rag_context, scan_count, healthkit_context }) {
   const lesionSummary = lesions && lesions.length > 0
     ? lesions.reduce((acc, l) => {
         acc[l.class] = (acc[l.class] || 0) + 1;
@@ -972,6 +972,34 @@ function buildInsightPrompt({ signal_scores, lesions, conditions, zone_severity,
   }).join('\n');
   const productText = (products || []).map(p => `- ${p.product_name} (${p.usage_schedule})`).join('\n') || 'No products logged';
 
+  // HealthKit rollup — only render the block when at least one signal is
+  // present so we don't pad the prompt with "unknown" lines (which the model
+  // tends to over-emphasize as if they were meaningful absences).
+  const hk = healthkit_context || null;
+  const hkLines = [];
+  if (hk) {
+    const formatSleep = (mins) => {
+      if (mins == null) return null;
+      const h = Math.floor(mins / 60);
+      const m = Math.round(mins % 60);
+      return `${h}h ${m}m`;
+    };
+    if (hk.sleep_total_minutes_avg != null) {
+      hkLines.push(`- Sleep (avg over last ${hk.window_days}d): ${formatSleep(hk.sleep_total_minutes_avg)}`
+        + (hk.sleep_deep_minutes_avg != null ? `, ${formatSleep(hk.sleep_deep_minutes_avg)} deep` : '')
+        + (hk.sleep_rem_minutes_avg != null ? `, ${formatSleep(hk.sleep_rem_minutes_avg)} REM` : ''));
+    }
+    if (hk.hrv_sdnn_ms_avg != null) hkLines.push(`- HRV (SDNN avg): ${hk.hrv_sdnn_ms_avg} ms`);
+    if (hk.resting_hr_bpm_avg != null) hkLines.push(`- Resting heart rate (avg): ${hk.resting_hr_bpm_avg} bpm`);
+    if (hk.steps_avg != null) hkLines.push(`- Daily steps (avg): ${Math.round(hk.steps_avg)}`);
+    if (hk.mindful_minutes_avg != null) hkLines.push(`- Mindful minutes (avg): ${hk.mindful_minutes_avg}`);
+    if (hk.menstrual_flow_last7) hkLines.push(`- Menstrual flow in window: ${hk.menstrual_flow_last7}`);
+    if (hk.cycle_day != null) hkLines.push(`- Today's cycle day: ${hk.cycle_day}`);
+  }
+  const healthKitBlock = hkLines.length > 0
+    ? `\n\nHealthKit signals (use these to ground pattern-level insights — reference specific values, do not fabricate trends if absent):\n${hkLines.join('\n')}`
+    : '';
+
   const system = `You are Glowlytics AI, a personalized skin health advisor. Generate detailed, personalized insights based on the user's scan results and clinical guidelines.
 
 IMPORTANT: Every insight MUST be personalized to THIS user's specific scores, detected conditions, and context. Never use generic advice. Ground recommendations in the clinical guidelines provided. When making a recommendation, cite the guideline number in brackets (e.g., "Based on [2]: ..."). Prefer Grade A evidence over B or C when available.
@@ -982,7 +1010,7 @@ User context:
 - Scan count: ${scan_count || 0}
 - Menstrual cycle day: ${user_profile?.cycle_day || 'not tracked'}
 - Products in routine:
-${productText}
+${productText}${healthKitBlock}
 
 Scan results:
 - Structure: ${signal_scores?.structure ?? 'N/A'}/100
@@ -1021,7 +1049,7 @@ app.post('/api/vision/generate-insights', async (req, res) => {
       signal_scores, signal_features, signal_confidence,
       lesions, conditions, zone_severity,
       user_profile, user_goal, products, scan_count,
-      rag_context,
+      rag_context, healthkit_context,
     } = req.body;
 
     if (!signal_scores) {
@@ -1051,6 +1079,7 @@ app.post('/api/vision/generate-insights', async (req, res) => {
     const insightPrompt = buildInsightPrompt({
       signal_scores, lesions, conditions, zone_severity,
       user_profile, user_goal, products, rag_context, scan_count,
+      healthkit_context,
     });
 
     let stream;

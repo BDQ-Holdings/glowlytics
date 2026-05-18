@@ -26,6 +26,7 @@ import { localDateStr } from '../../src/utils/localDate';
 import { useStore } from '../../src/store/useStore';
 import { analyzeWithFallback } from '../../src/services/skinAnalysis';
 import { streamInsights } from '../../src/services/visionAPI';
+import { buildHealthkitRollup } from '../../src/services/healthSync';
 import { captureFaceMesh } from '../../src/services/faceMeshCapture';
 import { analyzeBoneStructure } from '../../src/services/boneStructure';
 import { enqueueSync } from '../../src/services/syncOutbox';
@@ -400,6 +401,10 @@ export default function AnalyzingScreen() {
             user_goal: currentProtocol?.primary_goal,
             scan_count: state.modelOutputs.length,
             rag_context: analysis.rag_recommendations,
+            // Ground L3 in 7-day HealthKit averages so insights can reference
+            // sleep / HRV / RHR / movement / mindful trends instead of only
+            // the single scan's lifestyle log.
+            healthkit_context: buildHealthkitRollup(state.healthDailyRecords, 7),
           },
           (chunk) => {
             setStreamedText((prev) => prev + chunk);

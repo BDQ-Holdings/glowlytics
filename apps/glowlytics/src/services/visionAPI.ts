@@ -148,6 +148,24 @@ export async function streamInsights(
     products?: Array<{ product_name: string; usage_schedule: string }>;
     scan_count?: number;
     rag_context?: RagRecommendation[];
+    /**
+     * Rolling 7-day HealthKit averages so L3 GPT-4o can ground pattern-level
+     * insights ("your average sleep dropped 1h this week") instead of only
+     * referencing the single scan's lifestyle log. Built by the caller from
+     * `healthDailyRecords` — null fields mean "no signal this week".
+     */
+    healthkit_context?: {
+      window_days: number;
+      sleep_total_minutes_avg: number | null;
+      sleep_deep_minutes_avg: number | null;
+      sleep_rem_minutes_avg: number | null;
+      hrv_sdnn_ms_avg: number | null;
+      resting_hr_bpm_avg: number | null;
+      steps_avg: number | null;
+      mindful_minutes_avg: number | null;
+      menstrual_flow_last7: string | null;
+      cycle_day: number | null;
+    };
   },
   onChunk: (text: string) => void,
 ): Promise<GeneratedInsights | null> {
