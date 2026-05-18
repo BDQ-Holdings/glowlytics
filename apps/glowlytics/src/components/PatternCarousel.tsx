@@ -1,25 +1,44 @@
 import React, { useCallback, useRef, useState } from 'react';
-import { FlatList, ListRenderItem, StyleSheet, Text, View, ViewToken, useWindowDimensions } from 'react-native';
+import {
+  FlatList,
+  ListRenderItem,
+  StyleSheet,
+  Text,
+  View,
+  ViewToken,
+  useWindowDimensions,
+} from 'react-native';
 import { useRouter } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
 import type { Pattern } from '../types';
 import { PatternCard } from './PatternCard';
-import { Colors, FontFamily, FontSize, Spacing } from '../constants/theme';
+import { FontFamily, Glow, Spacing } from '../constants/theme';
+import { SectionHead } from './glow/GlowPrimitives';
 import { exportAndSharePattern } from '../services/patternExport';
 import { trackEvent } from '../services/analytics';
 
+const P = Glow.palette;
 const VIEWABILITY_CONFIG = { itemVisiblePercentThreshold: 60 };
-const CardSeparator = () => <View style={{ width: Spacing.sm }} />;
+const CardSeparator = () => <View style={{ width: 10 }} />;
 
 interface Props {
   patterns: Pattern[];
   onShare?: (pattern: Pattern) => void;
+  /** Optional override — when omitted falls back to "Other patterns" so it
+   *  reads correctly when the featured pattern is shown separately. */
+  title?: string;
+  hint?: string;
 }
 
-export const PatternCarousel: React.FC<Props> = ({ patterns, onShare }) => {
+export const PatternCarousel: React.FC<Props> = ({
+  patterns,
+  onShare,
+  title = 'Other patterns',
+  hint,
+}) => {
   const router = useRouter();
   const { width: screenW } = useWindowDimensions();
-  const cardWidth = screenW - Spacing.lg * 2;
+  // Show ~92% of the screen so the next card peeks — invites the swipe gesture.
+  const cardWidth = Math.min(screenW - Spacing.lg * 2 - 32, 320);
   const [activeIndex, setActiveIndex] = useState(0);
 
   const onViewableItemsChanged = useRef((info: { viewableItems: ViewToken[] }) => {
@@ -41,13 +60,13 @@ export const PatternCarousel: React.FC<Props> = ({ patterns, onShare }) => {
     [router],
   );
 
-  const handleShare = useCallback(async (pattern: Pattern) => {
-    if (onShare) {
-      onShare(pattern);
-    } else {
-      await exportAndSharePattern(pattern);
-    }
-  }, [onShare]);
+  const handleShare = useCallback(
+    async (pattern: Pattern) => {
+      if (onShare) onShare(pattern);
+      else await exportAndSharePattern(pattern);
+    },
+    [onShare],
+  );
 
   const renderItem: ListRenderItem<Pattern> = useCallback(
     ({ item }) => (
@@ -63,17 +82,18 @@ export const PatternCarousel: React.FC<Props> = ({ patterns, onShare }) => {
 
   if (patterns.length === 0) return null;
 
+  const effectiveHint = hint ?? `${patterns.length} ${patterns.length === 1 ? 'pattern' : 'patterns'}`;
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Patterns we've found</Text>
-        <Feather name="chevron-right" size={16} color={Colors.textMuted} />
+        <SectionHead title={title} hint={effectiveHint} ink={P.ink} muted={P.muted} />
       </View>
       <FlatList
         data={patterns}
         horizontal
         showsHorizontalScrollIndicator={false}
-        snapToInterval={cardWidth + Spacing.sm}
+        snapToInterval={cardWidth + 10}
         decelerationRate="fast"
         contentContainerStyle={styles.list}
         ItemSeparatorComponent={CardSeparator}
@@ -87,7 +107,10 @@ export const PatternCarousel: React.FC<Props> = ({ patterns, onShare }) => {
           {patterns.map((_, i) => (
             <View
               key={i}
-              style={[styles.dot, i === activeIndex && styles.dotActive]}
+              style={[
+                styles.dot,
+                i === activeIndex && styles.dotActive,
+              ]}
             />
           ))}
         </View>
@@ -98,41 +121,35 @@ export const PatternCarousel: React.FC<Props> = ({ patterns, onShare }) => {
 
 const styles = StyleSheet.create({
   container: {
-    gap: Spacing.sm,
-    marginTop: Spacing.lg,
-    // Break out of AtmosphereScreen's paddingHorizontal so the carousel
-    // goes edge-to-edge, same pattern as the signal rings section.
+    // Edge-to-edge — outer wrapper bleeds out of the home padding so the
+    // last card can peek off-screen. List itself adds horizontal padding.
     marginHorizontal: -Spacing.lg,
+    marginTop: Spacing.sm,
+    gap: 12,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: Spacing.lg,
-  },
-  title: {
-    color: Colors.text,
-    fontFamily: FontFamily.sansBold,
-    fontSize: FontSize.md,
   },
   list: {
     paddingHorizontal: Spacing.lg,
+    paddingTop: 2,
+    paddingBottom: 4,
   },
   dots: {
     flexDirection: 'row',
     alignSelf: 'center',
     gap: 6,
-    marginTop: 4,
+    marginTop: 6,
   },
   dot: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: Colors.border,
+    backgroundColor: P.glow,
   },
   dotActive: {
-    backgroundColor: Colors.primary,
-    width: 16,
+    backgroundColor: P.accent,
+    width: 18,
     borderRadius: 3,
   },
 });

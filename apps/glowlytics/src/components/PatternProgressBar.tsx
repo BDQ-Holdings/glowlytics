@@ -1,31 +1,34 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useStore } from '../store/useStore';
-import { Colors, FontFamily, FontSize, Spacing } from '../constants/theme';
+import { FontFamily, Glow, Spacing } from '../constants/theme';
+
+const P = Glow.palette;
 
 const MILESTONES = [
-  { day: 1, label: 'today' },
-  { day: 7, label: 'first receipt' },
+  { day: 1,  label: 'today' },
+  { day: 7,  label: 'first receipt' },
   { day: 14, label: 'unlock' },
   { day: 21, label: 'mature' },
 ];
 
+const MAX_DAY = MILESTONES[MILESTONES.length - 1].day;
+
 export const PatternProgressBar: React.FC = () => {
   const dailyRecords = useStore((s) => s.dailyRecords);
   const dataDays = dailyRecords.length;
-  const maxDay = MILESTONES[MILESTONES.length - 1].day;
-  const clamped = Math.min(dataDays, maxDay);
-  const progress = clamped / maxDay;
+  const clamped = Math.min(dataDays, MAX_DAY);
+  const progress = clamped / MAX_DAY;
 
-  // Hide after day 21 — no longer useful
-  if (dataDays >= maxDay) return null;
+  // Hide after day 21 — no longer useful as a primer
+  if (dataDays >= MAX_DAY) return null;
 
   return (
     <View style={styles.container}>
       <View style={styles.track}>
         <View style={[styles.fill, { width: `${progress * 100}%` }]} />
         {MILESTONES.map((m) => {
-          const x = (m.day / maxDay) * 100;
+          const x = (m.day / MAX_DAY) * 100;
           const reached = dataDays >= m.day;
           return (
             <View
@@ -36,23 +39,6 @@ export const PatternProgressBar: React.FC = () => {
                 reached && styles.milestoneReached,
               ]}
             />
-          );
-        })}
-      </View>
-      <View style={styles.labelsRow}>
-        {MILESTONES.map((m) => {
-          const x = (m.day / maxDay) * 100;
-          return (
-            <Text
-              key={m.day}
-              style={[
-                styles.label,
-                { position: 'absolute', left: `${x}%`, transform: [{ translateX: -20 }], width: 40, textAlign: 'center' },
-                dataDays >= m.day && styles.labelReached,
-              ]}
-            >
-              {m.label}
-            </Text>
           );
         })}
       </View>
@@ -67,53 +53,41 @@ export const PatternProgressBar: React.FC = () => {
 
 const styles = StyleSheet.create({
   container: {
-    paddingVertical: Spacing.sm,
-    gap: Spacing.sm,
+    paddingTop: 8,
+    paddingHorizontal: 2,
+    gap: 8,
   },
   track: {
-    height: 4,
-    backgroundColor: Colors.border,
+    height: 3,
+    backgroundColor: P.glow,
     borderRadius: 2,
     position: 'relative',
   },
   fill: {
     height: '100%',
-    backgroundColor: Colors.primary,
+    backgroundColor: P.accent,
     borderRadius: 2,
   },
   milestone: {
     position: 'absolute',
     top: -3,
-    width: 10,
-    height: 10,
+    width: 9,
+    height: 9,
     borderRadius: 5,
-    backgroundColor: Colors.background,
-    borderWidth: 2,
-    borderColor: Colors.border,
-    transform: [{ translateX: -5 }],
+    backgroundColor: P.surface,
+    borderWidth: 1.5,
+    borderColor: P.glow,
+    transform: [{ translateX: -4.5 }],
   },
   milestoneReached: {
-    borderColor: Colors.primary,
-    backgroundColor: Colors.primary,
-  },
-  labelsRow: {
-    position: 'relative',
-    height: 16,
-    marginTop: Spacing.xs,
-  },
-  label: {
-    color: Colors.textMuted,
-    fontFamily: FontFamily.sansMedium,
-    fontSize: FontSize.xxs,
-  },
-  labelReached: {
-    color: Colors.primary,
+    borderColor: P.accent,
+    backgroundColor: P.accent,
   },
   footer: {
-    color: Colors.textMuted,
+    color: P.muted,
     fontFamily: FontFamily.sansMedium,
-    fontSize: FontSize.xs,
-    textAlign: 'center',
-    marginTop: Spacing.xs,
+    fontSize: 11,
+    letterSpacing: 0.2,
+    paddingTop: 2,
   },
 });

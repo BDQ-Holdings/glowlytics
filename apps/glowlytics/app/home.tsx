@@ -449,7 +449,7 @@ export default function Home() {
         </View>
       </FadeUp>
 
-      {/* Story preview */}
+      {/* Story preview — featured pattern with progress primer underneath */}
       {featuredPattern && (
         <FadeUp index={5}>
           <View style={s.section}>
@@ -474,6 +474,10 @@ export default function Home() {
                 {featuredPattern.detailText ||
                   'Take a few more check-ins so we can read your story.'}
               </Text>
+              {/* Pattern-maturity primer — anchored to the story it describes */}
+              <View style={s.storyProgress}>
+                <PatternProgressBar />
+              </View>
             </TouchableOpacity>
           </View>
         </FadeUp>
@@ -539,12 +543,18 @@ export default function Home() {
         </FadeUp>
       )}
 
-      {/* Patterns carousel — preserve existing behaviour */}
-      {patterns && patterns.length > 0 && (
-        <View style={{ marginTop: Spacing.md }}>
-          <PatternProgressBar />
-          <PatternCarousel patterns={patterns} onShare={(p) => setSharingPattern(p)} />
-        </View>
+      {/* Other patterns — featured already lives in "Your story" above */}
+      {patterns && patterns.length > 1 && (
+        <FadeUp index={8}>
+          <View style={s.section}>
+            <PatternCarousel
+              patterns={patterns.filter((p) => p.id !== featuredPattern?.id)}
+              onShare={(p) => setSharingPattern(p)}
+              title="Other patterns"
+              hint={`${patterns.length - 1} more`}
+            />
+          </View>
+        </FadeUp>
       )}
 
       {/* Hidden export node for pattern share */}
@@ -816,6 +826,10 @@ const s = StyleSheet.create({
     fontSize: 13,
     lineHeight: 20,
     marginTop: 8,
+  },
+  storyProgress: {
+    marginTop: 14,
+    marginHorizontal: -4,
   },
   moodRow: {
     flexDirection: 'row',

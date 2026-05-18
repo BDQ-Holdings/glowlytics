@@ -1,22 +1,21 @@
 import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Polyline } from 'react-native-svg';
 import { Feather } from '@expo/vector-icons';
-import type { Pattern, PatternConfidence, PatternSignal } from '../types';
-import {
-  BorderRadius,
-  Colors,
-  FontFamily,
-  FontSize,
-  Spacing,
-} from '../constants/theme';
+import type { Pattern, PatternConfidence } from '../types';
+import { FontFamily, Glow, Spacing } from '../constants/theme';
 import { SIGNAL_COLORS } from '../constants/signals';
 
+const P = Glow.palette;
+
+// Confidence colors stay semantic across palettes — strong leans into the
+// active accent, moderate into the warm secondary, emerging into the soft
+// glow, watching stays muted.
 const CONFIDENCE_COLORS: Record<PatternConfidence, { bg: string; text: string; label: string }> = {
-  strong: { bg: 'rgba(58, 158, 143, 0.18)', text: '#3A9E8F', label: 'STRONG' },
-  moderate: { bg: 'rgba(242, 181, 106, 0.18)', text: '#C07B2A', label: 'MODERATE' },
-  emerging: { bg: 'rgba(99, 102, 181, 0.18)', text: '#6366B5', label: 'EMERGING' },
-  watching: { bg: 'rgba(127, 127, 127, 0.12)', text: Colors.textMuted, label: 'WATCHING' },
+  strong:   { bg: P.accent + '24',  text: P.accent,  label: 'STRONG' },
+  moderate: { bg: P.accent2 + '24', text: '#9A6A3A', label: 'MODERATE' },
+  emerging: { bg: P.glow + '60',    text: P.muted,   label: 'EMERGING' },
+  watching: { bg: P.bg,             text: P.muted,   label: 'WATCHING' },
 };
 
 interface PatternCardProps {
@@ -34,20 +33,22 @@ export const PatternCard: React.FC<PatternCardProps> = ({
 }) => {
   const conf = CONFIDENCE_COLORS[pattern.confidence];
   const signalColor =
-    (SIGNAL_COLORS as Record<string, string | undefined>)[pattern.signal] ?? Colors.primary;
+    (SIGNAL_COLORS as Record<string, string | undefined>)[pattern.signal] ?? P.accent;
   const isPredicted = pattern.isPredicted;
   const daysToUnlock = pattern.unlocksAtDay ?? null;
 
   // Derive inner content width from the card's outer width hint minus padding + border.
-  const sparkWidth = Math.max(widthHint ? widthHint - Spacing.md * 2 - 2 : 240, 40);
-  const sparkHeight = 60;
+  const sparkWidth = Math.max(widthHint ? widthHint - Spacing.lg * 2 - 2 : 240, 40);
+  const sparkHeight = 56;
   const points = pattern.chartData.slice(-30);
   const sparkPoints =
     points.length > 1
       ? points
           .map((p, i) => {
             const x = (i / (points.length - 1)) * sparkWidth;
-            const v = Number.isFinite(p.signalValue) ? Math.max(0, Math.min(100, p.signalValue)) : 50;
+            const v = Number.isFinite(p.signalValue)
+              ? Math.max(0, Math.min(100, p.signalValue))
+              : 50;
             const y = sparkHeight - (v / 100) * sparkHeight;
             return `${x},${y}`;
           })
@@ -56,13 +57,18 @@ export const PatternCard: React.FC<PatternCardProps> = ({
 
   return (
     <View style={[styles.card, widthHint ? { width: widthHint } : null]}>
-      {/* Confidence pill */}
-      <View style={[styles.confPill, { backgroundColor: conf.bg }]}>
-        <View style={[styles.confDot, { backgroundColor: conf.text }]} />
-        <Text style={[styles.confText, { color: conf.text }]}>{conf.label}</Text>
+      {/* Top row — confidence + sample-size meta, no competing weight */}
+      <View style={styles.topRow}>
+        <View style={[styles.confPill, { backgroundColor: conf.bg }]}>
+          <View style={[styles.confDot, { backgroundColor: conf.text }]} />
+          <Text style={[styles.confText, { color: conf.text }]}>{conf.label}</Text>
+        </View>
+        {!isPredicted && (
+          <Text style={styles.sampleText}>{pattern.sampleSize}-day read</Text>
+        )}
       </View>
 
-      {/* Headline */}
+      {/* Headline — italic accent on the verb */}
       <Text style={styles.headline} numberOfLines={3}>
         {pattern.insightText}
       </Text>
@@ -83,30 +89,34 @@ export const PatternCard: React.FC<PatternCardProps> = ({
         </View>
       ) : (
         <View style={[styles.sparkline, styles.sparkPlaceholder]}>
-          <Feather name="activity" size={20} color={Colors.textDim} />
+          <Feather name="activity" size={18} color={P.muted} />
           <Text style={styles.placeholderText}>
             {daysToUnlock ? `Unlocks in ${daysToUnlock} days` : 'Building your pattern'}
           </Text>
         </View>
       )}
 
-      {/* Sample line */}
-      {!isPredicted && (
-        <Text style={styles.sampleText}>
-          Based on {pattern.sampleSize} days
-        </Text>
-      )}
-
       {/* Actions */}
       <View style={styles.actionRow}>
-        <TouchableOpacity onPress={onPressDetail} style={styles.detailButton}>
+        <Pressable
+          onPress={onPressDetail}
+          style={({ pressed }) => [styles.detailButton, pressed && { opacity: 0.7 }]}
+          accessibilityRole="button"
+          accessibilityLabel="See pattern detail"
+        >
           <Text style={styles.detailButtonText}>See pattern</Text>
-        </TouchableOpacity>
+          <Feather name="arrow-right" size={13} color={P.ink} />
+        </Pressable>
         {!isPredicted && (
-          <TouchableOpacity onPress={onPressShare} style={styles.shareButton}>
-            <Feather name="share-2" size={14} color={Colors.background} />
+          <Pressable
+            onPress={onPressShare}
+            style={({ pressed }) => [styles.shareButton, pressed && { opacity: 0.85 }]}
+            accessibilityRole="button"
+            accessibilityLabel="Share pattern"
+          >
+            <Feather name="share-2" size={14} color={P.surface} />
             <Text style={styles.shareButtonText}>Share</Text>
-          </TouchableOpacity>
+          </Pressable>
         )}
       </View>
     </View>
@@ -115,21 +125,26 @@ export const PatternCard: React.FC<PatternCardProps> = ({
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: Colors.glass,
-    borderRadius: BorderRadius.lg,
+    backgroundColor: P.surface,
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: Colors.border,
-    padding: Spacing.md,
-    gap: Spacing.sm,
+    borderColor: P.glow,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.lg,
+    gap: 14,
+  },
+  topRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   confPill: {
     flexDirection: 'row',
-    alignSelf: 'flex-start',
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: BorderRadius.full,
+    borderRadius: 999,
   },
   confDot: {
     width: 6,
@@ -137,58 +152,61 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
   confText: {
-    fontFamily: FontFamily.sansSemiBold,
-    fontSize: FontSize.xxs,
-    letterSpacing: 0.6,
+    fontFamily: FontFamily.sansBold,
+    fontSize: 10,
+    letterSpacing: 0.8,
+  },
+  sampleText: {
+    color: P.muted,
+    fontFamily: FontFamily.sansMedium,
+    fontSize: 11,
+    letterSpacing: 0.3,
   },
   headline: {
-    color: Colors.text,
-    fontFamily: FontFamily.sansBold,
-    fontSize: FontSize.lg,
-    lineHeight: 24,
-    marginTop: Spacing.xs,
+    color: P.ink,
+    fontFamily: FontFamily.sans,
+    fontSize: 19,
+    lineHeight: 26,
+    marginTop: 2,
   },
   sparkline: {
-    height: 60,
+    height: 56,
     justifyContent: 'center',
-    marginTop: Spacing.xs,
   },
   sparkPlaceholder: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: Spacing.sm,
-    backgroundColor: 'rgba(127,127,127,0.06)',
-    borderRadius: BorderRadius.md,
+    gap: 8,
+    backgroundColor: P.bg,
+    borderRadius: 14,
   },
   placeholderText: {
-    color: Colors.textMuted,
+    color: P.muted,
     fontFamily: FontFamily.sansMedium,
-    fontSize: FontSize.sm,
-  },
-  sampleText: {
-    color: Colors.textMuted,
-    fontFamily: FontFamily.sansMedium,
-    fontSize: FontSize.xs,
-    marginTop: -2,
+    fontSize: 12,
   },
   actionRow: {
     flexDirection: 'row',
-    gap: Spacing.sm,
-    marginTop: Spacing.sm,
+    gap: 8,
+    marginTop: 2,
   },
   detailButton: {
     flex: 1,
-    paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.full,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
+    gap: 6,
+    paddingVertical: 11,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: P.glow,
+    backgroundColor: 'transparent',
   },
   detailButtonText: {
-    color: Colors.text,
-    fontFamily: FontFamily.sansSemiBold,
-    fontSize: FontSize.sm,
+    color: P.ink,
+    fontFamily: FontFamily.sansBold,
+    fontSize: 13,
   },
   shareButton: {
     flex: 1,
@@ -196,13 +214,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     gap: 6,
-    paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.primary,
+    paddingVertical: 11,
+    borderRadius: 999,
+    backgroundColor: P.ink,
   },
   shareButtonText: {
-    color: Colors.background,
+    color: P.surface,
     fontFamily: FontFamily.sansBold,
-    fontSize: FontSize.sm,
+    fontSize: 13,
   },
 });
