@@ -181,7 +181,12 @@ function AnimatedCameraButton({ onPress, pulseCamera, accessibilityLabel, isFocu
   }));
 
   return (
-    <View style={styles.cameraAnchor}>
+    // box-none is load-bearing here. cameraAnchor is position: absolute with
+    // left/right: 0 and zIndex: 10 — without it, the invisible wrapper above
+    // the centered 56px button intercepts taps across the entire upper strip
+    // of the tab bar (the icon zone of every other tab), so side-tab presses
+    // get eaten and "require multiple clicks to change tab."
+    <View style={styles.cameraAnchor} pointerEvents="box-none">
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel ?? 'Open camera'}
@@ -192,7 +197,7 @@ function AnimatedCameraButton({ onPress, pulseCamera, accessibilityLabel, isFocu
         onPressOut={handlePressOut}
       >
         <Animated.View style={[styles.cameraOuter, outerStyle]}>
-          <View style={styles.gradientClip}>
+          <View style={styles.gradientClip} pointerEvents="none">
             <LinearGradient
               colors={[...GRADIENT_COLORS]}
               start={{ x: 0.3, y: 0 }}
