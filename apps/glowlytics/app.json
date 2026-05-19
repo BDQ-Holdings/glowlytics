@@ -18,6 +18,7 @@
       "supportsTablet": false,
       "requireFullScreen": true,
       "bundleIdentifier": "com.glowlytics.app",
+      "buildNumber": "3",
       "usesAppleSignIn": true,
       "associatedDomains": [],
       "infoPlist": {

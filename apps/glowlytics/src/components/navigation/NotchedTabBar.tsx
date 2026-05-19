@@ -103,7 +103,10 @@ function AnimatedTab({ tab, isFocused, accessibilityLabel, testID, onPress, onLo
       accessibilityState={{ selected: isFocused }}
       accessibilityLabel={accessibilityLabel ?? tab.label}
       testID={testID}
-      hitSlop={{ top: 16, bottom: 24, left: 12, right: 12 }}
+      // Generous vertical splash zone so taps just above the icon (where the
+      // eye expects the touch target relative to the camera button) still
+      // land. Lateral stays small so adjacent tabs don't shadow each other.
+      hitSlop={{ top: 20, bottom: 28, left: 6, right: 6 }}
       onPress={onPress}
       onLongPress={onLongPress}
       onPressIn={handlePressIn}
@@ -191,7 +194,12 @@ function AnimatedCameraButton({ onPress, pulseCamera, accessibilityLabel, isFocu
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel ?? 'Open camera'}
         accessibilityState={{ selected: isFocused }}
-        hitSlop={{ top: 20, bottom: 24, left: 20, right: 20 }}
+        // Lateral hitSlop bounded by the cameraSpacer (CAMERA_SIZE + sm = 64).
+        // Camera button is 56px; spacer leaves 4px gutter each side. Setting
+        // left/right beyond 4 poaches the inner edge of Reports / Shelf and
+        // turns side-tab taps into camera taps — that's the "multiple clicks
+        // to change tab" symptom.
+        hitSlop={{ top: 20, bottom: 24, left: 4, right: 4 }}
         onPress={onPress}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
@@ -368,6 +376,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.xxs,
+    // Pull the icon+label stack up so it visually centers with the camera
+    // button (which floats -20px above the bar). Without this, the side-tab
+    // icons read as "shifted downward" relative to the camera and the eye
+    // tracks higher than the tap actually lands.
+    paddingBottom: 6,
   },
   cameraSpacer: {
     width: CAMERA_SIZE + Spacing.sm,
