@@ -382,27 +382,26 @@ export const analyzeWithFallback = async (input: AnalysisInput): Promise<{
           signal_confidence: result.signal_confidence,
         };
       } catch (err: any) {
-        console.warn('[Glowlytics] Vision API failed, falling back to local analysis:', err?.message || err);
-        // Fall back to deterministic heuristics instead of crashing the scan
-        const fallbackResult = await analyzeSkiN(input);
-        return {
-          ...fallbackResult,
-          confidence: 'low' as Confidence,
-        };
+        // Do NOT silently fall back to analyzeSkiN here. In production, the
+        // scanner indices passed in are always 0 (camera.tsx hands off only
+        // photoUri — there is no client-side image scoring), so analyzeSkiN
+        // would produce all-zero scores that look like a flawless reading
+        // instead of a failed backend call. Propagate so the UI shows a real
+        // error and the user can retry.
+        console.error('[Glowlytics] Vision API failed:', err?.message || err);
+        throw err;
       }
     } else if (!env.API_BASE_URL) {
-      // Dev mode — no backend configured, use local heuristics
+      // Dev mode — no backend configured, use local heuristics. The scanner
+      // indices in this code path come from the mock scanner or _processing
+      // flow, not from the production camera handoff, so they're non-zero.
       console.log('[Glowlytics] No API_BASE_URL configured — using LOCAL heuristic analysis');
       return analyzeSkiN(input);
     } else {
-      // Graceful degradation: if photo handoff fails, still provide deterministic
-      // scanner/context-based analysis instead of hard-failing the scan.
-      console.warn('[Glowlytics] Missing photoUri — falling back to local analysis');
-      const fallbackResult = await analyzeSkiN(input);
-      return {
-        ...fallbackResult,
-        confidence: 'low' as Confidence,
-      };
+      // API configured but photoUri missing = programmer/handoff bug. Don't
+      // mask it with zero-input local heuristics; surface so the camera flow
+      // can be debugged.
+      throw new Error('Scan photo unavailable — please retake the photo and try again.');
     }
   } catch (outerErr: any) {
     // Let the error propagate to the UI — showing fake scores is worse than showing an error

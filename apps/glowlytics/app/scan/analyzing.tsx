@@ -424,9 +424,16 @@ export default function AnalyzingScreen() {
               useStore.setState({ modelOutputs: updated });
               useStore.getState().persistData();
             }
+          } else {
+            // streamInsights resolved with null — backend either returned no
+            // parseable JSON, the XHR errored, or the auth/HTTP layer rejected
+            // us. Track so we can spot stream regressions in PostHog instead
+            // of seeing only the L1+L2 scores quietly missing their L3 layer.
+            trackEvent('scan_insights_stream_failed', { reason: 'no_insights' });
           }
-        }).catch(() => {
+        }).catch((err: any) => {
           setIsStreaming(false);
+          trackEvent('scan_insights_stream_failed', { error: String(err?.message || err) });
         });
       }
 
@@ -463,8 +470,15 @@ export default function AnalyzingScreen() {
           captured = await captureFaceMesh();
           firstResult = await analyzeBoneStructure({ mesh: captured.mesh, dailyId, sexOverride });
           useStore.getState().attachBoneStructure(dailyId, firstResult);
-        } catch (err) {
+        } catch (err: any) {
           if (__DEV__) console.warn('[Glowlytics] Bone-structure analysis skipped:', err);
+          // Track outside __DEV__ so PostHog sees production failures instead
+          // of the scan looking "complete" without bone metrics. The user-
+          // facing scan still proceeds — bone-structure is a side analysis.
+          trackEvent('scan_bone_structure_failed', {
+            error: String(err?.message || err),
+            status: err instanceof ApiError ? err.status : null,
+          });
           return;
         }
 
@@ -759,13 +773,15 @@ export default function AnalyzingScreen() {
           style={StyleSheet.absoluteFill}
         />
         <View style={styles.content}>
-          <Feather name="alert-circle" size={48} color={Colors.error} />
-          <Text style={styles.errorTitle}>Analysis failed</Text>
+          <View style={styles.errorIconWrap}>
+            <Feather name="alert-circle" size={36} color={Glow.palette.accent} />
+          </View>
+          <Text style={styles.errorTitle}>We couldn't finish your scan</Text>
           <Text style={styles.errorSubtitle}>{error}</Text>
           <View style={styles.errorButtons}>
-            <Button title="Retry" onPress={handleRetry} />
+            <Button title="Try again" onPress={handleRetry} />
             <Button
-              title="Go back"
+              title="Back to today"
               variant="ghost"
               onPress={() => {
                 useStore.getState().clearPendingPhotoBase64();
@@ -843,7 +859,7 @@ export default function AnalyzingScreen() {
             style={styles.slowWarning}
             accessibilityLabel="Analysis is taking longer than expected"
           >
-            Taking longer than expected...
+            Almost there — still composing.
           </Animated.Text>
         )}
       </View>
@@ -898,31 +914,33 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: 'rgba(125,231,225,0.08)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.10)',
+    borderColor: 'rgba(125,231,225,0.18)',
   },
   orbitChipText: {
     fontFamily: FontFamily.sansMedium,
     fontSize: 11,
-    color: 'rgba(255,255,255,0.85)',
+    color: Colors.textOnDark,
+    letterSpacing: 0.2,
   },
   stageStrip: {
     paddingTop: Spacing.md,
     width: '100%',
   },
   messageContainer: {
-    height: 40,
+    height: 52,
     justifyContent: 'center',
     alignItems: 'center',
     overflow: 'hidden',
   },
   statusMessage: {
     position: 'absolute',
-    color: Glow.palette.ink,
-    fontFamily: FontFamily.sans,
-    fontStyle: 'italic',
-    fontSize: 24,
+    color: Colors.textOnDark,
+    fontFamily: FontFamily.sansMedium,
+    fontSize: FontSize.xl,
+    lineHeight: 30,
+    letterSpacing: -0.2,
     textAlign: 'center',
   },
   streamContainer: {
@@ -930,38 +948,52 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   streamText: {
-    color: Glow.palette.muted,
+    color: Colors.textOnDarkDim,
     fontFamily: FontFamily.sans,
     fontSize: FontSize.sm,
     lineHeight: 20,
     textAlign: 'center',
   },
   slowWarning: {
-    color: Colors.warning,
-    fontFamily: FontFamily.sans,
+    color: Colors.textOnDarkMuted,
+    fontFamily: FontFamily.sansMedium,
     fontSize: FontSize.sm,
+    letterSpacing: 0.2,
     marginTop: Spacing.md,
   },
   // Error screen
+  errorIconWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Glow.palette.surface,
+    borderWidth: 1,
+    borderColor: Glow.palette.glow,
+  },
   errorTitle: {
     color: Glow.palette.ink,
-    fontFamily: FontFamily.sans,
-    fontSize: 28,
+    fontFamily: FontFamily.sansBold,
+    fontSize: FontSize.xxl,
+    lineHeight: 34,
+    letterSpacing: -0.4,
     textAlign: 'center',
     marginTop: Spacing.lg,
+    paddingHorizontal: Spacing.md,
   },
   errorSubtitle: {
     color: Glow.palette.muted,
     fontFamily: FontFamily.sans,
-    fontSize: 14,
+    fontSize: FontSize.sm,
     lineHeight: 22,
     textAlign: 'center',
     marginTop: Spacing.sm,
-    paddingHorizontal: Spacing.md,
+    paddingHorizontal: Spacing.lg,
   },
   errorButtons: {
     marginTop: Spacing.xl,
-    gap: Spacing.md,
+    gap: Spacing.sm,
     width: '100%',
   },
   // XP overlay
@@ -981,15 +1013,18 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   xpGainText: {
-    color: Colors.primary,
+    color: Colors.ringAccent,
     fontFamily: FontFamily.sansBold,
     fontSize: FontSize.hero,
+    letterSpacing: -1,
   },
   badgeEarnedText: {
-    color: Colors.warning,
-    fontFamily: FontFamily.sansSemiBold,
-    fontSize: FontSize.lg,
+    color: Colors.textOnDark,
+    fontFamily: FontFamily.sansMedium,
+    fontSize: FontSize.md,
+    lineHeight: 22,
     textAlign: 'center',
     paddingHorizontal: Spacing.xl,
+    opacity: 0.85,
   },
 });

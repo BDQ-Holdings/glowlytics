@@ -171,7 +171,7 @@ export default function BoneResults() {
         caption={bone.dominant_driver ? `Strongest opportunity: ${bone.dominant_driver}` : undefined}
       />
       <Animated.View entering={FadeIn.duration(400).delay(900)} style={styles.swipeHint} pointerEvents="none">
-        <Feather name="chevron-up" size={14} color={Colors.textDim} />
+        <Feather name="chevron-up" size={14} color={Colors.harmony} />
         <Text style={styles.swipeText}>Swipe up</Text>
       </Animated.View>
     </StoryPage>
@@ -278,7 +278,7 @@ export default function BoneResults() {
             return (
               <Animated.View key={f.findingCode} entering={FadeInDown.duration(350).delay(80 + i * 60)}>
                 <Pressable
-                  style={styles.findingCard}
+                  style={({ pressed }) => [styles.findingCard, pressed && styles.findingCardPressed]}
                   onPress={() =>
                     router.push({
                       pathname: '/architecture/[finding]',
@@ -288,12 +288,13 @@ export default function BoneResults() {
                   accessibilityLabel={`See details for ${copy.title}`}
                 >
                   <View style={styles.findingHeader}>
-                    <Feather name="circle" size={8} color={Colors.harmony} />
                     <Text style={styles.findingTitle}>{copy.title}</Text>
-                    <View style={[styles.findingBadge, severityStyle(f.severity)]}>
-                      <Text style={styles.findingBadgeText}>{f.severity}</Text>
+                    <View style={[styles.findingBadge, severityStyle(f.severity).bg]}>
+                      <Text style={[styles.findingBadgeText, severityStyle(f.severity).text]}>
+                        {f.severity}
+                      </Text>
                     </View>
-                    <Feather name="chevron-right" size={14} color={Colors.textMuted} />
+                    <Feather name="chevron-right" size={14} color={Glow.palette.muted} />
                   </View>
                   <Text style={styles.findingDesc}>{copy.description}</Text>
                 </Pressable>
@@ -366,10 +367,17 @@ export default function BoneResults() {
   );
 }
 
-function severityStyle(severity: 'mild' | 'moderate' | 'marked') {
-  if (severity === 'mild') return { backgroundColor: Colors.success + '22' };
-  if (severity === 'moderate') return { backgroundColor: Colors.warning + '22' };
-  return { backgroundColor: Colors.error + '22' };
+function severityStyle(severity: 'mild' | 'moderate' | 'marked'): {
+  bg: { backgroundColor: string };
+  text: { color: string };
+} {
+  if (severity === 'mild') {
+    return { bg: { backgroundColor: Colors.success + '1A' }, text: { color: Colors.success } };
+  }
+  if (severity === 'moderate') {
+    return { bg: { backgroundColor: Colors.warning + '1A' }, text: { color: Colors.warning } };
+  }
+  return { bg: { backgroundColor: Colors.error + '1A' }, text: { color: Colors.error } };
 }
 
 const styles = StyleSheet.create({
@@ -401,33 +409,35 @@ const styles = StyleSheet.create({
     gap: Spacing.xxs,
   },
   swipeText: {
-    color: Glow.palette.muted,
-    fontFamily: FontFamily.sansMedium,
+    color: Colors.harmony,
+    fontFamily: FontFamily.sansSemiBold,
     fontSize: FontSize.xxs,
     textTransform: 'uppercase',
-    letterSpacing: 1,
+    letterSpacing: 1.2,
   },
 
   // Shared page header pieces
   pageEyebrow: {
-    color: Glow.palette.muted,
+    color: Colors.harmony,
     fontFamily: FontFamily.sansSemiBold,
-    fontSize: FontSize.xs,
+    fontSize: FontSize.xxs,
     textTransform: 'uppercase',
-    letterSpacing: 1.2,
-    marginBottom: Spacing.sm,
+    letterSpacing: 1.4,
+    marginBottom: Spacing.xs,
   },
   pageTitle: {
     color: Glow.palette.ink,
     fontFamily: FontFamily.sansBold,
     fontSize: FontSize.xxl,
-    marginBottom: Spacing.sm,
+    lineHeight: 34,
+    letterSpacing: -0.5,
+    marginBottom: Spacing.xs,
   },
   pageSubtitle: {
     color: Colors.textSecondary,
     fontFamily: FontFamily.sans,
     fontSize: FontSize.sm,
-    lineHeight: 20,
+    lineHeight: 21,
     marginBottom: Spacing.lg,
   },
 
@@ -465,18 +475,25 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     backgroundColor: Glow.palette.surface,
     borderRadius: BorderRadius.lg,
-    padding: Spacing.md,
-    gap: Spacing.xxs,
+    borderWidth: 1,
+    borderColor: Glow.palette.glow,
+    paddingVertical: Spacing.sm + 2,
+    paddingHorizontal: Spacing.md,
+    gap: 2,
   },
   metricLabel: {
-    color: Colors.textMuted,
-    fontFamily: FontFamily.sans,
-    fontSize: FontSize.xs,
+    color: Glow.palette.muted,
+    fontFamily: FontFamily.sansMedium,
+    fontSize: FontSize.xxs,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
   },
   metricValue: {
     color: Glow.palette.ink,
     fontFamily: FontFamily.sansBold,
     fontSize: FontSize.lg,
+    letterSpacing: -0.3,
+    marginTop: 2,
   },
   metricFooter: {
     flexDirection: 'row',
@@ -488,18 +505,19 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 3,
     borderRadius: 2,
-    backgroundColor: Colors.surface,
+    backgroundColor: Colors.harmony + '14',
     overflow: 'hidden',
   },
   miniBarFill: {
     height: '100%',
     backgroundColor: Colors.harmony,
+    borderRadius: 2,
   },
   miniScore: {
-    color: Colors.textMuted,
-    fontFamily: FontFamily.sansMedium,
+    color: Glow.palette.muted,
+    fontFamily: FontFamily.sansSemiBold,
     fontSize: FontSize.xxs,
-    minWidth: 20,
+    minWidth: 22,
     textAlign: 'right',
   },
 
@@ -509,36 +527,43 @@ const styles = StyleSheet.create({
   findingCard: {
     backgroundColor: Glow.palette.surface,
     borderRadius: BorderRadius.lg,
-    padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: Glow.palette.glow,
+    paddingVertical: Spacing.md - 2,
+    paddingHorizontal: Spacing.md,
     gap: Spacing.xs,
   },
-  findingHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
+  findingCardPressed: {
+    opacity: 0.7,
+    transform: [{ scale: 0.99 }],
+  },
+  findingHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   findingTitle: {
     flex: 1,
     color: Glow.palette.ink,
     fontFamily: FontFamily.sansSemiBold,
     fontSize: FontSize.md,
+    letterSpacing: -0.2,
   },
   findingBadge: {
-    paddingHorizontal: Spacing.xs,
+    paddingHorizontal: Spacing.xs + 2,
     paddingVertical: 2,
     borderRadius: BorderRadius.full,
   },
   findingBadgeText: {
-    color: Colors.text,
-    fontFamily: FontFamily.sansMedium,
-    fontSize: 10,
+    fontFamily: FontFamily.sansSemiBold,
+    fontSize: 9,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.7,
   },
   findingDesc: {
-    color: Colors.textSecondary,
+    color: Glow.palette.muted,
     fontFamily: FontFamily.sans,
     fontSize: FontSize.sm,
-    lineHeight: 19,
+    lineHeight: 20,
   },
   findingsEmpty: {
-    color: Colors.textSecondary,
+    color: Glow.palette.muted,
     fontFamily: FontFamily.sans,
     fontSize: FontSize.md,
     lineHeight: 22,
@@ -565,7 +590,7 @@ const styles = StyleSheet.create({
   emptyMeshGlow: {
     position: 'absolute',
     width: 260, height: 260,
-    borderRadius: 130,
+    borderRadius: BorderRadius.full,
     backgroundColor: Colors.harmony + '14',
   },
   emptyCopyWrap: {
@@ -577,13 +602,15 @@ const styles = StyleSheet.create({
     color: Glow.palette.ink,
     fontFamily: FontFamily.sansBold,
     fontSize: FontSize.xxl,
+    lineHeight: 34,
+    letterSpacing: -0.5,
     textAlign: 'center',
   },
   emptyCopy: {
-    color: Colors.textSecondary,
+    color: Glow.palette.muted,
     fontFamily: FontFamily.sans,
     fontSize: FontSize.md,
-    lineHeight: 22,
+    lineHeight: 23,
     textAlign: 'center',
     paddingHorizontal: Spacing.sm,
   },

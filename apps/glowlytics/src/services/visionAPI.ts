@@ -214,6 +214,17 @@ export async function streamInsights(
 
     xhr.onload = () => {
       clearTimeout(timeoutId);
+      // XHR never rejects on HTTP error status — it just fires onload with the
+      // failing response. Without this check, a 401 / 500 from
+      // /api/vision/generate-insights would silently resolve to null and the
+      // caller (fire-and-forget in analyzing.tsx) would have no idea the
+      // backend rejected the request.
+      if (xhr.status < 200 || xhr.status >= 300) {
+        const snippet = (xhr.responseText || '').slice(0, 200);
+        console.warn(`[Glowlytics] Insight stream HTTP ${xhr.status}: ${snippet}`);
+        resolve(null);
+        return;
+      }
       resolve(parseInsightsFromText(fullText));
     };
 

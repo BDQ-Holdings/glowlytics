@@ -296,7 +296,7 @@ export default function Results({ hideBottomAction: hideBottomActionProp }: { hi
             </Text>
           </Animated.View>
           <Animated.View entering={FadeIn.duration(400).delay(800)} style={styles.swipeHint} accessibilityLabel="Swipe up for signal details">
-            <Feather name="chevron-up" size={14} color={Colors.textDim} />
+            <Feather name="chevron-up" size={14} color={Glow.palette.accent} />
             <Text style={styles.swipeText}>Swipe up</Text>
           </Animated.View>
         </StoryPage>
@@ -339,26 +339,27 @@ export default function Results({ hideBottomAction: hideBottomActionProp }: { hi
                     <View style={styles.signalRow}>
                       <View style={[styles.signalDot, { backgroundColor: SIGNAL_COLORS[key] }]} />
                       <Text style={styles.signalLabel}>{SIGNAL_LABELS[key]}</Text>
-                      {delta != null && delta !== 0 && (
-                        <View style={styles.signalDelta}>
-                          <Feather
-                            name={delta > 0 ? 'trending-up' : 'trending-down'}
-                            size={11}
-                            color={delta > 0 ? Colors.success : Colors.error}
-                          />
-                          <Text style={[styles.signalDeltaText, { color: delta > 0 ? Colors.success : Colors.error }]}>
-                            {delta > 0 ? '+' : ''}{delta}
-                          </Text>
-                        </View>
-                      )}
+                      <View style={styles.signalDeltaSlot}>
+                        {delta != null && delta !== 0 && (
+                          <View style={styles.signalDelta}>
+                            <Feather
+                              name={delta > 0 ? 'trending-up' : 'trending-down'}
+                              size={11}
+                              color={delta > 0 ? Colors.success : Colors.warning}
+                            />
+                            <Text style={[styles.signalDeltaText, { color: delta > 0 ? Colors.success : Colors.warning }]}>
+                              {delta > 0 ? '+' : ''}{delta}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
                       <Text style={[styles.signalScore, { color: SIGNAL_COLORS[key] }]}>{clamped}</Text>
                     </View>
                     <AnimatedFillBar score={clamped} color={SIGNAL_COLORS[key]} delay={250 + i * 100} />
-                    {isBest && (
-                      <Text style={[styles.signalBadge, { color: Colors.success }]}>Strongest signal</Text>
-                    )}
-                    {isWorst && scoredSignals.length > 1 && (
-                      <Text style={[styles.signalBadge, { color: Colors.warning }]}>Needs attention</Text>
+                    {(isBest || (isWorst && scoredSignals.length > 1)) && (
+                      <Text style={[styles.signalBadge, { color: isBest ? Colors.success : Glow.palette.accent }]}>
+                        {isBest ? 'Strongest signal' : 'Worth tending to'}
+                      </Text>
                     )}
                   </Animated.View>
                 );
@@ -366,9 +367,9 @@ export default function Results({ hideBottomAction: hideBottomActionProp }: { hi
             </View>
             {latestOutput.lesions && latestOutput.lesions.length > 0 && (
               <Animated.View entering={FadeInDown.duration(300).delay(600)} style={styles.lesionSummary}>
-                <Feather name="target" size={14} color={Colors.primary} />
+                <Feather name="target" size={13} color={Glow.palette.accent} />
                 <Text style={styles.lesionSummaryText}>
-                  {latestOutput.lesions.length} lesion{latestOutput.lesions.length !== 1 ? 's' : ''} detected
+                  {latestOutput.lesions.length} lesion{latestOutput.lesions.length !== 1 ? 's' : ''} located
                 </Text>
               </Animated.View>
             )}
@@ -395,7 +396,7 @@ export default function Results({ hideBottomAction: hideBottomActionProp }: { hi
               <Text style={styles.actionPlanTitle}>Action plan</Text>
               {generatedInsights.action_plan.slice(0, 3).filter(Boolean).map((action, i) => (
                 <Animated.View key={i} entering={FadeInDown.duration(250).delay(400 + i * 80)} style={styles.actionPlanItem}>
-                  <View style={[styles.actionPlanDot, { backgroundColor: Colors.primary }]}>
+                  <View style={styles.actionPlanDot}>
                     <Text style={styles.actionPlanNumber}>{i + 1}</Text>
                   </View>
                   <Text style={styles.actionPlanText} numberOfLines={3}>{action}</Text>
@@ -431,7 +432,10 @@ export default function Results({ hideBottomAction: hideBottomActionProp }: { hi
                 lesions={latestOutput.lesions}
               />
             </View>
-            <Text style={styles.meshHint}>Pinch to zoom · drag to orbit</Text>
+            <View style={styles.meshHintChip}>
+              <Feather name="move" size={11} color={Glow.palette.muted} />
+              <Text style={styles.meshHint}>Pinch to zoom · drag to orbit</Text>
+            </View>
           </StoryPage>
         ),
       });
@@ -474,22 +478,23 @@ export default function Results({ hideBottomAction: hideBottomActionProp }: { hi
       render: () => (
         <StoryPage screenH={screenH} insets={stableInsets}>
           <View style={styles.doneCenter}>
-            <Animated.View entering={ZoomIn.duration(400)}>
-              <Feather name="check-circle" size={56} color={Colors.success} />
+            <Animated.View entering={ZoomIn.duration(400)} style={styles.doneIconWrap}>
+              <View style={styles.doneIconHalo} />
+              <Feather name="check" size={32} color={Glow.palette.accent} strokeWidth={2.4} />
             </Animated.View>
             <Animated.View entering={FadeInUp.duration(400).delay(200)} style={styles.doneText}>
               <Text style={styles.doneTitle}>Scan complete</Text>
-              <Text style={styles.doneStat}>Scan #{scanCount}</Text>
+              <Text style={styles.doneStat}>Scan #{scanCount} · saved</Text>
               <Text style={styles.doneCopy}>
-                Your data has been saved. Check your signals on Today to track changes.
+                Your signals are on Today. Keep scanning to see how trends shift.
               </Text>
             </Animated.View>
 
             {latestOutput.escalation_flag && (
               <Animated.View entering={FadeInDown.duration(400).delay(400)} style={styles.alertStrip}>
-                <Feather name="alert-triangle" size={18} color={Colors.warning} />
+                <Feather name="alert-triangle" size={16} color={Colors.warning} />
                 <Text style={styles.alertCopy}>
-                  Your trend changed quickly. Consider sharing a report with your clinician.
+                  Your trend shifted quickly. Consider sharing a report with your clinician.
                 </Text>
                 <Button
                   title="Share report"
@@ -579,7 +584,7 @@ const styles = StyleSheet.create({
   // Page 1: Score reveal
   scoreCenter: {
     alignItems: 'center',
-    marginBottom: Spacing.xl,
+    marginBottom: Spacing.xxl,
   },
   glowOuter: {
     position: 'absolute',
@@ -611,7 +616,9 @@ const styles = StyleSheet.create({
   scoreStatus: {
     color: Glow.palette.muted,
     fontFamily: FontFamily.sansSemiBold,
-    fontSize: FontSize.lg,
+    fontSize: FontSize.md,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
     marginTop: Spacing.xs,
   },
   scoreAction: {
@@ -619,6 +626,7 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.sansMedium,
     fontSize: FontSize.lg,
     lineHeight: 26,
+    letterSpacing: -0.2,
     textAlign: 'center',
     paddingHorizontal: Spacing.lg,
   },
@@ -630,11 +638,11 @@ const styles = StyleSheet.create({
     gap: Spacing.xxs,
   },
   swipeText: {
-    color: Glow.palette.muted,
-    fontFamily: FontFamily.sansMedium,
+    color: Glow.palette.accent,
+    fontFamily: FontFamily.sansSemiBold,
     fontSize: FontSize.xxs,
     textTransform: 'uppercase',
-    letterSpacing: 1,
+    letterSpacing: 1.2,
   },
 
   // Shared page title (pages 3, 4)
@@ -672,15 +680,21 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   signalDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   signalLabel: {
     flex: 1,
     color: Glow.palette.ink,
     fontFamily: FontFamily.sansMedium,
     fontSize: FontSize.md,
+    letterSpacing: -0.1,
+  },
+  // Fixed-width slot so labels & scores don't shift when delta appears.
+  signalDeltaSlot: {
+    width: 44,
+    alignItems: 'flex-end',
   },
   signalDelta: {
     flexDirection: 'row',
@@ -694,31 +708,36 @@ const styles = StyleSheet.create({
   signalScore: {
     fontFamily: FontFamily.sansBold,
     fontSize: FontSize.xl,
-    minWidth: 36,
+    letterSpacing: -0.5,
+    minWidth: 40,
     textAlign: 'right',
   },
   signalBadge: {
-    fontFamily: FontFamily.sansMedium,
+    fontFamily: FontFamily.sansSemiBold,
     fontSize: FontSize.xxs,
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
     marginTop: Spacing.xxs,
   },
   // Lesion summary pill
   lesionSummary: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.sm,
+    gap: Spacing.xs,
     marginTop: Spacing.lg,
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.md,
+    paddingVertical: 6,
+    paddingHorizontal: Spacing.sm + 2,
     backgroundColor: Glow.palette.surface,
+    borderWidth: 1,
+    borderColor: Glow.palette.glow,
     borderRadius: BorderRadius.full,
     alignSelf: 'flex-start',
   },
   lesionSummaryText: {
     color: Glow.palette.accent,
-    fontFamily: FontFamily.sansMedium,
-    fontSize: FontSize.sm,
+    fontFamily: FontFamily.sansSemiBold,
+    fontSize: FontSize.xs,
+    letterSpacing: 0.3,
   },
 
   // Page 3: Insights
@@ -746,11 +765,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 1,
+    backgroundColor: Glow.palette.accent,
   },
   actionPlanNumber: {
     color: Colors.textOnDark,
     fontFamily: FontFamily.sansBold,
     fontSize: FontSize.xxs,
+    letterSpacing: 0.2,
   },
   actionPlanText: {
     flex: 1,
@@ -767,12 +788,25 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: Spacing.md,
   },
+  meshHintChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'center',
+    marginTop: Spacing.md,
+    paddingVertical: 5,
+    paddingHorizontal: Spacing.sm + 2,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Glow.palette.surface,
+    borderWidth: 1,
+    borderColor: Glow.palette.glow,
+  },
   meshHint: {
     color: Glow.palette.muted,
-    fontFamily: FontFamily.sans,
-    fontSize: FontSize.xs,
-    textAlign: 'center',
-    marginTop: Spacing.sm,
+    fontFamily: FontFamily.sansMedium,
+    fontSize: FontSize.xxs,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
   },
   interventionWrap: {
     marginTop: Spacing.lg,
@@ -786,6 +820,23 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: Spacing.lg,
   },
+  doneIconWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Glow.palette.surface,
+    borderWidth: 1,
+    borderColor: Glow.palette.glow,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  doneIconHalo: {
+    position: 'absolute',
+    width: 110,
+    height: 110,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Glow.palette.accent + '10',
+  },
   doneText: {
     alignItems: 'center',
     gap: Spacing.xs,
@@ -794,17 +845,20 @@ const styles = StyleSheet.create({
     color: Glow.palette.ink,
     fontFamily: FontFamily.sansBold,
     fontSize: FontSize.xxl,
+    letterSpacing: -0.5,
   },
   doneStat: {
     color: Glow.palette.accent,
     fontFamily: FontFamily.sansSemiBold,
-    fontSize: FontSize.sm,
+    fontSize: FontSize.xs,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
   },
   doneCopy: {
     color: Glow.palette.muted,
     fontFamily: FontFamily.sans,
     fontSize: FontSize.md,
-    lineHeight: 23,
+    lineHeight: 24,
     textAlign: 'center',
     paddingHorizontal: Spacing.xl,
     marginTop: Spacing.xs,
@@ -819,16 +873,16 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     alignItems: 'center',
     gap: Spacing.sm,
-    backgroundColor: Colors.warning + '14',
-    borderRadius: BorderRadius.xl,
+    backgroundColor: Colors.warning + '12',
+    borderRadius: BorderRadius.lg,
     borderWidth: 1,
-    borderColor: Colors.warning + '40',
+    borderColor: Colors.warning + '33',
     padding: Spacing.md,
     marginHorizontal: Spacing.md,
   },
   alertCopy: {
     flex: 1,
-    color: Glow.palette.muted,
+    color: Glow.palette.ink,
     fontFamily: FontFamily.sans,
     fontSize: FontSize.sm,
     lineHeight: 20,

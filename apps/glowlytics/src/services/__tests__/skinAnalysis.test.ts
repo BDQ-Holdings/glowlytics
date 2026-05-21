@@ -1,6 +1,18 @@
-import { analyzeSkiN } from '../skinAnalysis';
+import { analyzeSkiN, analyzeWithFallback } from '../skinAnalysis';
 import type { ScannerReading } from '../mockScanner';
 import type { UserProfile, ScanProtocol, ModelOutput } from '../../types';
+
+jest.mock('../visionAPI', () => ({
+  analyzeWithVisionAPI: jest.fn(),
+}));
+jest.mock('../../config/env', () => ({
+  env: { API_BASE_URL: 'https://api.test', CLERK_PUBLISHABLE_KEY: '' },
+}));
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { analyzeWithVisionAPI: mockedVisionApi } = require('../visionAPI') as {
+  analyzeWithVisionAPI: jest.Mock;
+};
 
 // Fixed test inputs for deterministic verification
 const mockScannerData: ScannerReading = {
@@ -492,3 +504,54 @@ function makeOutputs(count: number, overrides: Partial<ModelOutput> = {}): Model
     ...overrides,
   }));
 }
+
+// ──────────────────────────────────────────────────────────────────────────
+// analyzeWithFallback — silent-failure regression guard
+//
+// The production scan flow (camera.tsx → analyzing.tsx) hands off only a
+// photoUri; scanner indices are always 0 in the AnalysisInput. Previously
+// any Vision API failure would silently fall back to analyzeSkiN with that
+// all-zero input, producing scores of ~0 that looked like a flawless reading
+// instead of surfacing the backend failure. Lock in the new "propagate the
+// error" contract.
+// ──────────────────────────────────────────────────────────────────────────
+describe('analyzeWithFallback - failure propagation', () => {
+  beforeEach(() => {
+    mockedVisionApi.mockReset();
+  });
+
+  const zeroScannerInput = {
+    ...baseInput,
+    scannerData: { inflammation_index: 0, pigmentation_index: 0, texture_index: 0 },
+    photoUri: 'file:///tmp/scan.jpg',
+  };
+
+  it('propagates Vision API errors instead of returning silent all-zero fallback scores', async () => {
+    mockedVisionApi.mockRejectedValueOnce(new Error('Vision API error (500): upstream'));
+    await expect(analyzeWithFallback(zeroScannerInput)).rejects.toThrow(/Vision API error \(500\)/);
+  });
+
+  it('throws a clear error when API is configured but photoUri is missing', async () => {
+    await expect(
+      analyzeWithFallback({ ...zeroScannerInput, photoUri: undefined }),
+    ).rejects.toThrow(/photo unavailable/i);
+    expect(mockedVisionApi).not.toHaveBeenCalled();
+  });
+
+  it('returns Vision API result unchanged when the call succeeds', async () => {
+    mockedVisionApi.mockResolvedValueOnce({
+      acne_score: 42,
+      sun_damage_score: 18,
+      skin_age_score: 27,
+      confidence: 'high',
+      primary_driver: 'cycle window',
+      recommended_action: 'Stay consistent.',
+    });
+    const result = await analyzeWithFallback(zeroScannerInput);
+    expect(result.acne_score).toBe(42);
+    expect(result.sun_damage_score).toBe(18);
+    expect(result.skin_age_score).toBe(27);
+    expect(result.confidence).toBe('high');
+    expect(result.escalation_flag).toBe(false);
+  });
+});
