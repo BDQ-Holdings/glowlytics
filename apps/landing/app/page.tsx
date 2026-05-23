@@ -149,7 +149,7 @@ export default function LandingPage() {
             </h1>
             <div className="hero-sub">
               An eight-second daily check-in. A quiet weekly read of what&rsquo;s
-              actually working &mdash; including the things already on your shelf.
+              actually working, including the things already on your shelf.
               No grades. No streak guilt. No noise.
             </div>
 
