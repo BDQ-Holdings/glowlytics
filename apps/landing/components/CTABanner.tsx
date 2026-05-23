@@ -13,7 +13,7 @@ export default function CTABanner({ signal }: { signal?: string }) {
           <h2>{title}</h2>
           <p>
             Eight seconds a morning. A quietly audited shelf. The first strong pattern surfaces
-            around week three — no streak guilt before then, no noise after.
+            around week three, no streak guilt before then, no noise after.
           </p>
         </div>
         <div className="cta-banner-cta">

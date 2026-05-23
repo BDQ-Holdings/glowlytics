@@ -118,11 +118,11 @@ export default function TermsPage() {
   return (
     <div className="legal-shell">
       <header className="legal-header">
-        <div className="page-kicker">— Terms</div>
+        <div className="page-kicker">Terms</div>
         <h1>The quiet print, in plain words.</h1>
         <p>
           These terms govern your use of Glowlytics. We&apos;ve tried to write them like a
-          letter, not a contract — but the contract part is real.
+          letter, not a contract, but the contract part is real.
         </p>
         <dl className="legal-meta">
           <div>

@@ -35,7 +35,6 @@ export default function Footer() {
       </div>
       <div className="site-foot-legal">
         <span>© {new Date().getFullYear()} Glowlytics · BDQ Holdings LLC</span>
-        <span>Made to be edited.</span>
       </div>
 
       <style>{`

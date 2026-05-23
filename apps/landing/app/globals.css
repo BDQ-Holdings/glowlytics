@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /* ─────────────────────────────────────────────────────────────
-   Glowlytics — Dusk editorial theme (unified across the site)
+   Glowlytics, Dusk editorial theme (unified across the site)
    Mirrors `Glowlytics Landing.html` from the Claude Design handoff
    ───────────────────────────────────────────────────────────── */
 
@@ -120,7 +120,7 @@ select {
   font-style: normal;
 }
 
-/* ─── Editorial primitives — used by every content page ─── */
+/* ─── Editorial primitives, used by every content page ─── */
 
 .page-shell {
   width: min(1120px, calc(100% - 48px));
@@ -140,7 +140,7 @@ select {
   color: var(--muted);
 }
 .page-kicker::before {
-  content: "—";
+  content: "·";
   color: var(--accent);
   font-family: var(--font-display);
   font-style: italic;
@@ -409,7 +409,7 @@ select {
 }
 
 .article-prose ul li::before {
-  content: "—";
+  content: "·";
   position: absolute;
   left: 0;
   top: 0;
@@ -561,7 +561,7 @@ select {
   border-bottom: 1px solid var(--hairline);
 }
 
-/* ─── Eyebrow pill (legacy — used by article-tagged components) ─── */
+/* ─── Eyebrow pill (legacy, used by article-tagged components) ─── */
 .eyebrow-pill {
   display: inline-flex;
   align-items: center;

@@ -132,13 +132,13 @@ export default function BlogArticleLayout({
         await navigator.share({ title: meta.title, text: meta.description, url });
         return;
       } catch {
-        /* user dismissed — fall through to copy */
+        /* user dismissed, fall through to copy */
       }
     }
     try {
       await navigator.clipboard.writeText(url);
     } catch {
-      /* clipboard unavailable — no-op */
+      /* clipboard unavailable, no-op */
     }
   };
 
@@ -693,7 +693,7 @@ export default function BlogArticleLayout({
         .bp-btn:hover { transform: translateY(-1px); }
         .bp-btn-primary { background: var(--ink); color: var(--surface); }
 
-        /* Article body — editorial typography */
+        /* Article body, editorial typography */
         .bp-body {
           grid-area: body;
           width: 100%;
@@ -852,7 +852,7 @@ export default function BlogArticleLayout({
           text-align: center;
           padding: 0 16px;
         }
-        /* Heading autolinks added by rehype-autolink-headings — keep them invisible. */
+        /* Heading autolinks added by rehype-autolink-headings, keep them invisible. */
         .bp-body h2 a,
         .bp-body h3 a {
           border-bottom: none;
@@ -1189,7 +1189,7 @@ export default function BlogArticleLayout({
           border-bottom: 1px solid color-mix(in oklab, var(--accent) 35%, transparent);
         }
 
-        /* Responsive — collapse 3-col → 1-col */
+        /* Responsive, collapse 3-col → 1-col */
         @media (max-width: 1100px) {
           .bp-post {
             grid-template-columns: minmax(0, var(--measure));

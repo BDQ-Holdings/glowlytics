@@ -11,7 +11,7 @@ const jsonLd = {
   applicationCategory: "HealthApplication",
   operatingSystem: "iOS",
   description:
-    "A glow companion that listens before it speaks. Daily skin readings, weekly patterns, and a quietly audited shelf — built on clinical-grade analysis.",
+    "A glow companion that listens before it speaks. Daily skin readings, weekly patterns, and a quietly audited shelf, built on clinical-grade analysis.",
   url: "https://glowlytics.ai",
   author: { "@type": "Organization", name: "BDQ Holdings LLC" },
   offers: {
@@ -50,7 +50,7 @@ function ArrowIcon() {
   );
 }
 
-/* Two-state email capture — keeps the visual but acknowledges submission
+/* Two-state email capture, keeps the visual but acknowledges submission
    without any backend wiring. */
 function EmailCapture({ id }: { id?: string }) {
   const [done, setDone] = useState(false);
@@ -141,7 +141,7 @@ export default function LandingPage() {
       <section className="hero">
         <div className="hero-grid">
           <div>
-            <div className="eyebrow">— a glow companion · iOS, now in TestFlight</div>
+            <div className="eyebrow">a glow companion · iOS, now in TestFlight</div>
             <h1 className="hero-h">
               Your skin keeps a journal.
               <br />
@@ -313,13 +313,13 @@ export default function LandingPage() {
       {/* ─── Quiet pull ─── */}
       <section className="band quietband">
         <div className="container">
-          <div className="eyebrow">— 01 · the difference</div>
+          <div className="eyebrow">01 · the difference</div>
           <p className="pull">
             Skin apps shout. We listen.
             <br />
             <span className="alt">
               No grades, no panic, no &ldquo;optimization.&rdquo; Glowlytics
-              watches your face the way a friend who pays attention would —
+              watches your face the way a friend who pays attention would,
               quietly, over weeks, and only speaks when there&rsquo;s something
               honestly worth saying.
             </span>
@@ -332,7 +332,7 @@ export default function LandingPage() {
         <div className="container">
           <div className="section-head">
             <div>
-              <div className="section-num">— 02</div>
+              <div className="section-num">02</div>
               <h2>
                 How it works,
                 <br />
@@ -341,7 +341,7 @@ export default function LandingPage() {
             </div>
             <div className="lede">
               Eight seconds in the morning. A weekly story you can actually act
-              on. The rest is up to your skin — which, by the way, moves on
+              on. The rest is up to your skin, which, by the way, moves on
               weeks, not hours.
             </div>
           </div>
@@ -352,8 +352,8 @@ export default function LandingPage() {
               <h3>Soft light, chin level.</h3>
               <p>
                 Find a window. Three breaths, one tap. The shutter measures
-                fourteen reference points across your face — hydration, redness,
-                tone variance, micro-texture — and is done before you&rsquo;ve
+                fourteen reference points across your face, hydration, redness,
+                tone variance, micro-texture, and is done before you&rsquo;ve
                 blinked twice.
               </p>
               <div className="visual">
@@ -379,7 +379,7 @@ export default function LandingPage() {
               <div className="num">ii.</div>
               <h3>A daily read, not a grade.</h3>
               <p>
-                Your Glow score is one number — but the real story is underneath.
+                Your Glow score is one number, but the real story is underneath.
                 Four facets, what moved, and the most likely{" "}
                 <em className="it">why</em>. We never call you a 73%. We tell
                 you you slept well.
@@ -399,7 +399,7 @@ export default function LandingPage() {
                 Around day 18, the journal starts talking. &ldquo;Tuesdays run
                 hot.&rdquo; &ldquo;Your retinoid is paying off.&rdquo; &ldquo;The
                 new pillowcase is doing something.&rdquo; We connect sleep,
-                weather, products, and skin — only with strong enough evidence
+                weather, products, and skin, only with strong enough evidence
                 to bother.
               </p>
               <div className="visual">
@@ -432,7 +432,7 @@ export default function LandingPage() {
               <h3>A ritual that earns its place.</h3>
               <p>
                 Pause what isn&rsquo;t working. Keep what is. Every product you
-                own gets a quiet verdict — backed by the actual readings, not a
+                own gets a quiet verdict, backed by the actual readings, not a
                 sponsor&rsquo;s brief. You&rsquo;ll buy less, not more.
               </p>
               <div className="visual">
@@ -461,7 +461,7 @@ export default function LandingPage() {
         <div className="container">
           <div className="section-head">
             <div>
-              <div className="section-num">— 03</div>
+              <div className="section-num">03</div>
               <h2>
                 What we watch.
                 <br />
@@ -525,7 +525,7 @@ export default function LandingPage() {
               <div className="reading">Redness map · week-over-week</div>
               <p>
                 Distribution and intensity of warm tones. We&rsquo;re not
-                chasing zero — we&rsquo;re chasing your baseline, and noticing
+                chasing zero, we&rsquo;re chasing your baseline, and noticing
                 when something pushed you off it.
               </p>
               <div className="what">
@@ -554,7 +554,7 @@ export default function LandingPage() {
               <div className="reading">Tone variance + post-mark fade</div>
               <p>
                 How uniform your tone is, and how quickly old marks are leaving.
-                The slowest of the four to move — and the most rewarding when it
+                The slowest of the four to move, and the most rewarding when it
                 does.
               </p>
               <div className="what">L*a*b* delta · 28-day rolling fade index</div>
@@ -579,7 +579,7 @@ export default function LandingPage() {
               <h4>Firm</h4>
               <div className="reading">Micro-bounce · cheek + jaw</div>
               <p>
-                How quickly your skin returns from a smile. A long-arc signal —
+                How quickly your skin returns from a smile. A long-arc signal,
                 meaningful over months, not days. We mark it but never alarm
                 you.
               </p>
@@ -596,7 +596,7 @@ export default function LandingPage() {
         <div className="container">
           <div className="section-head">
             <div>
-              <div className="section-num">— 04</div>
+              <div className="section-num">04</div>
               <h2>
                 A real morning.
                 <br />
@@ -605,7 +605,7 @@ export default function LandingPage() {
             </div>
             <div className="lede">
               What a Wednesday in May looks like. The score on the left, the
-              story on the right. The number is the smallest part — what moved
+              story on the right. The number is the smallest part, what moved
               and why is the point.
             </div>
           </div>
@@ -613,7 +613,7 @@ export default function LandingPage() {
           <div className="sample-grid">
             <div className="sample-read">
               <div className="sample-inner">
-                <div className="eyebrow">— Today&rsquo;s read · Wed, May 6</div>
+                <div className="eyebrow">Today&rsquo;s read · Wed, May 6</div>
                 <div className="sample-big">78</div>
                 <div className="sample-delta">
                   <svg
@@ -637,7 +637,7 @@ export default function LandingPage() {
                   You look <em>well-rested</em>.
                 </div>
                 <div className="sample-sub">
-                  Hydration is the standout. Tone took a small dip — nothing to
+                  Hydration is the standout. Tone took a small dip, nothing to
                   chase. We&rsquo;ll watch it again tomorrow.
                 </div>
               </div>
@@ -708,7 +708,7 @@ export default function LandingPage() {
                 <div>
                   <div className="nm">Even</div>
                   <div className="why">
-                    Slight dullness — try a slow exfoliant tonight
+                    Slight dullness, try a slow exfoliant tonight
                   </div>
                 </div>
                 <div className="dlt down">−1 · 65→64</div>
@@ -753,7 +753,7 @@ export default function LandingPage() {
         <div className="container">
           <div className="section-head">
             <div>
-              <div className="section-num">— 05</div>
+              <div className="section-num">05</div>
               <h2>
                 The patterns
                 <br />
@@ -762,7 +762,7 @@ export default function LandingPage() {
             </div>
             <div className="lede">
               We don&rsquo;t ship every wiggle in the data. A pattern only
-              surfaces once it&rsquo;s repeated enough times to mean something —
+              surfaces once it&rsquo;s repeated enough times to mean something,
               and we&rsquo;ll tell you exactly how sure we are.
             </div>
           </div>
@@ -776,7 +776,7 @@ export default function LandingPage() {
               <h3>Your skin loves slow mornings.</h3>
               <p>
                 On days you sleep 7+ hours, your hydration jumps fourteen points
-                by evening. Stay the course — no changes needed.
+                by evening. Stay the course, no changes needed.
               </p>
               <div className="chart">
                 <svg width="100%" height="56" viewBox="0 0 220 56" aria-hidden="true">
@@ -849,7 +849,7 @@ export default function LandingPage() {
               <h3>The retinoid is paying off.</h3>
               <p>
                 Three weeks in, evenness is up eleven points. Mild peel around
-                day four was expected. Stay the course — no changes needed.
+                day four was expected. Stay the course, no changes needed.
               </p>
               <div className="chart">
                 <svg width="100%" height="56" viewBox="0 0 220 56" aria-hidden="true">
@@ -888,7 +888,7 @@ export default function LandingPage() {
         <div className="container">
           <div className="section-head">
             <div>
-              <div className="section-num">— 06</div>
+              <div className="section-num">06</div>
               <h2>
                 Your shelf,
                 <br />
@@ -898,7 +898,7 @@ export default function LandingPage() {
             <div className="lede">
               Every product gets a verdict, backed by the actual readings. Five
               things working, two on the fence, and the courage to pause the
-              rest. We don&rsquo;t take affiliate money — ever.
+              rest. We don&rsquo;t take affiliate money, ever.
             </div>
           </div>
 
@@ -939,7 +939,7 @@ export default function LandingPage() {
         <div className="container">
           <div className="section-head">
             <div>
-              <div className="section-num">— 07</div>
+              <div className="section-num">07</div>
               <h2>
                 How we talk
                 <br />
@@ -955,12 +955,12 @@ export default function LandingPage() {
 
           <div className="voice-grid">
             <div className="voice-col we">
-              <h3>We say —</h3>
+              <h3>We say -</h3>
               <div className="voice-line">
                 You look <em>well-rested</em>.
               </div>
               <div className="voice-line">
-                Tone took a small dip — nothing to chase.
+                Tone took a small dip, nothing to chase.
               </div>
               <div className="voice-line">No rush. The streak waits.</div>
               <div className="voice-line">
@@ -968,7 +968,7 @@ export default function LandingPage() {
               </div>
             </div>
             <div className="voice-col not">
-              <h3>We don&rsquo;t —</h3>
+              <h3>We don&rsquo;t -</h3>
               <div className="voice-line">
                 <span className="strike">Sleep score: 87 (great!) 💤✨</span>
               </div>
@@ -993,7 +993,7 @@ export default function LandingPage() {
         <div className="privacyband">
           <div className="privacyband-grid">
             <div>
-              <div className="eyebrow">— 08 · your face, your phone</div>
+              <div className="eyebrow">08 · your face, your phone</div>
               <h2>
                 Stays <em>on the device</em>.
                 <br />
@@ -1001,7 +1001,7 @@ export default function LandingPage() {
               </h2>
               <p>
                 Reading a face is intimate work. We treat it like a journal
-                you&rsquo;ve left out on the table — closed.
+                you&rsquo;ve left out on the table, closed.
               </p>
             </div>
 
@@ -1026,7 +1026,7 @@ export default function LandingPage() {
                   <div className="tt">On-device analysis</div>
                   <div className="ds">
                     Every reading runs in the Neural Engine on your phone.
-                    Photos never leave it — not for analysis, not for backups,
+                    Photos never leave it, not for analysis, not for backups,
                     not ever.
                   </div>
                 </div>
@@ -1115,7 +1115,7 @@ export default function LandingPage() {
         <div className="container">
           <div className="section-head">
             <div>
-              <div className="section-num">— 09</div>
+              <div className="section-num">09</div>
               <h2>
                 What early
                 <br />
@@ -1132,7 +1132,7 @@ export default function LandingPage() {
             <div className="quote">
               <blockquote>
                 I bought <em>nothing</em> new for two months. It told me my
-                serum was the hero — I just needed to keep using it.
+                serum was the hero, I just needed to keep using it.
               </blockquote>
               <div className="cite">
                 <div
@@ -1183,7 +1183,7 @@ export default function LandingPage() {
         <div className="container">
           <div className="section-head">
             <div>
-              <div className="section-num">— 10</div>
+              <div className="section-num">10</div>
               <h2>
                 Honest answers
                 <br />
@@ -1192,7 +1192,7 @@ export default function LandingPage() {
             </div>
             <div className="lede">
               The things people ask us at dinner parties. If yours isn&rsquo;t
-              here, we&rsquo;ll happily answer it — write us, the address is in
+              here, we&rsquo;ll happily answer it, write us, the address is in
               the footer.
             </div>
           </div>
@@ -1216,7 +1216,7 @@ export default function LandingPage() {
               </summary>
               <div className="faq-a">
                 Three to four weeks for the first strong pattern. We could
-                surface them sooner — most apps do — but they wouldn&rsquo;t be
+                surface them sooner, most apps do, but they wouldn&rsquo;t be
                 true. Skin moves on weeks, and we&rsquo;d rather be slow and
                 right than fast and noisy.
               </div>
@@ -1249,7 +1249,7 @@ export default function LandingPage() {
                 iOS only?<span className="plus">+</span>
               </summary>
               <div className="faq-a">
-                iOS 16+ at launch — the readings rely on the TrueDepth
+                iOS 16+ at launch, the readings rely on the TrueDepth
                 front-facing camera and on-device Neural Engine. A read-only web
                 mirror for your timeline is in private beta. Android is on the
                 roadmap once on-device depth is more uniform.
@@ -1261,7 +1261,7 @@ export default function LandingPage() {
                 <span className="plus">+</span>
               </summary>
               <div className="faq-a">
-                We normalize against soft natural light from the side — the
+                We normalize against soft natural light from the side, the
                 kind a window gives you. The app gently coaches you toward the
                 right setup the first few times, and quietly tags any reading
                 taken in low or harsh light as lower-confidence in your
@@ -1283,7 +1283,7 @@ export default function LandingPage() {
               Start a quiet one.
             </h2>
             <p>
-              Download Glowlytics on iPhone — your first quiet read is waiting.
+              Download Glowlytics on iPhone, your first quiet read is waiting.
               One short letter a month from us, never more.
             </p>
             <EmailCapture id="final-email" />
@@ -1341,7 +1341,6 @@ export default function LandingPage() {
         </div>
         <div className="legal">
           <span>© 2026 Glowlytics · BDQ Holdings LLC</span>
-          <span>Made to be edited.</span>
         </div>
       </footer>
     </div>
