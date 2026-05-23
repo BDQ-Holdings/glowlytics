@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import "./landing.css";
 
-/* ── JSON-LD structured data ── */
+/* ─── JSON-LD structured data ─── */
 const jsonLd = {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
@@ -11,7 +11,7 @@ const jsonLd = {
   applicationCategory: "HealthApplication",
   operatingSystem: "iOS",
   description:
-    "AI-powered skin health tracking built by doctors. Track 5 skin signals daily with clinical-grade analysis.",
+    "A glow companion that listens before it speaks. Daily skin readings, weekly patterns, and a quietly audited shelf — built on clinical-grade analysis.",
   url: "https://glowlytics.ai",
   author: { "@type": "Organization", name: "BDQ Holdings LLC" },
   offers: {
@@ -24,1130 +24,1326 @@ const jsonLd = {
 
 const APP_STORE_URL = "https://apps.apple.com/app/glowlytics/id6760600635";
 
+function Wordmark({ style }: { style?: React.CSSProperties }) {
+  return (
+    <span className="wordmark" style={style}>
+      Glowl<em>y</em>tics
+    </span>
+  );
+}
+
+function ArrowIcon() {
+  return (
+    <svg
+      className="arrow"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M5 12 h14" />
+      <path d="M14 6 l6 6 -6 6" />
+    </svg>
+  );
+}
+
+/* Two-state email capture — keeps the visual but acknowledges submission
+   without any backend wiring. */
+function EmailCapture({ id }: { id?: string }) {
+  const [done, setDone] = useState(false);
+  const onSubmit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setDone(true);
+  };
+  return (
+    <form className="hero-form" onSubmit={onSubmit} id={id}>
+      <input
+        type="email"
+        placeholder="you@yourplace.com"
+        aria-label="Email"
+        required
+        disabled={done}
+      />
+      <button type="submit" className="btn btn-primary">
+        {done ? "You’re in ✓" : "Save my spot"}
+      </button>
+    </form>
+  );
+}
+
 export default function LandingPage() {
-  const heroRef = useRef<HTMLElement>(null);
-  const ctaRef = useRef<HTMLElement>(null);
-  const stickyRef = useRef<HTMLDivElement>(null);
-  const backTopRef = useRef<HTMLButtonElement>(null);
-  const meshRef = useRef<HTMLDivElement>(null);
-  const gridRef = useRef<HTMLDivElement>(null);
-
-  /* ── All scroll / intersection effects ── */
+  /* Mount-time setup: scope cream theme to <html>, restore on unmount,
+     and wire up smooth-scroll for in-page anchors. */
   useEffect(() => {
-    /* Reveal init */
-    document.documentElement.classList.add("reveal-init");
+    const root = document.documentElement;
+    root.classList.add("dusk-landing");
+    root.dataset.palette = "dusk";
 
-    /* Scroll reveal */
-    const revealEls = document.querySelectorAll(".reveal");
-    if (revealEls.length && "IntersectionObserver" in window) {
-      const revealObs = new IntersectionObserver(
-        (entries) => {
-          entries.forEach((entry) => {
-            if (entry.isIntersecting) {
-              entry.target.classList.add("visible");
-              revealObs.unobserve(entry.target);
-            }
-          });
-        },
-        { threshold: 0.1, rootMargin: "0px 0px -40px 0px" }
-      );
-      revealEls.forEach((el) => revealObs.observe(el));
-    } else {
-      revealEls.forEach((el) => el.classList.add("visible"));
-    }
-
-    /* Number counter animation */
-    const counters = document.querySelectorAll<HTMLElement>(".num[data-count]");
-    if (counters.length) {
-      const counterObs = new IntersectionObserver(
-        (entries) => {
-          entries.forEach((entry) => {
-            if (!entry.isIntersecting) return;
-            const el = entry.target as HTMLElement;
-            const end = el.getAttribute("data-count");
-            const suffix = el.getAttribute("data-suffix") || "";
-            const prefix = el.getAttribute("data-prefix") || "";
-            const endNum = parseFloat(end || "0");
-            if (isNaN(endNum)) {
-              el.textContent = prefix + end + suffix;
-              counterObs.unobserve(el);
-              return;
-            }
-            const duration = 1200;
-            const start = performance.now();
-            const step = (now: number) => {
-              const progress = Math.min((now - start) / duration, 1);
-              const eased = 1 - Math.pow(1 - progress, 3);
-              const current = Math.round(eased * endNum);
-              el.textContent = prefix + current + suffix;
-              if (progress < 1) requestAnimationFrame(step);
-            };
-            requestAnimationFrame(step);
-            counterObs.unobserve(el);
-          });
-        },
-        { threshold: 0.3 }
-      );
-      counters.forEach((c) => counterObs.observe(c));
-    }
-
-    /* Sticky mobile CTA */
-    const sticky = stickyRef.current;
-    const hero = heroRef.current;
-    const cta = ctaRef.current;
-    if (sticky && hero) {
-      const stickyObs = new IntersectionObserver(
-        (entries) => {
-          const heroVisible = entries.some(
-            (e) => e.target === hero && e.isIntersecting
-          );
-          const ctaVisible = entries.some(
-            (e) => e.target === cta && e.isIntersecting
-          );
-          sticky.classList.toggle("visible", !heroVisible && !ctaVisible);
-        },
-        { threshold: 0.1 }
-      );
-      stickyObs.observe(hero);
-      if (cta) stickyObs.observe(cta);
-    }
-
-    /* Hero parallax */
-    const mesh = meshRef.current;
-    const grid = gridRef.current;
-    const reducedMotion = window.matchMedia(
-      "(prefers-reduced-motion: reduce)"
-    ).matches;
-    let ticking = false;
-    const handleParallax = () => {
-      if (!mesh || !grid || reducedMotion) return;
-      if (!ticking) {
-        requestAnimationFrame(() => {
-          const y = window.scrollY;
-          if (y < window.innerHeight * 1.5) {
-            mesh.style.transform = `translateY(${y * 0.3}px)`;
-            grid.style.transform = `translateY(${y * 0.15}px)`;
-          }
-          ticking = false;
-        });
-        ticking = true;
-      }
-    };
-    window.addEventListener("scroll", handleParallax, { passive: true });
-
-    /* Back to top */
-    const backBtn = backTopRef.current;
-    const handleBackScroll = () => {
-      if (backBtn) {
-        backBtn.classList.toggle("visible", window.scrollY > window.innerHeight);
-      }
-    };
-    window.addEventListener("scroll", handleBackScroll, { passive: true });
-
-    /* Smooth anchor scroll */
-    const anchors = document.querySelectorAll<HTMLAnchorElement>(
-      'a[href^="#"]'
+    const anchors = Array.from(
+      document.querySelectorAll<HTMLAnchorElement>(
+        '.dusk-page a[href^="#"]'
+      )
     );
-    const anchorHandler = (e: Event) => {
+    const onClick = (e: Event) => {
       const a = e.currentTarget as HTMLAnchorElement;
       const href = a.getAttribute("href");
-      if (!href) return;
+      if (!href || href === "#") return;
       const target = document.querySelector(href);
       if (target) {
         e.preventDefault();
-        target.scrollIntoView({ behavior: "smooth", block: "start" });
+        window.scrollTo({
+          top:
+            (target as HTMLElement).getBoundingClientRect().top +
+            window.scrollY -
+            60,
+          behavior: "smooth",
+        });
       }
     };
-    anchors.forEach((a) => a.addEventListener("click", anchorHandler));
+    anchors.forEach((a) => a.addEventListener("click", onClick));
 
     return () => {
-      window.removeEventListener("scroll", handleParallax);
-      window.removeEventListener("scroll", handleBackScroll);
-      anchors.forEach((a) => a.removeEventListener("click", anchorHandler));
+      root.classList.remove("dusk-landing");
+      delete root.dataset.palette;
+      anchors.forEach((a) => a.removeEventListener("click", onClick));
     };
   }, []);
 
-  /* ── Comparison toggle ── */
-  const handleCompareClick = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      const btn = (e.target as HTMLElement).closest("button");
-      if (!btn) return;
-      const tab = btn.getAttribute("data-tab");
-      const toggle = e.currentTarget;
-      const panel = toggle.parentElement?.querySelector("#compare-panel");
-      if (!panel) return;
-      const btns = toggle.querySelectorAll("button");
-      const values = panel.querySelectorAll(".compare-value");
-      btns.forEach((b) => {
-        b.classList.remove("active");
-        b.setAttribute("aria-selected", "false");
-      });
-      btn.classList.add("active");
-      btn.setAttribute("aria-selected", "true");
-      values.forEach((v) => {
-        const isGlow = tab === "glowlytics";
-        const text = isGlow
-          ? v.getAttribute("data-glow")
-          : v.getAttribute("data-other");
-        const check = v.querySelector(".compare-check");
-        const label = v.querySelector(".compare-label");
-        if (isGlow) {
-          v.className = "compare-value good";
-          if (check) check.textContent = "\u2713";
-        } else {
-          v.className = "compare-value bad";
-          if (check) check.textContent = "\u2715";
-        }
-        if (label) label.textContent = text;
-      });
-    },
-    []
-  );
-
   return (
-    <div className="landing-page">
-      {/* JSON-LD */}
+    <div className="dusk-page">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
 
-      {/* HERO */}
-      <section className="hero" ref={heroRef}>
-        <div className="hero-mesh" ref={meshRef} />
-        <div className="hero-grid" ref={gridRef} />
-
-        <div className="hero-content" id="hero-content">
-          <div className="hero-badge an an1">
-            <span className="hero-badge-dot" aria-hidden="true" />
-            Built by doctors. Backed by research.
+      {/* ─── Nav ─── */}
+      <nav className="top">
+        <div className="inner">
+          <Wordmark />
+          <div className="links">
+            <a href="#how">How it works</a>
+            <a href="#facets">What it watches</a>
+            <a href="#patterns">Patterns</a>
+            <a href="#privacy">Privacy</a>
+            <a href="#faq">FAQ</a>
           </div>
-          <h1 className="an an2">
-            See real results
-            <br />
-            in{" "}
-            <span
-              className="hero-rotate"
-              aria-live="polite"
-              aria-atomic="true"
-            >
-              <span className="hero-rotate-inner">
-                <span className="accent">7 days.</span>
-                <span className="accent">your skin.</span>
-                <span className="accent">the data.</span>
+          <a href={APP_STORE_URL} className="btn btn-primary btn-sm">
+            Get Glowlytics
+            <ArrowIcon />
+          </a>
+        </div>
+      </nav>
+
+      {/* ─── Hero ─── */}
+      <section className="hero">
+        <div className="hero-grid">
+          <div>
+            <div className="eyebrow">— a glow companion · iOS, now in TestFlight</div>
+            <h1 className="hero-h">
+              Your skin keeps a journal.
+              <br />
+              <em>We read it back to you.</em>
+            </h1>
+            <div className="hero-sub">
+              An eight-second daily check-in. A quiet weekly read of what&rsquo;s
+              actually working &mdash; including the things already on your shelf.
+              No grades. No streak guilt. No noise.
+            </div>
+
+            <EmailCapture id="hero-email" />
+
+            <div className="hero-meta">
+              <div className="avatar-stack">
+                <span
+                  className="av"
+                  style={{ background: "linear-gradient(135deg, #D9A28B, #E8C9B8)" }}
+                />
+                <span
+                  className="av"
+                  style={{ background: "linear-gradient(135deg, #5A3A5E, #D9A28B)" }}
+                />
+                <span
+                  className="av"
+                  style={{ background: "linear-gradient(135deg, #C9B786, #CFE0C8)" }}
+                />
+                <span
+                  className="av"
+                  style={{ background: "linear-gradient(135deg, #A14A55, #E0B8A6)" }}
+                />
+              </div>
+              <span>
+                12,408 quiet observers, waiting with us.{" "}
+                <em className="ink">Available on iPhone.</em>
               </span>
-            </span>
-          </h1>
-          <p className="hero-sub an an3">
-            The first skin tracker that actually explains what it sees. Scan your
-            face in seconds and get clinical-grade scores for acne, hydration,
-            sun damage, and more.
-          </p>
-          <div className="hero-actions an an4">
-            <a href={APP_STORE_URL} className="btn-primary">
-              Download on the App Store
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 14 14"
-                fill="none"
-                aria-hidden="true"
-              >
-                <path
-                  d="M1 7h12M8 2l5 5-5 5"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
+            </div>
+          </div>
+
+          <div className="phone-stage">
+            <div className="callout callout-1">
+              <div className="ct">
+                Pattern · <em>Strong</em>
+              </div>
+              <div className="callout-tagline">
+                Your skin loves slow mornings.
+              </div>
+            </div>
+            <div className="callout callout-2">
+              <div className="ct callout-streak">
+                <svg
+                  width="13"
+                  height="13"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="var(--accent2)"
+                  strokeWidth="1.7"
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                />
-              </svg>
-            </a>
-            <a href="#how" className="btn-ghost">
-              See how it works
-            </a>
-          </div>
-          <p
-            className="hero-trust an an4"
-            style={{
-              marginTop: "24px",
-              fontSize: "13px",
-              color: "rgba(255,255,255,0.3)",
-              fontWeight: 500,
-              letterSpacing: "0.2px",
-            }}
-          >
-            Free 7-day trial &middot; No credit card required &middot; Photos
-            never stored
-          </p>
-        </div>
-
-        <div className="hero-showcase an an5">
-          <div className="phone-wrapper">
-            {/* Score card */}
-            <div className="float-card fc-score">
-              <div className="score-ring">
-                <svg viewBox="0 0 72 72">
-                  <defs>
-                    <linearGradient
-                      id="scoreGrad"
-                      x1="0"
-                      y1="0"
-                      x2="1"
-                      y2="1"
-                    >
-                      <stop offset="0%" stopColor="#7DE7E1" />
-                      <stop offset="100%" stopColor="#8A6FE8" />
-                    </linearGradient>
-                  </defs>
-                  <circle className="score-track" cx="36" cy="36" r="30" />
-                  <circle className="score-fill" cx="36" cy="36" r="30" />
+                  aria-hidden="true"
+                >
+                  <path d="M12 3 c0 4 -5 5 -5 10 a5 5 0 0 0 10 0 c0-3 -3-4 -3-7 -1 1 -2 1 -2-3 z" />
                 </svg>
-                <span className="score-val">74</span>
+                <span>12 day streak</span>
               </div>
-              <div className="score-label">Skin Score</div>
-            </div>
-
-            {/* Signal bars */}
-            <div className="float-card fc-signals">
-              <div className="fc-signals-title">Skin Signals</div>
-              <div className="signal-row">
-                <span
-                  className="signal-dot"
-                  style={{ background: "var(--teal)" }}
-                />
-                <span className="signal-name">Hydration</span>
-                <div className="signal-bar-bg">
-                  <div
-                    className="signal-bar-fill"
-                    style={{ width: "73%", background: "var(--teal)" }}
-                  />
-                </div>
-              </div>
-              <div className="signal-row">
-                <span
-                  className="signal-dot"
-                  style={{ background: "var(--purple)" }}
-                />
-                <span className="signal-name">Structure</span>
-                <div className="signal-bar-bg">
-                  <div
-                    className="signal-bar-fill"
-                    style={{ width: "62%", background: "var(--purple)" }}
-                  />
-                </div>
-              </div>
-              <div className="signal-row">
-                <span
-                  className="signal-dot"
-                  style={{ background: "var(--coral)" }}
-                />
-                <span className="signal-name">Inflammation</span>
-                <div className="signal-bar-bg">
-                  <div
-                    className="signal-bar-fill"
-                    style={{ width: "40%", background: "var(--coral)" }}
-                  />
-                </div>
-              </div>
-              <div className="signal-row">
-                <span
-                  className="signal-dot"
-                  style={{ background: "var(--amber)" }}
-                />
-                <span className="signal-name">Sun Damage</span>
-                <div className="signal-bar-bg">
-                  <div
-                    className="signal-bar-fill"
-                    style={{ width: "44%", background: "var(--amber)" }}
-                  />
-                </div>
-              </div>
-              <div className="signal-row">
-                <span
-                  className="signal-dot"
-                  style={{ background: "var(--blue)" }}
-                />
-                <span className="signal-name">Elasticity</span>
-                <div className="signal-bar-bg">
-                  <div
-                    className="signal-bar-fill"
-                    style={{ width: "55%", background: "var(--blue)" }}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Insight card */}
-            <div className="float-card fc-insight">
-              <div className="fc-insight-label">Today&apos;s Insight</div>
-              <p>
-                Mild inflammation in T-zone. Barrier repair recommended before
-                PM routine.
-                <span className="typing-cursor" aria-hidden="true" />
-              </p>
+              <div className="callout-tagline">No rush. The streak waits.</div>
             </div>
 
             <div className="phone">
-              <picture>
-                <source srcSet="/app-screenshot.webp" type="image/webp" />
-                <img
-                  src="/app-screenshot.png"
-                  alt="Glowlytics app showing skin analysis dashboard"
-                  width={276}
-                  height={600}
-                />
-              </picture>
+              <div className="notch" />
+              <div className="phone-inner">
+                <div className="phone-status">
+                  <span>9:41</span>
+                  <span>● ● ●</span>
+                </div>
+                <div className="phone-h">
+                  Good morning,
+                  <br />
+                  <em>Maya</em>
+                </div>
+
+                <div className="glow-card">
+                  <div className="glow-card-top">
+                    <div>
+                      <div className="glow-label">Today&rsquo;s glow</div>
+                      <div className="glow-score">78</div>
+                      <div className="glow-delta">+6 vs. start</div>
+                    </div>
+                    <svg
+                      className="glow-ring"
+                      width="64"
+                      height="64"
+                      viewBox="0 0 64 64"
+                      aria-hidden="true"
+                    >
+                      <circle
+                        cx="32"
+                        cy="32"
+                        r="28"
+                        stroke="var(--glow)"
+                        strokeWidth="5"
+                        fill="none"
+                      />
+                      <circle
+                        cx="32"
+                        cy="32"
+                        r="28"
+                        stroke="var(--accent)"
+                        strokeWidth="5"
+                        fill="none"
+                        strokeDasharray="137 200"
+                        strokeLinecap="round"
+                        transform="rotate(-90 32 32)"
+                      />
+                    </svg>
+                  </div>
+                  <div className="phone-cta">Take today&rsquo;s check-in →</div>
+                </div>
+
+                <div className="phone-facets">
+                  <div className="phone-facet">
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="var(--accent)"
+                      strokeWidth="1.7"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M12 3 c-4 5 -6 8 -6 11 a6 6 0 0 0 12 0 c0-3 -2-6 -6-11 z" />
+                    </svg>
+                    <div className="val">82</div>
+                    <div className="nm">Hydrated</div>
+                    <div className="bar">
+                      <i style={{ width: "82%" }} />
+                    </div>
+                  </div>
+                  <div className="phone-facet">
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="var(--accent)"
+                      strokeWidth="1.7"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M5 19 c0-9 7-14 14-14 0 8 -5 14 -14 14 z" />
+                      <path d="M5 19 c3-3 6-5 10-7" />
+                    </svg>
+                    <div className="val">71</div>
+                    <div className="nm">Calm</div>
+                    <div className="bar">
+                      <i style={{ width: "71%" }} />
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* SOCIAL PROOF BAR */}
-      <div className="social-bar">
-        <div className="social-bar-inner">
-          <div className="social-stat reveal rd1">
-            <div className="num" data-count="5">
-              5
-            </div>
-            <div className="lbl">Skin signals tracked daily</div>
-          </div>
-          <div className="social-divider" />
-          <div className="social-stat reveal rd2">
-            <div className="num" data-count="10" data-prefix="<" data-suffix="s">
-              10s
-            </div>
-            <div className="lbl">Full analysis time</div>
-          </div>
-          <div className="social-divider" />
-          <div className="social-stat reveal rd3">
-            <div className="num" data-count="3">
-              3
-            </div>
-            <div className="lbl">AI layers in parallel</div>
-          </div>
-          <div className="social-divider" />
-          <div className="social-stat reveal rd4">
-            <div className="num">0</div>
-            <div className="lbl">Photos stored. Ever.</div>
-          </div>
-        </div>
-      </div>
-
-      {/* TRANSITION */}
-      <div className="section-transition" />
-
-      {/* HOW IT WORKS */}
-      <section className="how" id="how">
-        <div className="section-header">
-          <div className="section-eyebrow reveal rd1">How It Works</div>
-          <h2 className="section-title reveal rd2">
-            Scan. Analyze. Improve.
-          </h2>
-        </div>
-
-        <div className="how-steps">
-          <div className="step-card step-1 reveal rd2">
-            <div className="step-num">1</div>
-            <span className="step-icon">
-              <svg
-                width="36"
-                height="36"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="var(--purple)"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <rect x="2" y="4" width="20" height="16" rx="3" />
-                <circle cx="12" cy="12" r="4" />
-                <path d="M17 4v-1M7 4v-1" />
-              </svg>
+      {/* ─── Quiet pull ─── */}
+      <section className="band quietband">
+        <div className="container">
+          <div className="eyebrow">— 01 · the difference</div>
+          <p className="pull">
+            Skin apps shout. We listen.
+            <br />
+            <span className="alt">
+              No grades, no panic, no &ldquo;optimization.&rdquo; Glowlytics
+              watches your face the way a friend who pays attention would —
+              quietly, over weeks, and only speaks when there&rsquo;s something
+              honestly worth saying.
             </span>
-            <h3>Take a quick scan</h3>
-            <p>
-              Hold up your phone and our smart camera guides you. It
-              auto-detects your face, checks lighting, and captures the perfect
-              shot.
-            </p>
-          </div>
-          <div className="step-card step-2 reveal rd3">
-            <div className="step-num">2</div>
-            <span className="step-icon">
-              <svg
-                width="36"
-                height="36"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="var(--teal)"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
-                <circle cx="12" cy="12" r="3" />
-              </svg>
-            </span>
-            <h3>AI does the heavy lifting</h3>
-            <p>
-              Three analysis engines work at the same time, spotting patterns a
-              mirror can&apos;t show you. All in under 10 seconds.
-            </p>
-          </div>
-          <div className="step-card step-3 reveal rd4">
-            <div className="step-num">3</div>
-            <span className="step-icon">
-              <svg
-                width="36"
-                height="36"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="var(--coral)"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M3 3v18h18" />
-                <path d="M7 16l4-6 4 4 5-8" />
-              </svg>
-            </span>
-            <h3>See what matters</h3>
-            <p>
-              Get scored across 5 skin signals, track changes over time, and
-              receive personalized, research-backed guidance.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* FEATURES BENTO */}
-      <section className="features" id="features">
-        <div className="section-header">
-          <div className="section-eyebrow reveal rd1">Features</div>
-          <h2 className="section-title reveal rd2">
-            Your skin health dashboard
-          </h2>
-          <p
-            className="section-sub reveal rd3"
-            style={{
-              maxWidth: "520px",
-              margin: "16px auto 0",
-              fontSize: "16px",
-              color: "var(--mid-text)",
-              lineHeight: 1.7,
-            }}
-          >
-            One daily scan. Five dimensions of insight. Recommendations you can
-            actually trust.
           </p>
         </div>
+      </section>
 
-        <div className="bento">
-          <div className="bento-card b-wide b-teal reveal rd1">
-            <div className="bento-icon bi-teal">
-              <svg
-                width="22"
-                height="22"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="var(--teal)"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-              >
-                <path d="M12 2.7c0 0-7 8.3-7 12.3a7 7 0 1014 0c0-4-7-12.3-7-12.3z" />
-              </svg>
+      {/* ─── How it works ─── */}
+      <section className="band" id="how">
+        <div className="container">
+          <div className="section-head">
+            <div>
+              <div className="section-num">— 02</div>
+              <h2>
+                How it works,
+                <br />
+                in four small acts.
+              </h2>
             </div>
-            <h3>5 Skin Signals, One Scan</h3>
-            <p>
-              Structure, hydration, inflammation, sun damage, and elasticity.
-              Each scored 0-100 so you always know exactly where your skin
-              stands.
-            </p>
-            <div className="mini-signals">
-              <div className="mini-bar" />
-              <div className="mini-bar" />
-              <div className="mini-bar" />
-              <div className="mini-bar" />
-              <div className="mini-bar" />
+            <div className="lede">
+              Eight seconds in the morning. A weekly story you can actually act
+              on. The rest is up to your skin — which, by the way, moves on
+              weeks, not hours.
             </div>
           </div>
-          <div className="bento-card b-narrow b-purple reveal rd2">
-            <div className="bento-icon bi-purple">
-              <svg
-                width="22"
-                height="22"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="var(--purple)"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-              >
-                <circle cx="11" cy="11" r="7" />
-                <path d="M21 21l-4.35-4.35" />
-              </svg>
+
+          <div className="steps">
+            <div className="step">
+              <div className="num">i.</div>
+              <h3>Soft light, chin level.</h3>
+              <p>
+                Find a window. Three breaths, one tap. The shutter measures
+                fourteen reference points across your face — hydration, redness,
+                tone variance, micro-texture — and is done before you&rsquo;ve
+                blinked twice.
+              </p>
+              <div className="visual">
+                <svg width="120" height="100" viewBox="0 0 120 100" fill="none" aria-hidden="true">
+                  <ellipse
+                    cx="60"
+                    cy="50"
+                    rx="36"
+                    ry="46"
+                    stroke="var(--accent)"
+                    strokeWidth="1.4"
+                    strokeDasharray="3 5"
+                  />
+                  <path d="M14 14 v-8 h8" stroke="var(--ink)" strokeWidth="1.4" strokeLinecap="round" />
+                  <path d="M106 14 v-8 h-8" stroke="var(--ink)" strokeWidth="1.4" strokeLinecap="round" />
+                  <path d="M14 86 v8 h8" stroke="var(--ink)" strokeWidth="1.4" strokeLinecap="round" />
+                  <path d="M106 86 v8 h-8" stroke="var(--ink)" strokeWidth="1.4" strokeLinecap="round" />
+                </svg>
+              </div>
             </div>
-            <h3>Spot Detection</h3>
-            <p>
-              Real-time AI identifies blemishes, bumps, and spots as you scan.
-              Right on your screen, instantly.
-            </p>
-          </div>
-          <div className="bento-card b-half b-coral reveal rd3">
-            <div className="bento-icon bi-coral">
-              <svg
-                width="22"
-                height="22"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="var(--coral)"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
-              </svg>
+
+            <div className="step">
+              <div className="num">ii.</div>
+              <h3>A daily read, not a grade.</h3>
+              <p>
+                Your Glow score is one number — but the real story is underneath.
+                Four facets, what moved, and the most likely{" "}
+                <em className="it">why</em>. We never call you a 73%. We tell
+                you you slept well.
+              </p>
+              <div className="visual">
+                <div className="step-score">
+                  <div className="n">78</div>
+                  <div className="d">+5 today</div>
+                </div>
+              </div>
             </div>
-            <h3>Track Changes Over Time</h3>
-            <p>
-              Watch your skin improve day by day. Know what&apos;s working and
-              what&apos;s not, backed by real data instead of guesswork.
-            </p>
-          </div>
-          <div className="bento-card b-half b-amber reveal rd4">
-            <div className="bento-icon bi-amber">
-              <svg
-                width="22"
-                height="22"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="var(--amber)"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M4 19.5A2.5 2.5 0 016.5 17H20" />
-                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" />
-              </svg>
+
+            <div className="step">
+              <div className="num">iii.</div>
+              <h3>Patterns surface, week three.</h3>
+              <p>
+                Around day 18, the journal starts talking. &ldquo;Tuesdays run
+                hot.&rdquo; &ldquo;Your retinoid is paying off.&rdquo; &ldquo;The
+                new pillowcase is doing something.&rdquo; We connect sleep,
+                weather, products, and skin — only with strong enough evidence
+                to bother.
+              </p>
+              <div className="visual">
+                <svg width="180" height="60" viewBox="0 0 180 60" aria-hidden="true">
+                  <defs>
+                    <linearGradient id="hwGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.3" />
+                      <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
+                    </linearGradient>
+                  </defs>
+                  <path
+                    d="M0,42 L25,38 L50,44 L75,32 L100,28 L125,22 L150,18 L180,12 L180,60 L0,60 Z"
+                    fill="url(#hwGrad)"
+                  />
+                  <path
+                    d="M0,42 L25,38 L50,44 L75,32 L100,28 L125,22 L150,18 L180,12"
+                    stroke="var(--accent)"
+                    strokeWidth="1.8"
+                    fill="none"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <circle cx="180" cy="12" r="3.5" fill="var(--accent)" />
+                </svg>
+              </div>
             </div>
-            <h3>Doctor-Backed Recommendations</h3>
-            <p>
-              Every insight is grounded in AAD and ACOG clinical guidelines. The
-              same references your dermatologist uses.
-            </p>
-          </div>
-          <div className="bento-card b-narrow b-blue reveal rd5">
-            <div className="bento-icon bi-blue">
-              <svg
-                width="22"
-                height="22"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="var(--blue)"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-              </svg>
+
+            <div className="step">
+              <div className="num">iv.</div>
+              <h3>A ritual that earns its place.</h3>
+              <p>
+                Pause what isn&rsquo;t working. Keep what is. Every product you
+                own gets a quiet verdict — backed by the actual readings, not a
+                sponsor&rsquo;s brief. You&rsquo;ll buy less, not more.
+              </p>
+              <div className="visual">
+                <div className="step-bottles">
+                  <span style={{ height: 38, background: "linear-gradient(160deg, #E8DCC8, var(--surface))" }} />
+                  <span style={{ height: 44, background: "linear-gradient(160deg, #CFE0C8, var(--surface))" }} />
+                  <span style={{ height: 36, background: "linear-gradient(160deg, #F2D9A8, var(--surface))" }} />
+                  <span style={{ height: 42, background: "linear-gradient(160deg, #D9C8E0, var(--surface))" }} />
+                </div>
+              </div>
             </div>
-            <h3>Stay Consistent</h3>
-            <p>
-              Earn XP, unlock badges, and complete weekly challenges that make
-              skincare a habit, not a chore.
-            </p>
-          </div>
-          <div className="bento-card b-wide b-purple reveal rd6">
-            <div className="bento-icon bi-purple">
-              <svg
-                width="22"
-                height="22"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="var(--purple)"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <rect x="3" y="11" width="18" height="11" rx="2" />
-                <path d="M7 11V7a5 5 0 0110 0v4" />
-              </svg>
-            </div>
-            <h3>Your Photos Stay Yours</h3>
-            <p>
-              Photos are analyzed and immediately discarded. No facial
-              recognition, no data selling. Your skin data is encrypted and only
-              yours.
-            </p>
           </div>
         </div>
       </section>
 
-      {/* WHY GLOWLYTICS */}
+      {/* ─── Facets ─── */}
       <section
-        className="why"
+        className="band"
+        id="facets"
         style={{
-          background: "var(--cream)",
-          padding: "0 clamp(20px, 5vw, 48px) 120px",
+          background: "var(--surface)",
+          borderTop: "1px solid var(--hairline)",
+          borderBottom: "1px solid var(--hairline)",
         }}
       >
-        <div className="section-header">
-          <div className="section-eyebrow reveal rd1">Why Glowlytics</div>
-          <h2 className="section-title reveal rd2">Not another filter app</h2>
-        </div>
-        <div className="compare-wrap reveal rd3">
-          <div
-            className="compare-toggle"
-            id="compare-toggle"
-            role="tablist"
-            onClick={handleCompareClick}
-          >
-            <button
-              role="tab"
-              aria-selected="false"
-              aria-controls="compare-panel"
-              data-tab="others"
-            >
-              Other Apps
-            </button>
-            <button
-              role="tab"
-              aria-selected="true"
-              aria-controls="compare-panel"
-              data-tab="glowlytics"
-              className="active"
-            >
-              Glowlytics
-            </button>
-          </div>
-          <div className="compare-panel" id="compare-panel">
-            <div className="compare-row">
-              <span className="compare-feature">AI Engines</span>
-              <span
-                className="compare-value good"
-                data-glow="3 in parallel"
-                data-other="1 model"
-              >
-                <span className="compare-check">&#x2713;</span>{" "}
-                <span className="compare-label">3 in parallel</span>
-              </span>
+        <div className="container">
+          <div className="section-head">
+            <div>
+              <div className="section-num">— 03</div>
+              <h2>
+                What we watch.
+                <br />
+                Just four things.
+              </h2>
             </div>
-            <div className="compare-row">
-              <span className="compare-feature">Clinical Backing</span>
-              <span
-                className="compare-value good"
-                data-glow="19 AAD/ACOG guidelines"
-                data-other="None"
-              >
-                <span className="compare-check">&#x2713;</span>{" "}
-                <span className="compare-label">19 AAD/ACOG guidelines</span>
-              </span>
-            </div>
-            <div className="compare-row">
-              <span className="compare-feature">Analysis Speed</span>
-              <span
-                className="compare-value good"
-                data-glow="Under 10 seconds"
-                data-other="45+ seconds"
-              >
-                <span className="compare-check">&#x2713;</span>{" "}
-                <span className="compare-label">Under 10 seconds</span>
-              </span>
-            </div>
-            <div className="compare-row">
-              <span className="compare-feature">Trend Tracking</span>
-              <span
-                className="compare-value good"
-                data-glow="Daily + product correlation"
-                data-other="Not available"
-              >
-                <span className="compare-check">&#x2713;</span>{" "}
-                <span className="compare-label">
-                  Daily + product correlation
-                </span>
-              </span>
-            </div>
-            <div className="compare-row">
-              <span className="compare-feature">Transparency</span>
-              <span
-                className="compare-value good"
-                data-glow="Scores with confidence %"
-                data-other="Black box"
-              >
-                <span className="compare-check">&#x2713;</span>{" "}
-                <span className="compare-label">
-                  Scores with confidence %
-                </span>
-              </span>
-            </div>
-            <div className="compare-row">
-              <span className="compare-feature">Photo Privacy</span>
-              <span
-                className="compare-value good"
-                data-glow="Instantly deleted"
-                data-other="Stored on servers"
-              >
-                <span className="compare-check">&#x2713;</span>{" "}
-                <span className="compare-label">Instantly deleted</span>
-              </span>
+            <div className="lede">
+              Skin is impossibly complex. We don&rsquo;t pretend otherwise. But
+              four well-measured facets, repeated daily, will tell you almost
+              everything you need to know about what&rsquo;s helping and what
+              isn&rsquo;t.
             </div>
           </div>
-        </div>
-      </section>
 
-      {/* TRANSITION */}
-      <div className="transition-cream-dark" />
-
-      {/* SCIENCE */}
-      <section className="science" id="science">
-        <div className="section-header">
-          <div className="section-eyebrow reveal rd1">The Science</div>
-          <h2 className="section-title reveal rd2">
-            Three layers of intelligence
-          </h2>
-        </div>
-
-        <p className="science-body reveal rd3">
-          Most skin apps rely on <strong>a single AI model</strong> that makes
-          its best guess. Glowlytics runs{" "}
-          <span className="teal">three analysis engines simultaneously</span>,
-          each built on peer-reviewed dermatology research.
-        </p>
-
-        <div className="layer-grid">
-          <div className="layer-card reveal rd2">
-            <div className="layer-num">Layer 1</div>
-            <h4>Precision Imaging</h4>
-            <p>
-              Clinical-grade color and texture analysis measures what your eyes
-              can&apos;t see: redness patterns, pigmentation shifts, and skin
-              texture changes. All in milliseconds.
-            </p>
-          </div>
-          <div className="layer-card reveal rd3">
-            <div className="layer-num">Layer 2</div>
-            <h4>Computer Vision</h4>
-            <p>
-              Custom-trained neural networks evaluate skin structure, hydration,
-              and elasticity while detecting individual blemishes in real-time.
-            </p>
-          </div>
-          <div className="layer-card reveal rd4">
-            <div className="layer-num">Layer 3</div>
-            <h4>AI Dermatologist</h4>
-            <p>
-              A fine-tuned GPT-4o model classifies conditions, grades severity,
-              and delivers personalized recommendations grounded in clinical
-              guidelines.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* TRUST LOGOS */}
-      <div className="trust-strip">
-        <div className="trust-logos-label reveal rd1">
-          Built with technology from
-        </div>
-        <div className="trust-logos">
-          <div className="trust-logo reveal rd1" title="Coming to iOS">
-            <svg
-              width="16"
-              height="22"
-              viewBox="0 0 16 22"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.3"
-            >
-              <rect x="1" y="1" width="14" height="20" rx="3" />
-              <line x1="5" y1="18" x2="11" y2="18" opacity="0.5" />
-            </svg>
-            <span>iOS</span>
-          </div>
-          <div
-            className="trust-logo reveal rd2"
-            title="Built at Cornell University"
-          >
-            <span className="trust-wordmark">Cornell</span>
-            <span>University</span>
-          </div>
-          <div
-            className="trust-logo reveal rd3"
-            title="Powered by OpenAI GPT-4o"
-          >
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-            >
-              <path d="M22.282 9.821a5.985 5.985 0 00-.516-4.91 6.046 6.046 0 00-6.51-2.9A6.065 6.065 0 0011.694.01a6.043 6.043 0 00-5.77 4.18 6.022 6.022 0 00-4.032 2.92 6.06 6.06 0 00.743 7.097 5.98 5.98 0 00.51 4.911 6.051 6.051 0 006.515 2.9A5.985 5.985 0 0013.26 23.1a6.043 6.043 0 005.77-4.18 6.013 6.013 0 004.033-2.92 6.052 6.052 0 00-.781-6.18zM13.26 21.047a4.508 4.508 0 01-2.89-1.04l.142-.082 4.806-2.774a.78.78 0 00.395-.678v-6.77l2.032 1.173a.072.072 0 01.04.055v5.609a4.53 4.53 0 01-4.524 4.507zM3.6 17.14a4.49 4.49 0 01-.54-3.025l.143.084 4.806 2.775a.786.786 0 00.786 0l5.87-3.39v2.346a.072.072 0 01-.03.062l-4.861 2.806A4.525 4.525 0 013.6 17.14zM2.34 7.896A4.485 4.485 0 014.698 5.91l-.002.164v5.548a.78.78 0 00.395.679l5.869 3.388-2.03 1.173a.072.072 0 01-.07.005L3.996 14.06A4.526 4.526 0 012.34 7.896zm17.078 3.98l-5.87-3.39 2.032-1.172a.072.072 0 01.07-.005l4.862 2.807a4.517 4.517 0 01-.676 8.14v-5.7a.785.785 0 00-.418-.68zm2.02-3.04l-.143-.085-4.806-2.775a.786.786 0 00-.786 0l-5.87 3.39V6.92a.072.072 0 01.03-.062l4.861-2.806a4.524 4.524 0 016.714 4.684zm-12.7 4.18L6.706 11.84a.072.072 0 01-.04-.056V6.177a4.522 4.522 0 017.415-3.464l-.142.08L9.133 5.57a.78.78 0 00-.395.679l-.005 6.768zm1.104-2.38l2.613-1.508 2.613 1.508v3.016l-2.613 1.508-2.613-1.508z" />
-            </svg>
-            <span>OpenAI</span>
-          </div>
-          <div
-            className="trust-logo reveal rd4"
-            title="AAD Clinical Guidelines"
-          >
-            <span className="trust-wordmark">AAD</span>
-            <span>Guidelines</span>
-          </div>
-          <div
-            className="trust-logo reveal rd5"
-            title="ACOG Clinical Guidelines"
-          >
-            <span className="trust-wordmark">ACOG</span>
-            <span>Guidelines</span>
-          </div>
-          <div className="trust-logo reveal rd6" title="Featured on BetaList">
-            <a
-              target="_blank"
-              rel="noopener noreferrer"
-              href="https://betalist.com/startups/glowlytics?utm_campaign=badge-glowlytics&utm_medium=badge&utm_source=badge-featured"
-              style={{ display: "flex", alignItems: "center" }}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                alt="Glowlytics on BetaList"
-                width={156}
-                height={54}
-                style={{
-                  width: "156px",
-                  height: "54px",
-                  opacity: 0.5,
-                  transition: "opacity 0.3s ease",
-                }}
-                src="https://betalist.com/badges/featured?id=153472&theme=color"
-                loading="lazy"
-              />
-            </a>
-          </div>
-        </div>
-      </div>
-
-      {/* TESTIMONIALS */}
-      <section className="testimonial" id="testimonials">
-        <div className="section-header" style={{ marginBottom: "48px" }}>
-          <div className="section-eyebrow reveal rd1">
-            What Beta Testers Say
-          </div>
-          <h2 className="section-title reveal rd2">
-            Real people, real results
-          </h2>
-        </div>
-        <div className="testimonial-grid">
-          <div className="testimonial-card reveal rd1">
-            <div className="t-stars" aria-label="5 out of 5 stars">
-              &#9733;&#9733;&#9733;&#9733;&#9733;
-            </div>
-            <p className="testimonial-text">
-              I&apos;ve tried every skin tracking app out there. Glowlytics is
-              the first one that actually gives me scores I trust, because it
-              shows me exactly how it got there.
-            </p>
-            <div className="testimonial-author">
-              <div className="testimonial-avatar">S</div>
-              <div className="testimonial-meta">
-                <div className="t-name">Sarah K.</div>
-                <div className="t-role">Skincare Enthusiast</div>
+          <div className="facets">
+            <div className="facet">
+              <div className="ix">
+                <svg
+                  width="22"
+                  height="22"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="var(--accent)"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M12 3 c-4 5 -6 8 -6 11 a6 6 0 0 0 12 0 c0-3 -2-6 -6-11 z" />
+                </svg>
+              </div>
+              <h4>Hydrated</h4>
+              <div className="reading">Surface plumpness · 0–100</div>
+              <p>
+                How dewy and full your skin sits today. Most sensitive to sleep,
+                water, and the moisture step you may have skipped last night.
+              </p>
+              <div className="what">
+                Measured across forehead, cheek, jawline · 14 ref. points
               </div>
             </div>
-          </div>
-          <div className="testimonial-card reveal rd2">
-            <div className="t-stars" aria-label="5 out of 5 stars">
-              &#9733;&#9733;&#9733;&#9733;&#9733;
-            </div>
-            <p className="testimonial-text">
-              The daily scan takes seconds, but the data it gives you is insane.
-              I finally understand why my skin flares up after certain products.
-            </p>
-            <div className="testimonial-author">
-              <div className="testimonial-avatar">M</div>
-              <div className="testimonial-meta">
-                <div className="t-name">Marcus R.</div>
-                <div className="t-role">Acne-Prone Skin</div>
+
+            <div className="facet">
+              <div className="ix">
+                <svg
+                  width="22"
+                  height="22"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="var(--accent)"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M5 19 c0-9 7-14 14-14 0 8 -5 14 -14 14 z" />
+                  <path d="M5 19 c3-3 6-5 10-7" />
+                </svg>
+              </div>
+              <h4>Calm</h4>
+              <div className="reading">Redness map · week-over-week</div>
+              <p>
+                Distribution and intensity of warm tones. We&rsquo;re not
+                chasing zero — we&rsquo;re chasing your baseline, and noticing
+                when something pushed you off it.
+              </p>
+              <div className="what">
+                Heat-mapped by zone · trigger correlation built in
               </div>
             </div>
-          </div>
-          <div className="testimonial-card reveal rd3">
-            <div className="t-stars" aria-label="5 out of 5 stars">
-              &#9733;&#9733;&#9733;&#9733;&#9733;
+
+            <div className="facet">
+              <div className="ix">
+                <svg
+                  width="22"
+                  height="22"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="var(--accent)"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <circle cx="12" cy="12" r="4" />
+                  <path d="M12 2 v3 M12 19 v3 M2 12 h3 M19 12 h3 M5 5 l2 2 M17 17 l2 2 M5 19 l2-2 M17 7 l2-2" />
+                </svg>
+              </div>
+              <h4>Even</h4>
+              <div className="reading">Tone variance + post-mark fade</div>
+              <p>
+                How uniform your tone is, and how quickly old marks are leaving.
+                The slowest of the four to move — and the most rewarding when it
+                does.
+              </p>
+              <div className="what">L*a*b* delta · 28-day rolling fade index</div>
             </div>
-            <p className="testimonial-text">
-              As a med student, I appreciate that the recommendations cite actual
-              AAD guidelines. This isn&apos;t some random AI guessing. It&apos;s
-              grounded in real science.
-            </p>
-            <div className="testimonial-author">
-              <div className="testimonial-avatar">J</div>
-              <div className="testimonial-meta">
-                <div className="t-name">Jasmine T.</div>
-                <div className="t-role">Medical Student</div>
+
+            <div className="facet">
+              <div className="ix">
+                <svg
+                  width="22"
+                  height="22"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="var(--accent)"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M12 4 v6 M12 14 v6 M4 12 h6 M14 12 h6 M7 7 l3 3 M14 14 l3 3 M7 17 l3-3 M14 10 l3-3" />
+                </svg>
+              </div>
+              <h4>Firm</h4>
+              <div className="reading">Micro-bounce · cheek + jaw</div>
+              <p>
+                How quickly your skin returns from a smile. A long-arc signal —
+                meaningful over months, not days. We mark it but never alarm
+                you.
+              </p>
+              <div className="what">
+                Time-resolved elastography from a single capture
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* BETA RESULTS */}
-      <div className="beta-results">
-        <div className="beta-results-inner">
-          <div className="beta-results-header reveal rd1">
-            <h3>What beta testers experienced</h3>
-            <p>Early data from our testing cohort</p>
-          </div>
-          <div className="beta-stats">
-            <div className="beta-stat reveal rd2">
-              <div className="beta-num" data-count="87" data-suffix="%">
-                87%
-              </div>
-              <div className="beta-label">
-                reported better understanding of their skin within the first week
-              </div>
+      {/* ─── Sample read ─── */}
+      <section className="band" id="sample">
+        <div className="container">
+          <div className="section-head">
+            <div>
+              <div className="section-num">— 04</div>
+              <h2>
+                A real morning.
+                <br />
+                A real read.
+              </h2>
             </div>
-            <div className="beta-stat reveal rd3">
-              <div className="beta-num" data-count="92" data-suffix="%">
-                92%
-              </div>
-              <div className="beta-label">
-                said they&apos;d recommend Glowlytics to a friend
-              </div>
-            </div>
-            <div className="beta-stat reveal rd4">
-              <div className="beta-num" data-count="4" data-suffix="x">
-                4x
-              </div>
-              <div className="beta-label">
-                more daily scans completed after 2 weeks vs. week one
-              </div>
+            <div className="lede">
+              What a Wednesday in May looks like. The score on the left, the
+              story on the right. The number is the smallest part — what moved
+              and why is the point.
             </div>
           </div>
-        </div>
-      </div>
 
-      {/* FAQ */}
-      <section className="faq" id="faq">
-        <div className="section-header" style={{ marginBottom: "48px" }}>
-          <div className="section-eyebrow reveal rd1">FAQ</div>
-          <h2 className="section-title reveal rd2">Common questions</h2>
-        </div>
-        <div className="faq-list">
-          <details className="faq-item reveal rd1">
-            <summary>Can Glowlytics replace my dermatologist?</summary>
-            <p>
-              Glowlytics is designed to complement your dermatologist, not
-              replace them. Think of it as a daily check-in between appointments,
-              helping you track what&apos;s changing and giving you better data
-              to share with your doctor.
-            </p>
-          </details>
-          <details className="faq-item reveal rd2">
-            <summary>What happens to my photos?</summary>
-            <p>
-              Your photos are analyzed in real-time and immediately discarded. We
-              never store facial images on our servers. Your privacy is
-              non-negotiable.
-            </p>
-          </details>
-          <details className="faq-item reveal rd3">
-            <summary>How accurate is the analysis?</summary>
-            <p>
-              Glowlytics uses three analysis engines running in parallel,
-              including clinical-grade image processing and a fine-tuned AI
-              model, to deliver scores with confidence indicators. Our methods
-              are grounded in peer-reviewed dermatology research.
-            </p>
-          </details>
-          <details className="faq-item reveal rd4">
-            <summary>Is there a free trial?</summary>
-            <p>
-              Yes. Every new user gets a free 7-day trial with full access to all
-              features. No credit card required to start.
-            </p>
-          </details>
-          <details className="faq-item reveal rd5">
-            <summary>What skin types does it work with?</summary>
-            <p>
-              Glowlytics works across all skin types and tones. Our analysis
-              pipeline includes ITA (Individual Typology Angle) calibration to
-              ensure accurate results regardless of melanin levels.
-            </p>
-          </details>
+          <div className="sample-grid">
+            <div className="sample-read">
+              <div className="sample-inner">
+                <div className="eyebrow">— Today&rsquo;s read · Wed, May 6</div>
+                <div className="sample-big">78</div>
+                <div className="sample-delta">
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    style={{ transform: "rotate(-45deg)" }}
+                    aria-hidden="true"
+                  >
+                    <path d="M5 12 h14" />
+                    <path d="M14 6 l6 6 -6 6" />
+                  </svg>
+                  +5 since yesterday
+                </div>
+                <div className="sample-quote">
+                  You look <em>well-rested</em>.
+                </div>
+                <div className="sample-sub">
+                  Hydration is the standout. Tone took a small dip — nothing to
+                  chase. We&rsquo;ll watch it again tomorrow.
+                </div>
+              </div>
+            </div>
+
+            <div className="changes">
+              <div className="change-row">
+                <div className="icbox">
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="var(--accent)"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M12 3 c-4 5 -6 8 -6 11 a6 6 0 0 0 12 0 c0-3 -2-6 -6-11 z" />
+                  </svg>
+                </div>
+                <div>
+                  <div className="nm">Hydrated</div>
+                  <div className="why">Niacinamide + 7h sleep</div>
+                </div>
+                <div className="dlt up">+4 · 78→82</div>
+              </div>
+              <div className="change-row">
+                <div className="icbox">
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="var(--accent)"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M5 19 c0-9 7-14 14-14 0 8 -5 14 -14 14 z" />
+                  </svg>
+                </div>
+                <div>
+                  <div className="nm">Calm</div>
+                  <div className="why">No new redness around jaw</div>
+                </div>
+                <div className="dlt up">+2 · 69→71</div>
+              </div>
+              <div className="change-row">
+                <div className="icbox">
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="var(--accent)"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <circle cx="12" cy="12" r="4" />
+                    <path d="M12 2 v3 M12 19 v3 M2 12 h3 M19 12 h3" />
+                  </svg>
+                </div>
+                <div>
+                  <div className="nm">Even</div>
+                  <div className="why">
+                    Slight dullness — try a slow exfoliant tonight
+                  </div>
+                </div>
+                <div className="dlt down">−1 · 65→64</div>
+              </div>
+              <div className="change-row">
+                <div className="icbox">
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="var(--accent)"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M12 4 v6 M12 14 v6 M4 12 h6 M14 12 h6" />
+                  </svg>
+                </div>
+                <div>
+                  <div className="nm">Firm</div>
+                  <div className="why">Steady. We&rsquo;ll mark it again Sunday.</div>
+                </div>
+                <div className="dlt up">+0 · 75→75</div>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
-      {/* CTA */}
-      <section className="cta" id="access" ref={ctaRef}>
-        <div className="cta-inner">
-          <h2 className="reveal rd1">
-            Start tracking your skin
-            <br />
-            with <span className="accent">real data.</span>
-          </h2>
-          <p className="cta-sub reveal rd2">
-            Download Glowlytics on iPhone, start your 7-day trial, and use daily
-            scans to see what actually changes your skin.
-          </p>
-          <p
-            className="cta-urgency reveal rd3"
-            style={{
-              fontSize: "13px",
-              color: "var(--teal)",
-              fontWeight: 600,
-              marginBottom: "28px",
-              letterSpacing: "0.3px",
-              opacity: 0.8,
-            }}
-          >
-            Available on the App Store &middot; 7-day free trial &middot; Photos
-            never stored
-          </p>
-
-          <div className="form-wrap reveal rd3">
-            <div
-              className="hero-actions"
-              style={{ justifyContent: "center", marginBottom: "14px" }}
-            >
-              <a href={APP_STORE_URL} className="btn-primary">
-                Download on the App Store
-              </a>
-              <a href="/faq/what-is-glowlytics" className="btn-ghost">
-                See what Glowlytics tracks
-              </a>
-            </div>
-            <p className="form-note" style={{ display: "block" }}>
-              iPhone only. No credit card required to start your free trial.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* BACK TO TOP */}
-      <button
-        className="back-top"
-        ref={backTopRef}
-        aria-label="Back to top"
-        onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+      {/* ─── Patterns ─── */}
+      <section
+        className="band"
+        id="patterns"
+        style={{
+          background: "var(--surface)",
+          borderTop: "1px solid var(--hairline)",
+          borderBottom: "1px solid var(--hairline)",
+        }}
       >
-        <svg
-          width="18"
-          height="18"
-          viewBox="0 0 18 18"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-        >
-          <path d="M9 15V3M3 8l6-6 6 6" />
-        </svg>
-      </button>
+        <div className="container">
+          <div className="section-head">
+            <div>
+              <div className="section-num">— 05</div>
+              <h2>
+                The patterns
+                <br />
+                that earn the headline.
+              </h2>
+            </div>
+            <div className="lede">
+              We don&rsquo;t ship every wiggle in the data. A pattern only
+              surfaces once it&rsquo;s repeated enough times to mean something —
+              and we&rsquo;ll tell you exactly how sure we are.
+            </div>
+          </div>
 
-      {/* STICKY MOBILE CTA */}
-      <div className="sticky-cta" ref={stickyRef}>
-        <a href={APP_STORE_URL}>Download on the App Store</a>
-        <div className="sticky-cta-sub">
-          7-day free trial &middot; iPhone only
+          <div className="patterns">
+            <div className="pattern">
+              <div className="row">
+                <div className="tag">Sleep · Hydration</div>
+                <div className="conf">● Strong</div>
+              </div>
+              <h3>Your skin loves slow mornings.</h3>
+              <p>
+                On days you sleep 7+ hours, your hydration jumps fourteen points
+                by evening. Stay the course — no changes needed.
+              </p>
+              <div className="chart">
+                <svg width="100%" height="56" viewBox="0 0 220 56" aria-hidden="true">
+                  <defs>
+                    <linearGradient id="p1g" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.25" />
+                      <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
+                    </linearGradient>
+                  </defs>
+                  <path
+                    d="M0,38 L31,36 L62,40 L93,28 L124,22 L155,20 L186,14 L220,8 L220,56 L0,56 Z"
+                    fill="url(#p1g)"
+                  />
+                  <path
+                    d="M0,38 L31,36 L62,40 L93,28 L124,22 L155,20 L186,14 L220,8"
+                    stroke="var(--accent)"
+                    strokeWidth="2"
+                    fill="none"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <circle cx="220" cy="8" r="3.5" fill="var(--accent)" />
+                </svg>
+              </div>
+            </div>
+
+            <div className="pattern">
+              <div className="row">
+                <div className="tag">Workout · Calm</div>
+                <div className="conf">○ Likely</div>
+              </div>
+              <h3>Tuesdays run hot.</h3>
+              <p>
+                Redness ticks up four points after Tuesday gym sessions. A cool
+                rinse before serum on those days, and you&rsquo;re back at
+                baseline by Wednesday.
+              </p>
+              <div className="chart">
+                <svg width="100%" height="56" viewBox="0 0 220 56" aria-hidden="true">
+                  <g stroke="var(--hairline)" strokeWidth="1">
+                    <line x1="0" y1="28" x2="220" y2="28" />
+                  </g>
+                  <g fill="var(--accent)">
+                    <rect x="14" y="22" width="10" height="6" rx="2" />
+                    <rect x="44" y="14" width="10" height="14" rx="2" />
+                    <rect x="74" y="20" width="10" height="8" rx="2" />
+                    <rect x="104" y="6" width="10" height="22" rx="2" opacity="0.95" />
+                    <rect x="134" y="18" width="10" height="10" rx="2" />
+                    <rect x="164" y="10" width="10" height="18" rx="2" opacity="0.9" />
+                    <rect x="194" y="22" width="10" height="6" rx="2" />
+                  </g>
+                  <g fill="var(--muted)" fontSize="8" fontFamily="ui-monospace">
+                    <text x="19" y="44" textAnchor="middle">M</text>
+                    <text x="49" y="44" textAnchor="middle">T</text>
+                    <text x="79" y="44" textAnchor="middle">W</text>
+                    <text x="109" y="44" textAnchor="middle" fill="var(--accent)">T</text>
+                    <text x="139" y="44" textAnchor="middle">F</text>
+                    <text x="169" y="44" textAnchor="middle">S</text>
+                    <text x="199" y="44" textAnchor="middle">S</text>
+                  </g>
+                </svg>
+              </div>
+            </div>
+
+            <div className="pattern">
+              <div className="row">
+                <div className="tag">Routine · Even</div>
+                <div className="conf">● Strong</div>
+              </div>
+              <h3>The retinoid is paying off.</h3>
+              <p>
+                Three weeks in, evenness is up eleven points. Mild peel around
+                day four was expected. Stay the course — no changes needed.
+              </p>
+              <div className="chart">
+                <svg width="100%" height="56" viewBox="0 0 220 56" aria-hidden="true">
+                  <defs>
+                    <linearGradient id="p3g" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.2" />
+                      <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
+                    </linearGradient>
+                  </defs>
+                  <path
+                    d="M0,30 L20,32 L40,34 L60,42 L80,40 L100,34 L120,26 L140,20 L160,16 L180,14 L220,10 L220,56 L0,56 Z"
+                    fill="url(#p3g)"
+                  />
+                  <path
+                    d="M0,30 L20,32 L40,34 L60,42 L80,40 L100,34 L120,26 L140,20 L160,16 L180,14 L220,10"
+                    stroke="var(--accent)"
+                    strokeWidth="2"
+                    fill="none"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <circle cx="60" cy="42" r="3" fill="var(--accent2)" />
+                  <text x="60" y="54" textAnchor="middle" fontSize="8" fontFamily="ui-monospace" fill="var(--muted)">
+                    peel
+                  </text>
+                  <circle cx="220" cy="10" r="3.5" fill="var(--accent)" />
+                </svg>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
+      </section>
+
+      {/* ─── Shelf ─── */}
+      <section className="band" id="shelf">
+        <div className="container">
+          <div className="section-head">
+            <div>
+              <div className="section-num">— 06</div>
+              <h2>
+                Your shelf,
+                <br />
+                quietly audited.
+              </h2>
+            </div>
+            <div className="lede">
+              Every product gets a verdict, backed by the actual readings. Five
+              things working, two on the fence, and the courage to pause the
+              rest. We don&rsquo;t take affiliate money — ever.
+            </div>
+          </div>
+
+          <div className="shelf-grid">
+            {[
+              { brand: "Soft House", name: "Hydrating Serum", verdict: "Working", meta: "· +14 on hydration · 4 wks", bottle: "#CFE0C8" },
+              { brand: "Quietcare", name: "Retinoid 0.3%", verdict: "Working", meta: "· +11 on evenness · 3 wks", bottle: "#D9C8E0" },
+              { brand: "Sundwell", name: "SPF 50 Veil", verdict: "Working", meta: "· +6 on tone · 8 wks", bottle: "#F2D9A8" },
+              { brand: "Atelier", name: "Gentle Milk Cleanser", verdict: "Working", meta: "· +8 on calm · 6 wks", bottle: "#E8DCC8" },
+              { brand: "Kinde", name: "Slip Pillowcase", verdict: "Hard to say yet", meta: "· 2 wks · keep going", bottle: "#E8C9B8", maybe: true },
+              { brand: "Hour & Day", name: "Vitamin C 15%", verdict: "Pause suggested", meta: "· no signal · 6 wks", bottle: "#C7B8A0", maybe: true },
+            ].map((card) => (
+              <div
+                key={`${card.brand}-${card.name}`}
+                className={`shelf-card${card.maybe ? " maybe" : ""}`}
+              >
+                <div
+                  className="bottle"
+                  style={{ background: `linear-gradient(160deg, ${card.bottle}, var(--surface))` }}
+                />
+                <div>
+                  <div className="brand">{card.brand}</div>
+                  <div className="nm">{card.name}</div>
+                  <div className="verdict">
+                    <span className="dot" />
+                    <span className="v">{card.verdict}</span>
+                    <span className="meta">{card.meta}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ─── Voice ─── */}
+      <section className="band quietband" id="voice">
+        <div className="container">
+          <div className="section-head">
+            <div>
+              <div className="section-num">— 07</div>
+              <h2>
+                How we talk
+                <br />
+                to you.
+              </h2>
+            </div>
+            <div className="lede">
+              A line we write twenty times before shipping. Calm over loud.
+              Specific over generic. Steady over urgent. Italics where
+              we&rsquo;d lean in if we were sitting across from you.
+            </div>
+          </div>
+
+          <div className="voice-grid">
+            <div className="voice-col we">
+              <h3>We say —</h3>
+              <div className="voice-line">
+                You look <em>well-rested</em>.
+              </div>
+              <div className="voice-line">
+                Tone took a small dip — nothing to chase.
+              </div>
+              <div className="voice-line">No rush. The streak waits.</div>
+              <div className="voice-line">
+                Three weeks in, evenness is up <em>eleven points</em>.
+              </div>
+            </div>
+            <div className="voice-col not">
+              <h3>We don&rsquo;t —</h3>
+              <div className="voice-line">
+                <span className="strike">Sleep score: 87 (great!) 💤✨</span>
+              </div>
+              <div className="voice-line">
+                <span className="strike">
+                  ⚠️ Tone score declined. Action recommended.
+                </span>
+              </div>
+              <div className="voice-line">
+                <span className="strike">Don&rsquo;t break your 12-day streak!</span>
+              </div>
+              <div className="voice-line">
+                <span className="strike">Your skincare is 73% optimized.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── Privacy ─── */}
+      <section className="privacy-section" id="privacy">
+        <div className="privacyband">
+          <div className="privacyband-grid">
+            <div>
+              <div className="eyebrow">— 08 · your face, your phone</div>
+              <h2>
+                Stays <em>on the device</em>.
+                <br />
+                Never sold. Never trained on.
+              </h2>
+              <p>
+                Reading a face is intimate work. We treat it like a journal
+                you&rsquo;ve left out on the table — closed.
+              </p>
+            </div>
+
+            <div className="privacy-list">
+              <div className="priv-row">
+                <svg
+                  className="ic"
+                  width="22"
+                  height="22"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <rect x="5" y="11" width="14" height="9" rx="2" />
+                  <path d="M8 11 V7 a4 4 0 0 1 8 0 v4" />
+                </svg>
+                <div>
+                  <div className="tt">On-device analysis</div>
+                  <div className="ds">
+                    Every reading runs in the Neural Engine on your phone.
+                    Photos never leave it — not for analysis, not for backups,
+                    not ever.
+                  </div>
+                </div>
+              </div>
+              <div className="priv-row">
+                <svg
+                  className="ic"
+                  width="22"
+                  height="22"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M5 5 l14 14" />
+                </svg>
+                <div>
+                  <div className="tt">No ad networks. No SDKs.</div>
+                  <div className="ds">
+                    Zero third-party analytics, no advertising IDs collected, no
+                    embedded trackers. Our payroll is paid by subscriptions, not
+                    your data.
+                  </div>
+                </div>
+              </div>
+              <div className="priv-row">
+                <svg
+                  className="ic"
+                  width="22"
+                  height="22"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M12 3 v18" />
+                  <path d="M5 10 l7-7 7 7" />
+                </svg>
+                <div>
+                  <div className="tt">Export &amp; delete, one tap each</div>
+                  <div className="ds">
+                    You own your timeline. Export the whole thing as a PDF or
+                    JSON whenever you want. Delete it permanently in less than
+                    two seconds.
+                  </div>
+                </div>
+              </div>
+              <div className="priv-row">
+                <svg
+                  className="ic"
+                  width="22"
+                  height="22"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M4 12 a8 8 0 1 1 16 0 a8 8 0 0 1 -16 0 z" />
+                  <path d="M9 12 l2 2 l4-4" />
+                </svg>
+                <div>
+                  <div className="tt">Independent audit</div>
+                  <div className="ds">
+                    Cure53 reviews our privacy claims twice a year. The latest
+                    report sits on our footer, public, dated, and unredacted.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── Testimonials ─── */}
+      <section className="band" id="said">
+        <div className="container">
+          <div className="section-head">
+            <div>
+              <div className="section-num">— 09</div>
+              <h2>
+                What early
+                <br />
+                readers said.
+              </h2>
+            </div>
+            <div className="lede">
+              Four months of TestFlight, two thousand quiet observers. We asked:
+              what&rsquo;s different about it? Three answers we kept hearing.
+            </div>
+          </div>
+
+          <div className="quotes">
+            <div className="quote">
+              <blockquote>
+                I bought <em>nothing</em> new for two months. It told me my
+                serum was the hero — I just needed to keep using it.
+              </blockquote>
+              <div className="cite">
+                <div
+                  className="av"
+                  style={{ background: "linear-gradient(135deg, #D9A28B, #E8C9B8)" }}
+                />
+                <div className="who">
+                  Priya, 34<span className="ctx">Combination · Brooklyn</span>
+                </div>
+              </div>
+            </div>
+            <div className="quote">
+              <blockquote>
+                The first app I&rsquo;ve used that <em>didn&rsquo;t</em> make me
+                feel behind on my own face.
+              </blockquote>
+              <div className="cite">
+                <div
+                  className="av"
+                  style={{ background: "linear-gradient(135deg, #5A3A5E, #D9A28B)" }}
+                />
+                <div className="who">
+                  Adaeze, 41<span className="ctx">Eczema-prone · London</span>
+                </div>
+              </div>
+            </div>
+            <div className="quote">
+              <blockquote>
+                I finally know why Tuesdays look the way they do. Turns out, the
+                gym. Who knew.
+              </blockquote>
+              <div className="cite">
+                <div
+                  className="av"
+                  style={{ background: "linear-gradient(135deg, #C9B786, #CFE0C8)" }}
+                />
+                <div className="who">
+                  Sam, 28<span className="ctx">Sensitive · Berlin</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── FAQ ─── */}
+      <section className="band quietband" id="faq">
+        <div className="container">
+          <div className="section-head">
+            <div>
+              <div className="section-num">— 10</div>
+              <h2>
+                Honest answers
+                <br />
+                to honest questions.
+              </h2>
+            </div>
+            <div className="lede">
+              The things people ask us at dinner parties. If yours isn&rsquo;t
+              here, we&rsquo;ll happily answer it — write us, the address is in
+              the footer.
+            </div>
+          </div>
+
+          <div className="faq-list">
+            <details className="faq-item" open>
+              <summary className="faq-q">
+                Does it work on every skin tone?<span className="plus">+</span>
+              </summary>
+              <div className="faq-a">
+                Yes. Our reference set spans Fitzpatrick I through VI, balanced
+                across age and condition. Hydration and calm are tone-invariant;
+                tone variance and post-mark fade are calibrated against your own
+                baseline rather than a universal target, so the app never holds
+                you to someone else&rsquo;s skin.
+              </div>
+            </details>
+            <details className="faq-item">
+              <summary className="faq-q">
+                How long until I see patterns?<span className="plus">+</span>
+              </summary>
+              <div className="faq-a">
+                Three to four weeks for the first strong pattern. We could
+                surface them sooner — most apps do — but they wouldn&rsquo;t be
+                true. Skin moves on weeks, and we&rsquo;d rather be slow and
+                right than fast and noisy.
+              </div>
+            </details>
+            <details className="faq-item">
+              <summary className="faq-q">
+                What if I miss a day, or a week?<span className="plus">+</span>
+              </summary>
+              <div className="faq-a">
+                Nothing happens. We don&rsquo;t punish gaps, scold them, or
+                design the streak to make you feel terrible. The patterns just
+                take a little longer to surface, and we&rsquo;ll let you know
+                when they&rsquo;re back.
+              </div>
+            </details>
+            <details className="faq-item">
+              <summary className="faq-q">
+                Is it free?<span className="plus">+</span>
+              </summary>
+              <div className="faq-a">
+                Free to start, forever. The core daily read, weekly patterns,
+                and full shelf verdicts are included. Glow+ ($6/mo or $48/yr)
+                unlocks deep history (beyond 90 days), full timeline exports,
+                and side-by-side compare. We don&rsquo;t take a cent from
+                brands.
+              </div>
+            </details>
+            <details className="faq-item">
+              <summary className="faq-q">
+                iOS only?<span className="plus">+</span>
+              </summary>
+              <div className="faq-a">
+                iOS 16+ at launch — the readings rely on the TrueDepth
+                front-facing camera and on-device Neural Engine. A read-only web
+                mirror for your timeline is in private beta. Android is on the
+                roadmap once on-device depth is more uniform.
+              </div>
+            </details>
+            <details className="faq-item">
+              <summary className="faq-q">
+                What about lighting? Doesn&rsquo;t it ruin the readings?
+                <span className="plus">+</span>
+              </summary>
+              <div className="faq-a">
+                We normalize against soft natural light from the side — the
+                kind a window gives you. The app gently coaches you toward the
+                right setup the first few times, and quietly tags any reading
+                taken in low or harsh light as lower-confidence in your
+                timeline.
+              </div>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── Final CTA ─── */}
+      <section className="band" id="join">
+        <div className="final">
+          <div className="final-inner">
+            <Wordmark />
+            <h2>
+              Skin moves on weeks.
+              <br />
+              Start a quiet one.
+            </h2>
+            <p>
+              Download Glowlytics on iPhone — your first quiet read is waiting.
+              One short letter a month from us, never more.
+            </p>
+            <EmailCapture id="final-email" />
+            <div
+              style={{
+                marginTop: 18,
+                display: "flex",
+                gap: 12,
+                justifyContent: "center",
+                flexWrap: "wrap",
+              }}
+            >
+              <a href={APP_STORE_URL} className="btn btn-glow">
+                Get it on the App Store
+                <ArrowIcon />
+              </a>
+            </div>
+            <div className="final-meta">
+              12,408 quiet observers · iOS 16+ · 7-day free trial
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── Footer ─── */}
+      <footer className="foot">
+        <div className="inner">
+          <div className="col">
+            <Wordmark style={{ fontSize: 30 }} />
+            <p>
+              A glow companion that listens before it speaks. Built quietly in
+              Lisbon and Brooklyn.
+            </p>
+          </div>
+          <div className="col">
+            <h5>The app</h5>
+            <a href="#how">How it works</a>
+            <a href="#facets">What we watch</a>
+            <a href="#patterns">Patterns</a>
+            <a href="#shelf">Shelf verdicts</a>
+          </div>
+          <div className="col">
+            <h5>Quiet print</h5>
+            <a href="#privacy">Privacy</a>
+            <a href="/privacy">Privacy policy</a>
+            <a href="/terms">Terms</a>
+            <a href="/guides">Method &amp; references</a>
+          </div>
+          <div className="col">
+            <h5>Hello</h5>
+            <a href="mailto:hello@glowlytics.ai">hello@glowlytics.ai</a>
+            <a href="/blog">Letter, monthly</a>
+            <a href="/faq">FAQ</a>
+          </div>
+        </div>
+        <div className="legal">
+          <span>© 2026 Glowlytics · BDQ Holdings LLC</span>
+          <span>Made to be edited.</span>
+        </div>
+      </footer>
     </div>
   );
 }

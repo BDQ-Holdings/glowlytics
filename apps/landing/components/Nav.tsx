@@ -1,42 +1,115 @@
 import Link from "next/link";
 
+const APP_STORE_URL = "https://apps.apple.com/app/glowlytics/id6760600635";
+
 export default function Nav() {
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 px-[clamp(20px,4vw,48px)] bg-bg-deep/80 backdrop-blur-xl border-b border-white/5">
-      <div className="max-w-[1200px] mx-auto flex items-center justify-between h-[72px]">
-        <Link href="/" className="flex items-center gap-2.5">
-          <img src="/logo-emblem.webp" alt="" width={32} height={32} />
-          <span className="font-display text-lg font-bold tracking-tight bg-gradient-to-br from-teal to-purple bg-clip-text text-transparent">
-            Glowlytics
-          </span>
+    <nav className="site-nav">
+      <div className="site-nav-inner">
+        <Link href="/" className="wordmark" aria-label="Glowlytics home">
+          Glowl<em>y</em>tics
         </Link>
-        <div className="hidden items-center gap-8 md:flex">
-          <Link href="/blog" className="text-sm font-medium text-white/55 hover:text-white/90 transition-colors">
-            Blog
-          </Link>
-          <Link href="/guides" className="text-sm font-medium text-white/55 hover:text-white/90 transition-colors">
-            Guides
-          </Link>
-          <Link href="/faq" className="text-sm font-medium text-white/55 hover:text-white/90 transition-colors">
-            FAQ
-          </Link>
-          <Link href="/glossary" className="text-sm font-medium text-white/55 hover:text-white/90 transition-colors">
-            Glossary
-          </Link>
-          <a
-            href="https://apps.apple.com/app/glowlytics/id6760600635"
-            className="text-sm font-semibold px-5 py-2 rounded-full bg-teal/10 text-teal border border-teal/20 hover:bg-teal/20 transition-colors"
-          >
-            Download
-          </a>
+        <div className="site-nav-links">
+          <Link href="/blog">Blog</Link>
+          <Link href="/guides">Guides</Link>
+          <Link href="/faq">FAQ</Link>
+          <Link href="/glossary">Glossary</Link>
         </div>
-        <a
-          href="https://apps.apple.com/app/glowlytics/id6760600635"
-          className="text-sm font-semibold px-4 py-2 rounded-full bg-teal/10 text-teal border border-teal/20 transition-colors md:hidden"
-        >
-          App Store
+        <a href={APP_STORE_URL} className="site-nav-cta">
+          Get Glowlytics
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M5 12h14" />
+            <path d="M14 6l6 6-6 6" />
+          </svg>
         </a>
       </div>
+
+      <style>{`
+        .site-nav {
+          position: sticky;
+          top: 0;
+          z-index: 50;
+          backdrop-filter: blur(14px);
+          -webkit-backdrop-filter: blur(14px);
+          background: color-mix(in oklab, var(--bg) 80%, transparent);
+          border-bottom: 1px solid var(--hairline);
+        }
+        .site-nav-inner {
+          max-width: 1240px;
+          margin: 0 auto;
+          padding: 18px 32px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 28px;
+        }
+        .site-nav .wordmark {
+          font-family: var(--font-script);
+          font-size: 30px;
+          font-weight: 600;
+          line-height: 1;
+          color: var(--ink);
+          letter-spacing: -0.5px;
+        }
+        .site-nav .wordmark em {
+          color: var(--accent);
+          font-style: normal;
+        }
+        .site-nav-links {
+          display: flex;
+          gap: 30px;
+          align-items: center;
+        }
+        .site-nav-links a {
+          font-size: 13px;
+          color: var(--ink);
+          opacity: 0.68;
+          transition: opacity 160ms var(--ease-out);
+          font-weight: 500;
+        }
+        .site-nav-links a:hover {
+          opacity: 1;
+        }
+        .site-nav-cta {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 18px;
+          border-radius: 999px;
+          background: var(--ink);
+          color: var(--bg);
+          font-size: 13px;
+          font-weight: 600;
+          letter-spacing: 0.1px;
+          transition: transform 160ms var(--ease-out), background 160ms var(--ease-out);
+        }
+        .site-nav-cta:hover {
+          transform: translateY(-1px);
+          background: color-mix(in oklab, var(--ink) 92%, var(--accent));
+        }
+        @media (max-width: 720px) {
+          .site-nav-inner {
+            padding: 14px 20px;
+            gap: 14px;
+          }
+          .site-nav-links {
+            display: none;
+          }
+          .site-nav .wordmark {
+            font-size: 26px;
+          }
+        }
+      `}</style>
     </nav>
   );
 }

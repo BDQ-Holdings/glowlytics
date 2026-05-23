@@ -68,8 +68,8 @@ export default function ArticleLayout({
             <h1>{meta.title}</h1>
             <p className="article-description">{meta.description}</p>
             <div className="article-meta">
-              <time dateTime={meta.dateModified || meta.dateGenerated}>
-                {meta.dateModified || meta.dateGenerated}
+              <time dateTime={String(meta.dateModified || meta.dateGenerated)}>
+                {String(meta.dateModified || meta.dateGenerated)}
               </time>
               <span>{meta.readingTime} min read</span>
               <span>{meta.sources.length} source{meta.sources.length === 1 ? "" : "s"}</span>
@@ -79,7 +79,7 @@ export default function ArticleLayout({
           <div className="article-prose">{children}</div>
 
           {meta.sources.length > 0 ? (
-            <section className="article-panel mt-12">
+            <section className="article-panel" style={{ marginTop: 56 }}>
               <h2>Sources</h2>
               <ol className="article-source-list">
                 {meta.sources.map((source, index) => (
@@ -117,7 +117,7 @@ export default function ArticleLayout({
 
           <section className="article-panel">
             <h2>Medical note</h2>
-            <p className="mt-3 text-sm leading-7 text-white/56">
+            <p style={{ marginTop: 12, fontSize: 13, lineHeight: 1.6, color: "var(--muted)" }}>
               Glowlytics content is educational. It does not diagnose or treat skin
               conditions, and it should not replace a dermatologist.
             </p>

@@ -31,13 +31,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
-          href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Dancing+Script:wght@500;600;700&family=Instrument+Serif:ital@0;1&display=swap"
+          rel="stylesheet"
+        />
+        <link
+          href="https://api.fontshare.com/v2/css?f[]=switzer@300,400,500,600,700&display=swap"
           rel="stylesheet"
         />
       </head>
-      <body className="font-body bg-bg-deep text-white antialiased overflow-x-hidden">
+      <body className="antialiased overflow-x-hidden">
         <Nav />
-        <main className="pt-[72px]">{children}</main>
+        <main>{children}</main>
         <Footer />
       </body>
     </html>

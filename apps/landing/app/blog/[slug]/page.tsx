@@ -1,7 +1,15 @@
 import { notFound } from "next/navigation";
-import { getContentBySlug, getAllSlugs } from "@/lib/content";
+import {
+  extractHeadings,
+  getAllSlugs,
+  getContentBySlug,
+  getContentUrl,
+  getRelatedContent,
+  getTypeLabel,
+} from "@/lib/content";
 import { renderMdx } from "@/lib/mdx";
-import ArticleLayout from "@/components/ArticleLayout";
+import ArticleSchema from "@/components/ArticleSchema";
+import BlogArticleLayout from "@/components/BlogArticleLayout";
 import type { Metadata } from "next";
 
 interface Props {
@@ -37,10 +45,25 @@ export default async function BlogPost({ params }: Props) {
   if (!item) notFound();
 
   const content = await renderMdx(item.content);
+  const headings = extractHeadings(item.content);
+  const related = getRelatedContent(item.meta.relatedSlugs, 3).map((entry) => ({
+    slug: entry.meta.slug,
+    title: entry.meta.title,
+    category: getTypeLabel(entry.meta.type),
+    readingTime: entry.meta.readingTime,
+    href: getContentUrl(entry.meta),
+  }));
 
   return (
-    <ArticleLayout meta={item.meta} markdown={item.content}>
-      {content}
-    </ArticleLayout>
+    <>
+      <ArticleSchema meta={item.meta} />
+      <BlogArticleLayout
+        meta={item.meta}
+        headings={headings}
+        related={related}
+      >
+        {content}
+      </BlogArticleLayout>
+    </>
   );
 }

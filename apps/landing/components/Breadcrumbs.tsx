@@ -37,22 +37,52 @@ export default function Breadcrumbs({
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(schemaData) }}
       />
-      <nav
-        aria-label="Breadcrumb"
-        className="mb-6 flex flex-wrap items-center gap-2 text-sm text-white/40"
-      >
+      <nav aria-label="Breadcrumb" className="breadcrumbs">
         {items.map((item, index) => (
-          <span key={`${item.label}-${index}`} className="flex items-center gap-2">
-            {index > 0 ? <span className="text-white/18">/</span> : null}
+          <span key={`${item.label}-${index}`} className="breadcrumbs-item">
+            {index > 0 ? <span className="breadcrumbs-sep">/</span> : null}
             {item.href ? (
-              <Link href={item.href} className="transition-colors hover:text-white/75">
+              <Link href={item.href} className="breadcrumbs-link">
                 {item.label}
               </Link>
             ) : (
-              <span className="text-white/65">{item.label}</span>
+              <span className="breadcrumbs-current">{item.label}</span>
             )}
           </span>
         ))}
+
+        <style>{`
+          .breadcrumbs {
+            margin-bottom: 28px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 10px;
+            font-family: ui-monospace, "SF Mono", monospace;
+            font-size: 11px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--muted);
+          }
+          .breadcrumbs-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+          }
+          .breadcrumbs-sep {
+            color: var(--accent2);
+          }
+          .breadcrumbs-link {
+            color: var(--muted);
+            transition: color 160ms var(--ease-out);
+          }
+          .breadcrumbs-link:hover {
+            color: var(--ink);
+          }
+          .breadcrumbs-current {
+            color: var(--ink);
+          }
+        `}</style>
       </nav>
     </>
   );
