@@ -23,6 +23,8 @@ import { initAnalytics, identifyUser as identifyAnalyticsUser, trackEvent } from
 // Lazy import — onnxruntime-react-native crashes in Expo Go
 const initLesionDetection = () =>
   import('../src/services/onDeviceLesionDetection').then((m) => m.initLesionDetection());
+const initSignalModels = () =>
+  import('../src/services/onDeviceSignalModels').then((m) => m.initSignalModels());
 
 const SPLASH_MIN_MS = 800;
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -299,6 +301,7 @@ function ClerkGatedApp() {
       }
       if (__DEV__) console.log('[App] Deferred init complete');
       initLesionDetection().catch(() => {});
+      initSignalModels().catch(() => {});
     };
 
     void initDeferred();

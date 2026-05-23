@@ -650,7 +650,7 @@ function authorizeUser(req, res, userId) {
 
 app.post('/api/vision/analyze', analyzeRateLimit, async (req, res) => {
   try {
-    const { image_base64, context } = req.body;
+    const { image_base64, context, client_signal_scores, client_signal_confidence, client_lesions } = req.body;
 
     if (!image_base64 || typeof image_base64 !== 'string') {
       return res.status(400).json({ error: 'image_base64 is required' });
@@ -661,6 +661,65 @@ app.post('/api/vision/analyze', analyzeRateLimit, async (req, res) => {
     if (!context) {
       return res.status(400).json({ error: 'context object is required' });
     }
+
+    // ==================== CLIENT-PROVIDED LAYER 2 ====================
+    // Mobile clients run skin_signals_v2 + YOLOv8 on-device (CoreML / NNAPI)
+    // and send the results in the request body. When present we trust them
+    // and skip the server-side ONNX path entirely — that's the slowest
+    // segment of this endpoint (~1-3s of shared-CPU work on Railway).
+    //
+    // We sanitize aggressively: any client-supplied value that isn't a
+    // finite 0-100 number is replaced with 50 (neutral), and confidence
+    // values must be from the enum or we default to 'med'.
+    const clamp100 = (v) => {
+      // NaN survives JSON as `null`, and a missing key arrives as `undefined`.
+      // Either should fall back to the neutral 50, not to `Number(null) === 0`.
+      if (v === null || v === undefined) return 50;
+      const n = Number(v);
+      return Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : 50;
+    };
+    const CONF_VALUES = new Set(['low', 'med', 'high']);
+    const sanitizeClientScores = (scores) => {
+      if (!scores || typeof scores !== 'object') return null;
+      return {
+        structure: clamp100(scores.structure),
+        hydration: clamp100(scores.hydration),
+        inflammation: clamp100(scores.inflammation),
+        sunDamage: clamp100(scores.sunDamage),
+        elasticity: clamp100(scores.elasticity),
+      };
+    };
+    const sanitizeClientConfidence = (conf) => {
+      if (!conf || typeof conf !== 'object') return null;
+      const pick = (v) => (CONF_VALUES.has(v) ? v : 'med');
+      return {
+        structure: pick(conf.structure),
+        hydration: pick(conf.hydration),
+        inflammation: pick(conf.inflammation),
+        sunDamage: pick(conf.sunDamage),
+        elasticity: pick(conf.elasticity),
+      };
+    };
+    const sanitizeClientLesions = (raw) => {
+      if (!Array.isArray(raw)) return null;
+      // Trust the camera-side detector but cap to 50 entries and 4 decimal
+      // places of bbox precision so a malicious client can't bloat the response.
+      return raw.slice(0, 50).map((l) => ({
+        class: typeof l.class === 'string' ? l.class.slice(0, 32) : 'acne',
+        confidence: Number.isFinite(l.confidence) ? Math.max(0, Math.min(1, l.confidence)) : 0,
+        bbox: Array.isArray(l.bbox) && l.bbox.length === 4
+          ? l.bbox.map((v) => (Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0))
+          : [0, 0, 0, 0],
+        zone: typeof l.zone === 'string' ? l.zone.slice(0, 32) : 'unknown',
+        tier: l.tier === 'confirmed' ? 'confirmed' : 'possible',
+      })).filter((l) => l.confidence > 0);
+    };
+
+    const clientScores = sanitizeClientScores(client_signal_scores);
+    const clientConfidence = sanitizeClientConfidence(client_signal_confidence) || {
+      structure: 'high', hydration: 'high', inflammation: 'med', sunDamage: 'high', elasticity: 'high',
+    };
+    const clientLesions = sanitizeClientLesions(client_lesions);
 
     const modelId = process.env.VISION_MODEL_ID || 'gpt-4o';
 
@@ -721,10 +780,37 @@ Return ONLY valid JSON matching this schema:
     //   zeroing its weight (see signal-models.js mergeSignalScores).
     const llmDisabled = noLlmFallback.isLLMDisabled();
 
+    // Layer 1 still runs locally even when the client provides L2 scores —
+    // a*/ITA + Gabor features are cheap (~100ms) and we still want them
+    // surfaced in the response's `signal_features`. Only the ONNX path
+    // (`runAllModels`) is skipped when the client trusted-source is present.
     const layer1Promise = imageProcessing.extractFeatures(image_base64).then(async (features) => {
       const layer1Scores = imageProcessing.featuresToSignalScores(features);
-      const layer2Results = await signalModels.runAllModels(image_base64, features);
       const summaryFeatures = imageProcessing.extractSummaryFeatures(features);
+      let layer2Results;
+      if (clientScores) {
+        // Build a synthetic L2 result from the trusted client payload.
+        // Shape mirrors `signalModels.runAllModels()` so the existing merge
+        // math doesn't need to learn a new code path.
+        layer2Results = {
+          signalOverrides: {
+            structure: clientScores.structure,
+            hydration: clientScores.hydration,
+            sunDamage: clientScores.sunDamage,
+            elasticity: clientScores.elasticity,
+          },
+          lesions: clientLesions || [],
+          signalConfidence: clientConfidence,
+          source: 'client',
+        };
+      } else {
+        layer2Results = await signalModels.runAllModels(image_base64, features);
+        // If the client only sent lesions (e.g. older mobile build), merge
+        // them into whatever the server detector produced.
+        if (clientLesions && layer2Results) {
+          layer2Results.lesions = clientLesions;
+        }
+      }
       return { features, layer1Scores, layer2Results, summaryFeatures };
     }).catch((err) => {
       log.warn('[vision] Layer 1/2 failed:', err.message);

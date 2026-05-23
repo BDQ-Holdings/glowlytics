@@ -26,6 +26,8 @@ import { localDateStr } from '../../src/utils/localDate';
 import { useStore } from '../../src/store/useStore';
 import { analyzeWithFallback } from '../../src/services/skinAnalysis';
 import { streamInsights } from '../../src/services/visionAPI';
+import { buildInsightsFromDeterministic } from '../../src/services/onDeviceInsightsFallback';
+import type { GeneratedInsights } from '../../src/types';
 import { buildHealthkitRollup } from '../../src/services/healthSync';
 import { captureFaceMesh } from '../../src/services/faceMeshCapture';
 import { analyzeBoneStructure } from '../../src/services/boneStructure';
@@ -383,58 +385,76 @@ export default function AnalyzingScreen() {
         stress_level: prev?.stress_level,
       });
 
-      // Stage 2: Stream personalized insights in background (non-blocking)
-      // We save the model output immediately with Stage 1 data, then update
-      // with generated insights when streaming completes.
-      if (env.API_BASE_URL && analysis.signal_scores) {
-        setIsStreaming(true);
-        setDisplayedMessage('Generating insights...');
-        // Fire and forget — don't block navigation
-        streamInsights(
-          {
+      // Stage 2: Stream personalized insights in background (non-blocking).
+      // The L3 GPT-4o path is best-effort — when it's not reachable (offline,
+      // backend disabled, transient failure) we synthesise the same shape via
+      // `buildInsightsFromDeterministic` on-device so the scan always lands
+      // with a populated `generated_insights` field.
+      if (analysis.signal_scores) {
+        const attachInsights = (insights: GeneratedInsights, source: 'remote' | 'local') => {
+          insightsRef.current = insights;
+          const currentOutputs = useStore.getState().modelOutputs;
+          if (currentOutputs.length > 0) {
+            const updated = [...currentOutputs];
+            updated[updated.length - 1] = {
+              ...updated[updated.length - 1],
+              generated_insights: insights,
+            };
+            useStore.setState({ modelOutputs: updated });
+            useStore.getState().persistData();
+          }
+          trackEvent('scan_insights_generated', { source });
+        };
+
+        const fallbackInsights = (): GeneratedInsights =>
+          buildInsightsFromDeterministic({
             signal_scores: analysis.signal_scores,
-            signal_features: analysis.signal_features,
-            signal_confidence: analysis.signal_confidence,
             lesions: finalLesions,
             conditions: analysis.conditions,
-            zone_severity: analysis.zone_severity,
-            user_goal: currentProtocol?.primary_goal,
             scan_count: state.modelOutputs.length,
-            rag_context: analysis.rag_recommendations,
-            // Ground L3 in 7-day HealthKit averages so insights can reference
-            // sleep / HRV / RHR / movement / mindful trends instead of only
-            // the single scan's lifestyle log.
-            healthkit_context: buildHealthkitRollup(state.healthDailyRecords, 7),
-          },
-          (chunk) => {
-            setStreamedText((prev) => prev + chunk);
-          },
-        ).then((insights) => {
-          setIsStreaming(false);
-          if (insights) {
-            insightsRef.current = insights;
-            // Update the latest model output with generated insights (immutable)
-            const currentOutputs = useStore.getState().modelOutputs;
-            if (currentOutputs.length > 0) {
-              const updated = [...currentOutputs];
-              updated[updated.length - 1] = {
-                ...updated[updated.length - 1],
-                generated_insights: insights,
-              };
-              useStore.setState({ modelOutputs: updated });
-              useStore.getState().persistData();
+          });
+
+        if (env.API_BASE_URL) {
+          setIsStreaming(true);
+          setDisplayedMessage('Generating insights...');
+          streamInsights(
+            {
+              signal_scores: analysis.signal_scores,
+              signal_features: analysis.signal_features,
+              signal_confidence: analysis.signal_confidence,
+              lesions: finalLesions,
+              conditions: analysis.conditions,
+              zone_severity: analysis.zone_severity,
+              user_goal: currentProtocol?.primary_goal,
+              scan_count: state.modelOutputs.length,
+              rag_context: analysis.rag_recommendations,
+              // Ground L3 in 7-day HealthKit averages so insights can reference
+              // sleep / HRV / RHR / movement / mindful trends instead of only
+              // the single scan's lifestyle log.
+              healthkit_context: buildHealthkitRollup(state.healthDailyRecords, 7),
+            },
+            (chunk) => {
+              setStreamedText((prev) => prev + chunk);
+            },
+          ).then((insights) => {
+            setIsStreaming(false);
+            if (insights) {
+              attachInsights(insights, 'remote');
+            } else {
+              // Stream returned no parseable insights — fall back to on-device
+              // template generation so the model output still ships with text.
+              trackEvent('scan_insights_stream_failed', { reason: 'no_insights' });
+              attachInsights(fallbackInsights(), 'local');
             }
-          } else {
-            // streamInsights resolved with null — backend either returned no
-            // parseable JSON, the XHR errored, or the auth/HTTP layer rejected
-            // us. Track so we can spot stream regressions in PostHog instead
-            // of seeing only the L1+L2 scores quietly missing their L3 layer.
-            trackEvent('scan_insights_stream_failed', { reason: 'no_insights' });
-          }
-        }).catch((err: any) => {
-          setIsStreaming(false);
-          trackEvent('scan_insights_stream_failed', { error: String(err?.message || err) });
-        });
+          }).catch((err: any) => {
+            setIsStreaming(false);
+            trackEvent('scan_insights_stream_failed', { error: String(err?.message || err) });
+            attachInsights(fallbackInsights(), 'local');
+          });
+        } else {
+          // No backend configured — generate insights entirely on-device.
+          attachInsights(fallbackInsights(), 'local');
+        }
       }
 
       addModelOutput({
@@ -652,18 +672,62 @@ export default function AnalyzingScreen() {
     const newProductToday = state.products.some((p) => p.start_date === todayStr);
     analysisStartTime.current = Date.now();
 
-    // Encode the current photo fresh each time
+    // Encode the current photo fresh each time. Compute the on-device
+    // skin-signals model in parallel so its result is ready by the time
+    // the network call lands — the backend will trust the client scores
+    // and skip its own (slow, CPU-bound) ONNX layer.
     const encodeAndAnalyze = async () => {
-      let base64: string | undefined;
-      if (params.photoUri) {
+      const encodePromise: Promise<string | undefined> = (async () => {
+        if (!params.photoUri) return undefined;
         try {
           const { imageToBase64 } = await import('../../src/services/visionAPI');
-          base64 = await imageToBase64(params.photoUri);
-          useStore.getState().setPendingPhotoBase64(base64);
+          const b = await imageToBase64(params.photoUri);
+          useStore.getState().setPendingPhotoBase64(b);
+          return b;
         } catch {
-          // Encoding failed — analysis will try without pre-encoded base64
+          // Encoding failed — analysis will try again without a pre-encoded base64
+          return undefined;
         }
+      })();
+
+      const onDevicePromise: Promise<
+        Awaited<ReturnType<typeof import('../../src/services/onDeviceSignalModels').runSkinSignals>>
+      > = (async () => {
+        if (!params.photoUri) return null;
+        try {
+          const mod = await import('../../src/services/onDeviceSignalModels');
+          if (!mod.isReady()) {
+            // Bootstrap path may not have finished — try to init now. If the
+            // model is unavailable (Expo Go, missing asset, init failure)
+            // the backend's L2 path picks up the slack.
+            const ok = await mod.initSignalModels();
+            if (!ok) return null;
+          }
+          return await mod.runSkinSignals(params.photoUri);
+        } catch (err: any) {
+          if (__DEV__) console.warn('[Glowlytics] On-device L2 skipped:', err?.message || err);
+          return null;
+        }
+      })();
+
+      const [base64, onDevice] = await Promise.all([encodePromise, onDevicePromise]);
+
+      if (__DEV__ && onDevice) {
+        console.log(
+          `[Glowlytics] On-device L2 ${onDevice.latency_ms}ms:`,
+          onDevice.signal_scores,
+        );
       }
+      trackEvent('scan_on_device_l2', {
+        ran: onDevice ? 1 : 0,
+        latency_ms: onDevice?.latency_ms ?? 0,
+      });
+
+      // Lesions were already computed on-device during the camera capture
+      // (see camera.tsx → setPendingLesions); pass them through so the
+      // backend can skip YOLOv8s too.
+      const clientLesions = useStore.getState().pendingLesions ?? undefined;
+
       return analyzeWithFallback({
         scannerData,
         photoUri: params.photoUri || undefined,
@@ -678,6 +742,9 @@ export default function AnalyzingScreen() {
           stress_level: lastRecord?.stress_level,
         },
         preEncodedBase64: base64 || undefined,
+        clientSignalScores: onDevice?.signal_scores,
+        clientSignalConfidence: onDevice?.signal_confidence,
+        clientLesions,
         skipDelay: true,
       });
     };

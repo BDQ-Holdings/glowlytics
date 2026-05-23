@@ -71,6 +71,15 @@ export async function analyzeWithVisionAPI(
     sleep_quality?: string;
     stress_level?: string;
     scan_count: number;
+    /**
+     * Client-computed L2 signal scores from `onDeviceSignalModels`. When
+     * present the backend trusts these and skips its server-side ONNX
+     * inference, saving ~1-3 s of CPU-bound work per request.
+     */
+    client_signal_scores?: SignalScores;
+    client_signal_confidence?: SignalConfidence;
+    /** Client-detected lesions from the camera's on-device YOLOv8 path. */
+    client_lesions?: DetectedLesion[];
   },
   preEncodedBase64?: string,
 ): Promise<VisionAnalysisResult> {
@@ -91,6 +100,9 @@ export async function analyzeWithVisionAPI(
         stress_level: context.stress_level,
         scan_count: context.scan_count,
       },
+      client_signal_scores: context.client_signal_scores,
+      client_signal_confidence: context.client_signal_confidence,
+      client_lesions: context.client_lesions,
     },
     timeoutMs: 15_000,
     retries: 1,

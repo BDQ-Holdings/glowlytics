@@ -14,6 +14,17 @@ import type {
 } from '../types';
 import { analyzeWithVisionAPI } from './visionAPI';
 import { env } from '../config/env';
+import { extractFeaturesFromUri } from './onDeviceImageFeatures';
+import {
+  applyLesionFeedback,
+  extractSummaryFeatures,
+  featuresToSignalScores,
+  mergeSignalScores,
+  DEFAULT_SIGNAL_CONFIDENCE,
+  type Layer2Results,
+} from './onDeviceSignalFusion';
+import { buildLayer3FromDeterministic } from './onDeviceInsightsFallback';
+
 
 /**
  * Skin analysis engine using validated dermatology heuristics.
@@ -41,6 +52,18 @@ interface AnalysisInput {
   };
   /** Pre-encoded base64 of the photo to avoid re-encoding. */
   preEncodedBase64?: string;
+  /**
+   * Client-computed Layer-2 signal scores (from `onDeviceSignalModels`).
+   * When present the backend will trust these and skip its own ONNX path,
+   * cutting ~1-3 s of CPU-bound inference off the round-trip.
+   */
+  clientSignalScores?: SignalScores;
+  clientSignalConfidence?: SignalConfidence;
+  /**
+   * Client-detected lesions (from on-device YOLOv8 in the camera flow).
+   * When present the backend skips its server-side acne detector.
+   */
+  clientLesions?: DetectedLesion[];
   /** When true, skip the simulated processing delay (useful for tests). */
   skipDelay?: boolean;
 }
@@ -310,8 +333,23 @@ export const analyzeSkiN = async (input: AnalysisInput): Promise<{
 };
 
 /**
- * Attempts real Vision API analysis if an API key is configured,
- * otherwise falls back to the local simulated analysis.
+ * On-device scan analysis with optional backend GPT-4o enrichment.
+ *
+ * Replaces the old backend-mediated pipeline:
+ *   - L1 deterministic features now run via `onDeviceImageFeatures` (CIELAB,
+ *     ITA, GLCM, LBP, Gabor, Frangi — all in the JS thread, no `sharp`).
+ *   - L2 ONNX signal scores come from the caller's `clientSignalScores`
+ *     (computed by `onDeviceSignalModels` ahead of this call). Lesions ditto.
+ *   - L1 + L2 are merged on-device via `mergeSignalScores`; lesion feedback
+ *     is applied locally.
+ *   - L3 GPT-4o is best-effort: when reachable it enriches the narrative
+ *     fields (personalized_feedback, conditions, rag_recommendations); when
+ *     unavailable we synthesise the same shape via
+ *     `buildLayer3FromDeterministic` so the scan never depends on network.
+ *
+ * The user-visible scores (signal_scores, acne_score, sun_damage_score,
+ * skin_age_score) are derived from on-device computation. The backend call
+ * never affects them.
  */
 export const analyzeWithFallback = async (input: AnalysisInput): Promise<{
   acne_score: number;
@@ -329,85 +367,152 @@ export const analyzeWithFallback = async (input: AnalysisInput): Promise<{
   lesions?: DetectedLesion[];
   signal_confidence?: SignalConfidence;
 }> => {
-  const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> => {
-    return Promise.race([
-      promise,
-      new Promise<T>((_, reject) => {
-        setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
-      }),
-    ]);
+  // No photo → no signal to compute from. Surface so the caller debugs the
+  // camera handoff rather than masking with all-zero scanner indices.
+  if (!input.photoUri) {
+    if (!env.API_BASE_URL) {
+      // Tests / mockScanner flow — fall back to the deterministic heuristic
+      // (which uses the scanner indices, not the photo).
+      return analyzeSkiN(input);
+    }
+    throw new Error('Scan photo unavailable — please retake the photo and try again.');
+  }
+
+  const photoUri = input.photoUri;
+  const t0 = Date.now();
+
+  // ---- L1: deterministic features on-device ----
+  // Always run — feature math is ~150ms on iPhone and is cheaper than a
+  // network round-trip even on fast connections.
+  let l1Scores: SignalScores;
+  let l1Features: SignalFeatures | undefined;
+  try {
+    const features = await extractFeaturesFromUri(photoUri);
+    l1Scores = featuresToSignalScores(features);
+    l1Features = extractSummaryFeatures(features);
+  } catch (err) {
+    if (__DEV__) console.warn('[Glowlytics] On-device L1 failed:', (err as Error)?.message);
+    // Neutral fallback — preserves merge math without polluting downstream
+    // scores. The L2 ONNX path can still pull weight.
+    l1Scores = { structure: 50, hydration: 50, inflammation: 50, sunDamage: 50, elasticity: 50 };
+    l1Features = undefined;
+  }
+
+  // ---- L2: pre-computed by caller via onDeviceSignalModels ----
+  // We mirror the shape the backend's `runAllModels` returns so the merge
+  // math is identical regardless of which side ran the model.
+  const l2: Layer2Results = {
+    signalOverrides: input.clientSignalScores
+      ? {
+          structure: input.clientSignalScores.structure,
+          hydration: input.clientSignalScores.hydration,
+          sunDamage: input.clientSignalScores.sunDamage,
+          elasticity: input.clientSignalScores.elasticity,
+        }
+      : {},
+    lesions: input.clientLesions || [],
+    signalConfidence: input.clientSignalConfidence || DEFAULT_SIGNAL_CONFIDENCE,
   };
 
-  try {
-    // Try real Vision API via backend proxy if API base URL is configured and photo is available
-    if (env.API_BASE_URL && input.photoUri) {
-      try {
-        console.log('[Glowlytics] Calling Vision API at:', env.API_BASE_URL);
-        const result = await withTimeout(
-          analyzeWithVisionAPI(input.photoUri, {
-            primary_goal: input.protocol.primary_goal,
-            scan_region: input.protocol.scan_region,
-            sunscreen_used: input.dailyContext.sunscreen_used,
-            sleep_quality: input.dailyContext.sleep_quality,
-            stress_level: input.dailyContext.stress_level,
-            scan_count: input.previousOutputs.length,
-          }, input.preEncodedBase64),
-          35_000,
-          'Vision API',
-        );
-
-        console.log('[Glowlytics] Vision API success — scores from fine-tuned GPT-4o model');
-
-        // Check for escalation
-        let escalation = false;
-        if (input.previousOutputs.length > 0) {
-          const last = input.previousOutputs[input.previousOutputs.length - 1];
-          if (
-            Math.abs(result.acne_score - last.acne_score) > 20 ||
-            Math.abs(result.sun_damage_score - last.sun_damage_score) > 20
-          ) {
-            escalation = true;
-          }
-        }
-
-        return {
-          ...result,
-          escalation_flag: escalation,
-          conditions: result.conditions,
-          rag_recommendations: result.rag_recommendations,
-          personalized_feedback: result.personalized_feedback,
-          signal_scores: result.signal_scores,
-          signal_features: result.signal_features,
-          lesions: result.lesions,
-          signal_confidence: result.signal_confidence,
-        };
-      } catch (err: any) {
-        // Do NOT silently fall back to analyzeSkiN here. In production, the
-        // scanner indices passed in are always 0 (camera.tsx hands off only
-        // photoUri — there is no client-side image scoring), so analyzeSkiN
-        // would produce all-zero scores that look like a flawless reading
-        // instead of a failed backend call. Propagate so the UI shows a real
-        // error and the user can retry.
-        console.error('[Glowlytics] Vision API failed:', err?.message || err);
-        throw err;
-      }
-    } else if (!env.API_BASE_URL) {
-      // Dev mode — no backend configured, use local heuristics. The scanner
-      // indices in this code path come from the mock scanner or _processing
-      // flow, not from the production camera handoff, so they're non-zero.
-      console.log('[Glowlytics] No API_BASE_URL configured — using LOCAL heuristic analysis');
-      return analyzeSkiN(input);
-    } else {
-      // API configured but photoUri missing = programmer/handoff bug. Don't
-      // mask it with zero-input local heuristics; surface so the camera flow
-      // can be debugged.
-      throw new Error('Scan photo unavailable — please retake the photo and try again.');
+  // ---- L3: optional backend GPT-4o enrichment ----
+  // Best effort. If the call fails, times out, or there's no API base URL
+  // we synthesise the L3-equivalent shape locally so the scan keeps working.
+  let l3Result: Awaited<ReturnType<typeof analyzeWithVisionAPI>> | null = null;
+  if (env.API_BASE_URL) {
+    try {
+      const promise = analyzeWithVisionAPI(
+        photoUri,
+        {
+          primary_goal: input.protocol.primary_goal,
+          scan_region: input.protocol.scan_region,
+          sunscreen_used: input.dailyContext.sunscreen_used,
+          sleep_quality: input.dailyContext.sleep_quality,
+          stress_level: input.dailyContext.stress_level,
+          scan_count: input.previousOutputs.length,
+          client_signal_scores: input.clientSignalScores,
+          client_signal_confidence: input.clientSignalConfidence,
+          client_lesions: input.clientLesions,
+        },
+        input.preEncodedBase64,
+      );
+      const timeoutMs = 12_000;
+      l3Result = await Promise.race([
+        promise,
+        new Promise<typeof l3Result>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
+      ]);
+    } catch (err) {
+      if (__DEV__) console.warn('[Glowlytics] L3 enrichment skipped:', (err as Error)?.message);
+      l3Result = null;
     }
-  } catch (outerErr: any) {
-    // Let the error propagate to the UI — showing fake scores is worse than showing an error
-    console.error('[Glowlytics] analyzeWithFallback failed:', outerErr?.message || outerErr);
-    throw outerErr;
   }
+
+  // ---- Synthesise the L3 narrative locally when the backend didn't deliver ----
+  const l3Synth = buildLayer3FromDeterministic({
+    layer1Scores: l1Scores,
+    layer2Overrides: l2.signalOverrides,
+    lesions: l2.lesions,
+  });
+
+  const l3SignalScores: SignalScores = l3Result?.signal_scores ?? l3Synth.signal_scores;
+
+  // ---- Merge L1 + L2 + L3 with uncertainty weighting ----
+  // When L3 was synthesised from L1+L2 we still pass it through so the merge
+  // is stable; the same betas as the backend keep score continuity.
+  const mergedRaw = mergeSignalScores(l1Scores, l2, l3SignalScores);
+  const mergedWithLesions = applyLesionFeedback(mergedRaw, l2.lesions);
+
+  // ---- Pull the narrative fields from L3 (backend) → else fall back ----
+  const acne_score = Number.isFinite(l3Result?.acne_score)
+    ? (l3Result!.acne_score as number)
+    : l3Synth.acne_score;
+  const sun_damage_score = Number.isFinite(l3Result?.sun_damage_score)
+    ? (l3Result!.sun_damage_score as number)
+    : l3Synth.sun_damage_score;
+  const skin_age_score = Number.isFinite(l3Result?.skin_age_score)
+    ? (l3Result!.skin_age_score as number)
+    : l3Synth.skin_age_score;
+
+  const confidence = (l3Result?.confidence as Confidence | undefined) ?? l3Synth.confidence;
+  const primary_driver = l3Result?.primary_driver ?? l3Synth.primary_driver;
+  const recommended_action = l3Result?.recommended_action ?? l3Synth.recommended_action;
+  const personalized_feedback = l3Result?.personalized_feedback ?? l3Synth.personalized_feedback;
+  const conditions = l3Result?.conditions ?? l3Synth.conditions;
+  const rag_recommendations = l3Result?.rag_recommendations;
+
+  // Escalation flag — compare against the prior model output.
+  let escalation = false;
+  if (input.previousOutputs.length > 0) {
+    const last = input.previousOutputs[input.previousOutputs.length - 1];
+    if (
+      Math.abs(acne_score - last.acne_score) > 20 ||
+      Math.abs(sun_damage_score - last.sun_damage_score) > 20
+    ) {
+      escalation = true;
+    }
+  }
+
+  if (__DEV__) {
+    console.log(
+      `[Glowlytics] On-device scan pipeline ${Date.now() - t0}ms — L3 ${l3Result ? 'backend' : 'local'}`,
+    );
+  }
+
+  return {
+    acne_score,
+    sun_damage_score,
+    skin_age_score,
+    confidence,
+    primary_driver,
+    recommended_action,
+    escalation_flag: escalation,
+    conditions,
+    rag_recommendations,
+    personalized_feedback,
+    signal_scores: mergedWithLesions,
+    signal_features: l1Features,
+    lesions: l2.lesions.length > 0 ? l2.lesions : l3Result?.lesions,
+    signal_confidence: l2.signalConfidence,
+  };
 };
 
 export const getExplanation = (

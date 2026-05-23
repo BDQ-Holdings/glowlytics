@@ -8,6 +8,26 @@ jest.mock('../visionAPI', () => ({
 jest.mock('../../config/env', () => ({
   env: { API_BASE_URL: 'https://api.test', CLERK_PUBLISHABLE_KEY: '' },
 }));
+// The on-device L1 path pulls in `expo-image-manipulator` + `jpeg-js`, neither
+// of which is wired up in the jest-expo preset for module bodies that read
+// pixels. The merge math doesn't care about the feature shape past
+// `featuresToSignalScores` returning finite numbers, so we stub it at the
+// module boundary.
+jest.mock('../onDeviceImageFeatures', () => ({
+  extractFeaturesFromUri: jest.fn(async () => ({
+    inflammation: { a_star_mean: 5, a_star_std: 1, r_ratio_mean: 0.35 },
+    sunDamage:    { ita_mean: 30, ita_std: 8, ita_cv: 0.1, spot_count: 0 },
+    hydration:    { specular_ratio: 0.02, specular_uniformity: 0.3, lbp_entropy: 5.5, lbp_uniformity: 0.05 },
+    structure:    { glcm_contrast: 2, glcm_dissimilarity: 1, glcm_homogeneity: 0.5, glcm_energy: 0.1, pore_proxy: 2 },
+    elasticity:   { wrinkle_index: 5, forehead_glcm: { contrast: 2, dissimilarity: 1, homogeneity: 0.5, energy: 0.1 } },
+    gabor_features: new Float32Array(24),
+    lbp_uniform_histogram: new Float32Array(18),
+    frangi_features: new Float32Array(9),
+    landmark_geometry: new Float32Array([0.46, 0.36, 0.50, 0.33, 0.618]),
+    hydration_handcrafted: new Float32Array(44),
+    elasticity_handcrafted: new Float32Array(14),
+  })),
+}));
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { analyzeWithVisionAPI: mockedVisionApi } = require('../visionAPI') as {
@@ -506,16 +526,14 @@ function makeOutputs(count: number, overrides: Partial<ModelOutput> = {}): Model
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// analyzeWithFallback — silent-failure regression guard
+// analyzeWithFallback — on-device pipeline contract
 //
-// The production scan flow (camera.tsx → analyzing.tsx) hands off only a
-// photoUri; scanner indices are always 0 in the AnalysisInput. Previously
-// any Vision API failure would silently fall back to analyzeSkiN with that
-// all-zero input, producing scores of ~0 that looked like a flawless reading
-// instead of surfacing the backend failure. Lock in the new "propagate the
-// error" contract.
+// The scan pipeline now runs L1 (deterministic features) + L2 (ONNX signals,
+// passed in via `clientSignalScores`) entirely on-device. Backend GPT-4o is
+// best-effort enrichment of the narrative fields; transient errors must NOT
+// fail the scan. These tests guard the new contract.
 // ──────────────────────────────────────────────────────────────────────────
-describe('analyzeWithFallback - failure propagation', () => {
+describe('analyzeWithFallback - on-device pipeline', () => {
   beforeEach(() => {
     mockedVisionApi.mockReset();
   });
@@ -526,9 +544,16 @@ describe('analyzeWithFallback - failure propagation', () => {
     photoUri: 'file:///tmp/scan.jpg',
   };
 
-  it('propagates Vision API errors instead of returning silent all-zero fallback scores', async () => {
+  it('returns a locally-computed result when the optional backend L3 call rejects', async () => {
     mockedVisionApi.mockRejectedValueOnce(new Error('Vision API error (500): upstream'));
-    await expect(analyzeWithFallback(zeroScannerInput)).rejects.toThrow(/Vision API error \(500\)/);
+    const result = await analyzeWithFallback(zeroScannerInput);
+    // On-device L1 still produces finite signal scores even when L3 errors.
+    expect(result.signal_scores).toBeDefined();
+    expect(result.signal_scores!.structure).toBeGreaterThanOrEqual(0);
+    expect(result.signal_scores!.structure).toBeLessThanOrEqual(100);
+    // The narrative falls back to the deterministic synthesiser.
+    expect(typeof result.primary_driver).toBe('string');
+    expect(typeof result.recommended_action).toBe('string');
   });
 
   it('throws a clear error when API is configured but photoUri is missing', async () => {
@@ -538,7 +563,7 @@ describe('analyzeWithFallback - failure propagation', () => {
     expect(mockedVisionApi).not.toHaveBeenCalled();
   });
 
-  it('returns Vision API result unchanged when the call succeeds', async () => {
+  it('uses Vision API narrative fields when the L3 call succeeds, but keeps on-device signal_scores', async () => {
     mockedVisionApi.mockResolvedValueOnce({
       acne_score: 42,
       sun_damage_score: 18,
@@ -548,10 +573,14 @@ describe('analyzeWithFallback - failure propagation', () => {
       recommended_action: 'Stay consistent.',
     });
     const result = await analyzeWithFallback(zeroScannerInput);
+    // Narrative fields come from L3.
     expect(result.acne_score).toBe(42);
     expect(result.sun_damage_score).toBe(18);
     expect(result.skin_age_score).toBe(27);
     expect(result.confidence).toBe('high');
+    expect(result.primary_driver).toBe('cycle window');
     expect(result.escalation_flag).toBe(false);
+    // Signal scores remain derived from on-device computation regardless.
+    expect(result.signal_scores).toBeDefined();
   });
 });

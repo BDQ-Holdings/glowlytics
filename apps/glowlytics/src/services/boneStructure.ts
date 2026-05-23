@@ -1,18 +1,26 @@
 /**
- * Bone-structure / Harmony API client.
+ * Bone-structure / Harmony — on-device analyzer with optional backend
+ * persistence.
  *
- * Mirrors the visionAPI.ts pattern: builds the request, calls httpJson
- * (CLAUDE.md mandate), validates the response shape, throws on transport
- * errors with the existing ApiError surface.
+ * The full math (metrics → scoring → findings → interventions) runs locally
+ * via `onDeviceBoneStructure` + `boneInterventions`, eliminating the
+ * `/api/vision/bone-structure` round-trip from the user-visible scan flow.
+ *
+ * Backend POST is now strictly a best-effort persistence call so that MCP
+ * queries (which read `model_outputs.bone_structure`) eventually see this
+ * scan. When the persist call fails or times out the local result is still
+ * returned with `persisted: false`, and `syncOutbox` (driven by the caller)
+ * handles the retry.
  */
 
 import { env } from '../config/env';
 import { ApiError, httpJson } from './httpClient';
+import { analyzeBoneStructure as analyzeLocal } from './onDeviceBoneStructure';
+import { recommendInterventions } from './boneInterventions';
 import type {
-  BoneMeshSource,
+  BoneDomain,
   BoneStructureResult,
   CapturedFaceMesh,
-  InterventionBundle,
 } from '../types';
 
 interface AnalyzeArgs {
@@ -21,24 +29,19 @@ interface AnalyzeArgs {
   sexOverride?: 'male' | 'female';
 }
 
-const EMPTY_INTERVENTIONS: InterventionBundle = {
-  lifestyle: [],
-  pharmacological: [],
-  interventional: [],
-  procedural_disclaimer: '',
-};
-
-function clampNumber(v: unknown, lo = 0, hi = 100): number | null {
+function clampHarmony(v: number | null): number | null {
   if (v == null) return null;
-  const n = Number(v);
-  if (!Number.isFinite(n)) return null;
-  return Math.max(lo, Math.min(hi, Math.round(n)));
+  if (!Number.isFinite(v)) return null;
+  return Math.max(0, Math.min(100, Math.round(v)));
 }
 
-function asSource(v: unknown): BoneMeshSource {
-  return v === 'arkit' ? 'arkit' : 'mediapipe';
-}
-
+/**
+ * Compute bone-structure analysis on-device.
+ *
+ * `dailyId` is optional. When supplied we fire a best-effort persistence POST
+ * to the backend so MCP tooling can read the result back later. The local
+ * computation is always returned regardless of network outcome.
+ */
 export async function analyzeBoneStructure(
   { mesh, dailyId, sexOverride }: AnalyzeArgs,
 ): Promise<BoneStructureResult> {
@@ -46,55 +49,73 @@ export async function analyzeBoneStructure(
     throw new Error('mesh.vertices must be a flat xyz array (length divisible by 3)');
   }
 
-  // The server doesn't read `mesh.indices` — connectivity is derived from
-  // CANONICAL_OUTLINE_EDGES on the viewer side. Dropping it here saves ~30 KB
-  // of bandwidth per ARKit capture (and removes a confusing accepted-but-unused
-  // field from the wire shape).
+  // --- On-device analysis (the only path that produces user-visible scores) ---
+  const t0 = Date.now();
+  const analysis = analyzeLocal({
+    vertices: mesh.vertices,
+    blendShapes: mesh.blendShapes ?? null,
+    sex: sexOverride ?? null,
+    source: mesh.source,
+  });
+  const interventions = recommendInterventions(analysis.findings);
+  const localLatencyMs = Date.now() - t0;
+
+  const result: BoneStructureResult = {
+    harmony: clampHarmony(analysis.harmony),
+    status: analysis.status,
+    domain_scores: analysis.domainScores as Partial<Record<BoneDomain, number | null>>,
+    scored_metrics: analysis.scored,
+    metrics: analysis.metrics,
+    findings: analysis.findings,
+    interventions,
+    dominant_driver: analysis.dominantDriver,
+    downsampled_mesh: { vertices: Array.from(mesh.vertices), source: mesh.source },
+    source: mesh.source,
+    sex: analysis.sex,
+    generated_at: new Date().toISOString(),
+    latency_ms: localLatencyMs,
+    persisted: false,
+  };
+
+  // --- Backend persistence (best effort, never blocks the UI on failure) ---
+  if (!dailyId) return result;
+
   const body: Record<string, unknown> = {
     mesh: {
       vertices: mesh.vertices,
       blendShapes: mesh.blendShapes,
       source: mesh.source,
     },
+    daily_id: dailyId,
   };
-  if (dailyId) body.daily_id = dailyId;
   if (sexOverride) body.sex_override = sexOverride;
 
-  let result: Record<string, unknown>;
   try {
-    result = await httpJson<Record<string, unknown>>(
+    const persisted = await httpJson<{ persisted?: boolean }>(
       `${env.API_BASE_URL}/api/vision/bone-structure`,
       {
         method: 'POST',
         body,
-        // Mesh payload + scoring runs in <500ms server-side typically.
-        timeoutMs: 15_000,
+        // Server-side computation is duplicative but cheap (<500ms);
+        // keep the persist window tight so a slow backend never strands
+        // the scan UI.
+        timeoutMs: 8_000,
         retries: 1,
       },
     );
+    result.persisted = persisted?.persisted === true;
   } catch (err) {
     if (err instanceof ApiError && err.status > 0) {
-      throw new Error(`Bone-structure API error (${err.status}): ${err.body || err.message}`);
+      // 4xx/5xx — surface for telemetry but don't fail the scan.
+      if (__DEV__) {
+        console.warn(`[boneStructure] Persist API ${err.status}: ${err.body || err.message}`);
+      }
+    } else if (__DEV__) {
+      console.warn('[boneStructure] Persist failed:', (err as Error)?.message);
     }
-    throw err;
+    // Local result is still returned with `persisted: false` so the caller's
+    // syncOutbox retry path engages.
   }
 
-  return {
-    harmony: clampNumber(result.harmony),
-    status: (result.status === 'ok' || result.status === 'no_face' || result.status === 'insufficient')
-      ? result.status
-      : 'insufficient',
-    domain_scores: (result.domain_scores as BoneStructureResult['domain_scores']) || {},
-    scored_metrics: (result.scored_metrics as Record<string, number>) || {},
-    metrics: (result.metrics as BoneStructureResult['metrics']) || {},
-    findings: Array.isArray(result.findings) ? (result.findings as BoneStructureResult['findings']) : [],
-    interventions: (result.interventions as InterventionBundle) || EMPTY_INTERVENTIONS,
-    dominant_driver: (result.dominant_driver as BoneStructureResult['dominant_driver']) || null,
-    downsampled_mesh: (result.downsampled_mesh as BoneStructureResult['downsampled_mesh']) || null,
-    source: asSource(result.source),
-    sex: result.sex === 'male' || result.sex === 'female' ? result.sex : null,
-    generated_at: (result.generated_at as string) || new Date().toISOString(),
-    latency_ms: typeof result.latency_ms === 'number' ? result.latency_ms : undefined,
-    persisted: typeof result.persisted === 'boolean' ? result.persisted : undefined,
-  };
+  return result;
 }
