@@ -22,7 +22,7 @@ const config: Config = {
         glow: "var(--glow)",
         hairline: "var(--hairline)",
 
-        // Legacy aliases — mapped to dusk so any unmigrated component stays on-theme
+        // Legacy aliases, mapped to dusk so any unmigrated component stays on-theme
         "bg-deep": "var(--bg)",
         "bg-dark": "var(--bg)",
         "bg-card": "var(--surface)",

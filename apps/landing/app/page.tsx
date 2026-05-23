@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect } from "react";
 import "./landing.css";
+import WaitlistForm from "@/components/WaitlistForm";
 
 /* ─── JSON-LD structured data ─── */
 const jsonLd = {
@@ -50,29 +51,6 @@ function ArrowIcon() {
   );
 }
 
-/* Two-state email capture, keeps the visual but acknowledges submission
-   without any backend wiring. */
-function EmailCapture({ id }: { id?: string }) {
-  const [done, setDone] = useState(false);
-  const onSubmit = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setDone(true);
-  };
-  return (
-    <form className="hero-form" onSubmit={onSubmit} id={id}>
-      <input
-        type="email"
-        placeholder="you@yourplace.com"
-        aria-label="Email"
-        required
-        disabled={done}
-      />
-      <button type="submit" className="btn btn-primary">
-        {done ? "You’re in ✓" : "Save my spot"}
-      </button>
-    </form>
-  );
-}
 
 export default function LandingPage() {
   /* Mount-time setup: scope cream theme to <html>, restore on unmount,
@@ -153,7 +131,7 @@ export default function LandingPage() {
               No grades. No streak guilt. No noise.
             </div>
 
-            <EmailCapture id="hero-email" />
+            <WaitlistForm id="hero-email" source="hero" />
 
             <div className="hero-meta">
               <div className="avatar-stack">
@@ -1286,7 +1264,7 @@ export default function LandingPage() {
               Download Glowlytics on iPhone, your first quiet read is waiting.
               One short letter a month from us, never more.
             </p>
-            <EmailCapture id="final-email" />
+            <WaitlistForm id="final-email" source="final-cta" />
             <div
               style={{
                 marginTop: 18,

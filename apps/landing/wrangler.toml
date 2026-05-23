@@ -1,0 +1,11 @@
+# Cloudflare Pages config for the glowlytics landing site.
+# Functions live in `functions/` and are auto-discovered by Pages.
+
+name = "glowlytics"
+compatibility_date = "2026-05-22"
+pages_build_output_dir = "out"
+
+[[d1_databases]]
+binding = "WAITLIST_DB"
+database_name = "glowlytics-waitlist"
+database_id = "9d731b31-0832-45ef-b268-89d3c75c5c86"

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import WaitlistForm from "@/components/WaitlistForm";
 import { useEffect, useRef, useState } from "react";
 import type { ContentMeta, MarkdownHeading } from "@/lib/types";
 
@@ -381,19 +382,12 @@ export default function BlogArticleLayout({
             Patterns we surfaced, methods we changed, a quiet read. Free to start; unsubscribe
             whenever.
           </p>
-          <form
-            className="bp-nl-form"
-            onSubmit={(event) => {
-              event.preventDefault();
-              const button = event.currentTarget.querySelector("button");
-              if (button) button.textContent = "You're in ✓";
-            }}
-          >
-            <input type="email" placeholder="you@yourplace.com" required aria-label="Email" />
-            <button type="submit" className="bp-btn bp-btn-primary">
-              Send it
-            </button>
-          </form>
+          <WaitlistForm
+            id="bp-newsletter-form"
+            source="blog-newsletter"
+            variant="band"
+            cta="Send it"
+          />
           <p className="bp-nl-foot">
             Prefer the app?{" "}
             <a href={APP_STORE_URL} target="_blank" rel="noopener noreferrer">
