@@ -9,7 +9,7 @@ export default function Footer() {
             Glowl<em>y</em>tics
           </span>
           <p>
-            A glow companion that listens before it speaks. Built quietly in Lisbon and Brooklyn.
+            A glow companion that listens before it speaks. Built between Manhattan and Austin.
           </p>
         </div>
         <div className="site-foot-col">

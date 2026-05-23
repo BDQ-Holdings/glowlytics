@@ -1314,8 +1314,8 @@ export default function LandingPage() {
           <div className="col">
             <Wordmark style={{ fontSize: 30 }} />
             <p>
-              A glow companion that listens before it speaks. Built quietly in
-              Lisbon and Brooklyn.
+              A glow companion that listens before it speaks. Built between
+              Manhattan and Austin.
             </p>
           </div>
           <div className="col">
