@@ -166,7 +166,12 @@ export const AddProductSheet: React.FC<Props> = ({ visible, onClose }) => {
   const handleSearchInput = useCallback((query: string) => {
     setSearchQuery(query);
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-    searchAbortRef.current?.abort();
+    try {
+      searchAbortRef.current?.abort();
+    } catch {
+      // Some RN polyfills throw when aborting an already-aborted controller —
+      // we don't care.
+    }
     if (query.trim().length < 2) {
       setSearchResults([]);
       setSearching(false);
@@ -174,25 +179,45 @@ export const AddProductSheet: React.FC<Props> = ({ visible, onClose }) => {
     }
     setSearching(true);
     const mySeq = ++searchSeqRef.current;
-    searchTimerRef.current = setTimeout(async () => {
-      const controller = new AbortController();
-      searchAbortRef.current = controller;
-      try {
-        const results = await searchProductsMultiSource(query, controller.signal);
-        if (mySeq !== searchSeqRef.current) return; // stale
-        setSearchResults(results.slice(0, 15));
-        trackEvent('product_searched', { query, result_count: results.length });
-      } catch (err) {
-        // Only swallow legitimate cancellations; surface true failures.
-        if (mySeq !== searchSeqRef.current) return;
-        if (controller.signal.aborted || isApiError(err, 0)) {
-          // cancelled by caller — leave the previous state alone
-          return;
+    searchTimerRef.current = setTimeout(() => {
+      // Wrap the entire async path in a self-invoking IIFE with a top-level
+      // try/catch. Any unhandled rejection here would otherwise tear down
+      // the JS context (RN's default unhandled-rejection handler) — which
+      // surfaces to the user as "the app crashes back to sign-in".
+      (async () => {
+        const controller = new AbortController();
+        searchAbortRef.current = controller;
+        try {
+          const results = await searchProductsMultiSource(query, controller.signal);
+          if (mySeq !== searchSeqRef.current) return; // stale response
+          if (!Array.isArray(results)) {
+            setSearchResults([]);
+            return;
+          }
+          setSearchResults(results.slice(0, 15));
+          try {
+            trackEvent('product_searched', { query, result_count: results.length });
+          } catch {
+            /* analytics never crashes the UI */
+          }
+        } catch (err) {
+          if (mySeq !== searchSeqRef.current) return;
+          if (controller.signal.aborted || isApiError(err, 0)) {
+            // Aborted by us (newer keystroke or sheet closed) — leave state.
+            return;
+          }
+          if (__DEV__) console.warn('[AddProductSheet] search failed:', err);
+          setSearchResults([]);
+        } finally {
+          if (mySeq === searchSeqRef.current) setSearching(false);
         }
-        setSearchResults([]);
-      } finally {
-        if (mySeq === searchSeqRef.current) setSearching(false);
-      }
+      })().catch((err) => {
+        // Belt-and-braces: this path should be unreachable because the
+        // inner try/catch already covers every async error. If something
+        // still escapes (sync render-time error inside the IIFE itself),
+        // swallow it so the JS context survives.
+        if (__DEV__) console.warn('[AddProductSheet] unexpected search error:', err);
+      });
     }, 220);
   }, []);
 

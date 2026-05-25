@@ -25,6 +25,7 @@ import {
   currentNativeIcon,
 } from '../src/services/appearance';
 import { AppearanceHost } from '../src/components/AppearanceHost';
+import { AppErrorBoundary } from '../src/components/AppErrorBoundary';
 // Lazy import — onnxruntime-react-native crashes in Expo Go
 const initLesionDetection = () =>
   import('../src/services/onDeviceLesionDetection').then((m) => m.initLesionDetection());
@@ -390,32 +391,34 @@ function ClerkGatedApp() {
   return (
     <SafeAreaProvider>
       <AppearanceHost>
-        <View style={{ flex: 1, backgroundColor: Glow.palette.bg }}>
-          <StatusBar style={useStore.getState().appearance.mode === 'dark' ? 'light' : 'dark'} />
-          <Stack
-            screenOptions={{
-              headerShown: false,
-              contentStyle: { backgroundColor: Glow.palette.bg },
-              animation: 'slide_from_right',
-            }}
-          >
-            <Stack.Screen name="index" options={{ animation: 'fade' }} />
-            <Stack.Screen name="auth" options={{ animation: 'fade' }} />
-            <Stack.Screen name="oauth-native-callback" options={{ animation: 'fade' }} />
-            <Stack.Screen name="(tabs)" options={{ animation: 'none' }} />
-            <Stack.Screen name="onboarding" options={{ animation: 'fade' }} />
-            <Stack.Screen name="scan" options={{ animation: 'slide_from_bottom' }} />
-            <Stack.Screen name="product" options={{ animation: 'slide_from_right' }} />
-            <Stack.Screen name="signal" options={{ animation: 'slide_from_bottom' }} />
-            <Stack.Screen name="privacy-policy" options={{ animation: 'slide_from_right' }} />
-            <Stack.Screen name="paywall" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
-            <Stack.Screen name="pattern" options={{ animation: 'slide_from_right' }} />
-            <Stack.Screen name="settings" options={{ animation: 'slide_from_right' }} />
-            <Stack.Screen name="ritual" options={{ animation: 'slide_from_right' }} />
-          </Stack>
-          <AuthRedirector />
-          <DemoSeeder />
-        </View>
+        <AppErrorBoundary>
+          <View style={{ flex: 1, backgroundColor: Glow.palette.bg }}>
+            <StatusBar style={useStore.getState().appearance.mode === 'dark' ? 'light' : 'dark'} />
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                contentStyle: { backgroundColor: Glow.palette.bg },
+                animation: 'slide_from_right',
+              }}
+            >
+              <Stack.Screen name="index" options={{ animation: 'fade' }} />
+              <Stack.Screen name="auth" options={{ animation: 'fade' }} />
+              <Stack.Screen name="oauth-native-callback" options={{ animation: 'fade' }} />
+              <Stack.Screen name="(tabs)" options={{ animation: 'none' }} />
+              <Stack.Screen name="onboarding" options={{ animation: 'fade' }} />
+              <Stack.Screen name="scan" options={{ animation: 'slide_from_bottom' }} />
+              <Stack.Screen name="product" options={{ animation: 'slide_from_right' }} />
+              <Stack.Screen name="signal" options={{ animation: 'slide_from_bottom' }} />
+              <Stack.Screen name="privacy-policy" options={{ animation: 'slide_from_right' }} />
+              <Stack.Screen name="paywall" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
+              <Stack.Screen name="pattern" options={{ animation: 'slide_from_right' }} />
+              <Stack.Screen name="settings" options={{ animation: 'slide_from_right' }} />
+              <Stack.Screen name="ritual" options={{ animation: 'slide_from_right' }} />
+            </Stack>
+            <AuthRedirector />
+            <DemoSeeder />
+          </View>
+        </AppErrorBoundary>
       </AppearanceHost>
     </SafeAreaProvider>
   );

@@ -33,18 +33,41 @@ export interface CalendarStripProps {
 export function CalendarStrip({ days, activeIndex, onPick }: CalendarStripProps) {
   const scrollRef = useRef<ScrollView | null>(null);
   const stripWidthRef = useRef<number>(0);
+  // Tracks whether we've already performed the initial "snap-to-today" jump.
+  // First mount lands on today *without* animation; subsequent activeIndex
+  // changes (user swiping or tapping the strip) animate.
+  const didInitialSnapRef = useRef(false);
+
+  // Compute the target scroll offset that puts the given tile in the centre
+  // of the strip.
+  const offsetForIndex = (idx: number, stripWidth: number): number => {
+    const tileStep = TILE_WIDTH + TILE_GAP;
+    const targetX = idx * tileStep + TILE_WIDTH / 2;
+    return Math.max(0, targetX - stripWidth / 2);
+  };
 
   // Keep the active tile centred in the viewport when the index moves.
+  // First mount: the strip width hasn't been measured yet so this effect
+  // bails out — the `handleLayout` path below picks up the slack.
   useEffect(() => {
     if (!scrollRef.current || stripWidthRef.current === 0) return;
-    const tileStep = TILE_WIDTH + TILE_GAP;
-    const targetX = activeIndex * tileStep + TILE_WIDTH / 2;
-    const offset = Math.max(0, targetX - stripWidthRef.current / 2);
-    scrollRef.current.scrollTo({ x: offset, animated: true });
+    const offset = offsetForIndex(activeIndex, stripWidthRef.current);
+    scrollRef.current.scrollTo({ x: offset, animated: didInitialSnapRef.current });
+    didInitialSnapRef.current = true;
   }, [activeIndex]);
 
   const handleLayout = (e: LayoutChangeEvent) => {
-    stripWidthRef.current = e.nativeEvent.layout.width;
+    const width = e.nativeEvent.layout.width;
+    if (width === stripWidthRef.current) return;
+    stripWidthRef.current = width;
+    // First measurement arrives after the useEffect above ran with width=0,
+    // so the initial snap-to-today never happened. Do it now so today is
+    // in view on the very first paint.
+    if (!didInitialSnapRef.current && scrollRef.current) {
+      const offset = offsetForIndex(activeIndex, width);
+      scrollRef.current.scrollTo({ x: offset, animated: false });
+      didInitialSnapRef.current = true;
+    }
   };
 
   return (
