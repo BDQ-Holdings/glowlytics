@@ -852,16 +852,71 @@ html.dusk-landing > body > footer:last-of-type {
   .dusk-page footer.foot .inner { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 640px) {
-  .dusk-page section.band { padding: 64px 24px; }
+  .dusk-page section.band { padding: 56px 20px; }
   .dusk-page .steps,
   .dusk-page .facets,
   .dusk-page .shelf-grid,
   .dusk-page .quotes { grid-template-columns: 1fr; }
   .dusk-page nav.top .links { display: none; }
   .dusk-page .privacyband,
-  .dusk-page .final         { padding: 56px 28px; }
-  .dusk-page .hero          { padding: 16px 24px 56px; }
+  .dusk-page .final         { padding: 48px 20px; }
+  .dusk-page .hero          { padding: 12px 20px 48px; }
   .dusk-page footer.foot .inner { grid-template-columns: 1fr; gap: 32px; }
-  .dusk-page footer.foot .legal { flex-direction: column; gap: 8px; }
+  .dusk-page footer.foot .legal { flex-direction: column; gap: 8px; align-items: flex-start; }
   .dusk-page .callout       { display: none; }
+
+  /* Phone mockup: clamp width so the -1.2deg rotation doesn't overflow the
+     container on iPhone SE / 320px-class viewports. */
+  .dusk-page .phone {
+    width: min(320px, calc(100vw - 64px));
+    transform: rotate(-1deg);
+  }
+  .dusk-page .phone-stage { aspect-ratio: 1/1.15; }
+
+  /* Tighter hero copy on phones — the section title shouldn't eat 80% of the
+     viewport on the first scroll. */
+  .dusk-page .hero h1            { font-size: clamp(38px, 11vw, 56px); line-height: 1.04; }
+  .dusk-page .hero .pull         { font-size: clamp(28px, 8vw, 38px); line-height: 1.1; }
+  .dusk-page .hero .pull .alt    { font-size: clamp(22px, 6.5vw, 30px); line-height: 1.25; }
+  .dusk-page section h2          { font-size: clamp(28px, 7.5vw, 40px); line-height: 1.06; }
+
+  /* Tap targets — WCAG / Apple HIG ask for ≥44px on phone. The footer + nav
+     links were 30px tall, which is hard to hit reliably with a thumb. */
+  .dusk-page footer.foot .col a,
+  .dusk-page footer.foot .col h5 + a {
+    padding: 10px 0;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+  .dusk-page nav.top .inner {
+    padding: 12px 20px;
+    gap: 12px;
+  }
+  .dusk-page nav.top .btn-sm {
+    padding: 10px 16px;
+    min-height: 40px;
+  }
+
+  /* Eyebrow and small monospace chips shouldn't be smaller than 11px on
+     mobile or they become unreadable. */
+  .dusk-page .eyebrow,
+  .dusk-page .section-num { font-size: 11px; }
+
+  /* Inline cards with phone-style nested grids — let them stack. */
+  .dusk-page .pattern,
+  .dusk-page .quote { padding: 24px 20px; }
+
+  /* "Shelf" verdict cards: text was running flush against the rounded edge. */
+  .dusk-page .shelf-card { padding: 22px 20px; }
+}
+
+/* Very small phones (Galaxy Fold closed, etc.) — give the page one more pass. */
+@media (max-width: 360px) {
+  .dusk-page section.band,
+  .dusk-page .hero          { padding-left: 16px; padding-right: 16px; }
+  .dusk-page .hero h1       { font-size: clamp(32px, 11vw, 44px); }
+  .dusk-page .phone         { width: min(280px, calc(100vw - 48px)); }
+  .dusk-page .site-nav-cta,
+  .dusk-page nav.top .btn-sm { padding: 9px 14px; font-size: 12.5px; }
 }

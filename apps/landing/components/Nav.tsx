@@ -108,6 +108,24 @@ export default function Nav() {
           .site-nav .wordmark {
             font-size: 26px;
           }
+          .site-nav-cta {
+            padding: 11px 16px;
+            font-size: 12.5px;
+            min-height: 40px;
+          }
+        }
+        @media (max-width: 360px) {
+          .site-nav-inner {
+            padding: 12px 16px;
+            gap: 10px;
+          }
+          .site-nav-cta {
+            padding: 10px 14px;
+            font-size: 12px;
+          }
+          .site-nav .wordmark {
+            font-size: 24px;
+          }
         }
       `}</style>
     </nav>

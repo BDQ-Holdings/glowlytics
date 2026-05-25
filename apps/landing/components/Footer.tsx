@@ -98,16 +98,25 @@ export default function Footer() {
         }
         @media (max-width: 560px) {
           .site-foot {
-            padding: 56px 24px 40px;
+            padding: 48px 20px 32px;
           }
           .site-foot-inner {
             grid-template-columns: 1fr;
-            gap: 32px;
+            gap: 28px;
+          }
+          /* Comfortable thumb-sized tap targets (Apple HIG ≥44pt). */
+          .site-foot-col a {
+            padding: 11px 0;
+            min-height: 44px;
+            display: flex;
+            align-items: center;
+            font-size: 15px;
           }
           .site-foot-legal {
             flex-direction: column;
             gap: 10px;
-            margin-top: 36px;
+            margin-top: 32px;
+            align-items: flex-start;
           }
         }
       `}</style>
