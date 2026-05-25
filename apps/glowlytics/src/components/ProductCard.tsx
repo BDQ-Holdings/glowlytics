@@ -1,16 +1,14 @@
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { Feather } from '@expo/vector-icons';
 import Svg, { Circle } from 'react-native-svg';
 import type { ProductEntry } from '../types';
 import {
-  BorderRadius,
-  Colors,
   FontFamily,
   FontSize,
-  Spacing,
+  Glow,
   scoreColor,
 } from '../constants/theme';
+import { GlowIcon } from './glow/GlowIcons';
 
 interface Props {
   product: ProductEntry;
@@ -67,118 +65,116 @@ function AccentBar({ score }: { score: number }) {
   );
 }
 
-function cardBg(score?: number): string {
-  if (score === undefined || !Number.isFinite(score)) return Colors.glass;
-  if (score < 35) return 'rgba(209, 67, 67, 0.05)';
-  if (score >= 75) return 'rgba(52, 167, 123, 0.04)';
-  return Colors.glass;
-}
-
 export const ProductCard: React.FC<Props> = ({ product, score, topContributor, timingLabel, onPress }) => {
+  const P = Glow.palette;
   const safe = score !== undefined && Number.isFinite(score) ? Math.max(0, Math.min(100, score)) : undefined;
 
   return (
     <TouchableOpacity
-      style={[styles.card, { backgroundColor: cardBg(safe) }]}
+      style={[styles.card, { backgroundColor: P.surface, borderColor: P.glow }]}
       onPress={onPress}
-      activeOpacity={0.7}
+      activeOpacity={0.8}
     >
       {safe !== undefined && <AccentBar score={safe} />}
       <View style={styles.content}>
         <View style={styles.topRow}>
           <View style={styles.nameCol}>
-            <Text style={styles.productName} numberOfLines={1}>{product.product_name}</Text>
+            <Text style={[styles.productName, { color: P.ink }]} numberOfLines={1}>
+              {product.product_name}
+            </Text>
             {timingLabel ? (
-              <Text style={styles.timingLabel} numberOfLines={1}>{timingLabel}</Text>
+              <Text style={[styles.timingLabel, { color: P.accent }]} numberOfLines={1}>
+                {timingLabel}
+              </Text>
             ) : product.brand ? (
-              <Text style={styles.brand} numberOfLines={1}>{product.brand}</Text>
+              <Text style={[styles.brand, { color: P.muted }]} numberOfLines={1}>
+                {product.brand}
+              </Text>
             ) : null}
           </View>
           {safe !== undefined && <ScoreRing score={safe} />}
         </View>
 
         <View style={styles.metaRow}>
-          <Text style={styles.metaText}>
+          <Text style={[styles.metaText, { color: P.muted }]}>
             {product.ingredients_list.length} ingredient{product.ingredients_list.length !== 1 ? 's' : ''}
           </Text>
           {topContributor && (
             <>
-              <Text style={styles.dot}>{'\u00B7'}</Text>
-              <Text style={styles.contributorText} numberOfLines={1}>{topContributor}</Text>
+              <Text style={[styles.dot, { color: P.muted }]}>{'\u00B7'}</Text>
+              <Text style={[styles.contributorText, { color: P.ink }]} numberOfLines={1}>
+                {topContributor}
+              </Text>
             </>
           )}
         </View>
       </View>
-      <Feather name="chevron-right" size={16} color={Colors.textDim} />
+      <GlowIcon name="arrow" size={14} color={P.muted} stroke={1.7} />
     </TouchableOpacity>
   );
 };
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: Colors.glass,
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.md,
+    borderRadius: 18,
+    borderWidth: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
     paddingLeft: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.sm,
+    gap: 10,
     overflow: 'hidden',
   },
   accentBar: {
     width: 3,
     alignSelf: 'stretch',
-    borderTopLeftRadius: BorderRadius.lg,
-    borderBottomLeftRadius: BorderRadius.lg,
-    marginRight: Spacing.sm,
+    borderTopLeftRadius: 18,
+    borderBottomLeftRadius: 18,
+    marginRight: 12,
   },
   content: {
     flex: 1,
-    gap: Spacing.xs,
+    gap: 6,
   },
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: Spacing.sm,
+    gap: 8,
   },
   nameCol: {
     flex: 1,
     gap: 2,
   },
   productName: {
-    color: Colors.text,
-    fontFamily: FontFamily.sansSemiBold,
+    fontFamily: FontFamily.sansBold,
     fontSize: FontSize.md,
   },
   brand: {
-    color: Colors.textMuted,
     fontFamily: FontFamily.sansMedium,
     fontSize: FontSize.xs,
   },
   timingLabel: {
-    color: Colors.primary,
     fontFamily: FontFamily.sansMedium,
-    fontSize: FontSize.xxs,
-    letterSpacing: 0.5,
+    fontSize: 10,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
   },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.xs,
+    gap: 6,
     flexWrap: 'wrap',
   },
   dot: {
-    color: Colors.textDim,
     fontSize: FontSize.xs,
   },
   metaText: {
-    color: Colors.textMuted,
     fontFamily: FontFamily.sansMedium,
     fontSize: FontSize.xs,
   },
   contributorText: {
-    color: Colors.textSecondary,
     fontFamily: FontFamily.sansMedium,
     fontSize: FontSize.xs,
     flexShrink: 1,

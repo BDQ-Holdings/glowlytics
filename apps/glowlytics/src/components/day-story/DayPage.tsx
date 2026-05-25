@@ -238,20 +238,11 @@ export function DayPage({ day, index: _index, width, arcSeries, onScan, onOpenRi
         </View>
       )}
 
-      {/* Share this day */}
-      {onShare && (
-        <View style={styles.section}>
-          <TouchableOpacity
-            onPress={() => onShare(day)}
-            accessibilityRole="button"
-            accessibilityLabel="Share this day"
-            style={styles.shareDayBtn}
-          >
-            <GlowIcon name="share" size={16} color={P.surface} stroke={1.7} />
-            <Text style={styles.shareDayText}>Share this day</Text>
-          </TouchableOpacity>
-        </View>
-      )}
+      {/* Bottom spacer — reserves the same vertical room the retired
+          "Share this day" CTA used to occupy, so the rhythm between the arc
+          sparkline and the camera FAB stays the same. Share is still
+          reachable from the iconBtn in the date row at the top of the page. */}
+      <View style={styles.shareSpacer} />
     </ScrollView>
   );
 }
@@ -398,18 +389,8 @@ const styles = StyleSheet.create({
   arcCard: { marginTop: 12, backgroundColor: P.surface, borderRadius: 22, padding: 18, borderWidth: 1, borderColor: P.glow },
   arcLabels: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 },
   arcLabel: { fontSize: 11, color: P.muted },
-  shareDayBtn: {
-    paddingVertical: 15,
-    backgroundColor: P.accent,
-    borderRadius: 999,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    shadowColor: P.accent,
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.25,
-    shadowRadius: 20,
-  },
-  shareDayText: { fontFamily: FontFamily.sansBold, fontSize: 15, color: P.surface },
+  // Vertical room that the removed "Share this day" pill used to take:
+  // section paddingTop (24) + button height (~50). Keeps the FAB-clearance
+  // rhythm intact without re-introducing the redundant CTA.
+  shareSpacer: { height: 74 },
 });

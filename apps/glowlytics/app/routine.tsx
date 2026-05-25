@@ -1,21 +1,17 @@
 import React, { useMemo, useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle } from 'react-native-svg';
 import * as Haptics from 'expo-haptics';
-import { AtmosphereScreen } from '../src/components/AtmosphereScreen';
+import { GlowIcon } from '../src/components/glow/GlowIcons';
+import { FadeUp } from '../src/components/glow/GlowPrimitives';
 import { ProductCard } from '../src/components/ProductCard';
 import { AddProductSheet } from '../src/components/AddProductSheet';
 import {
-  BorderRadius,
-  Colors,
   FontFamily,
   FontSize,
   Glow,
-  Shadows,
-  Spacing,
-  Surfaces,
   scoreColor,
 } from '../src/constants/theme';
 import { useStore } from '../src/store/useStore';
@@ -32,43 +28,19 @@ import {
 } from '../src/services/routineBuilder';
 
 // ---------------------------------------------------------------------------
-// Schedule color palette — warm/cool temporal rhythm
-// ---------------------------------------------------------------------------
-const SCHEDULE_PALETTE = {
-  AM: {
-    accent: '#C07B2A',       // warm amber
-    iconBg: 'rgba(192, 123, 42, 0.10)',
-    sectionBg: 'rgba(192, 123, 42, 0.04)',
-    sectionBorder: 'rgba(192, 123, 42, 0.08)',
-  },
-  PM: {
-    accent: '#6366B5',       // cool indigo
-    iconBg: 'rgba(99, 102, 181, 0.10)',
-    sectionBg: 'rgba(99, 102, 181, 0.04)',
-    sectionBorder: 'rgba(99, 102, 181, 0.08)',
-  },
-  both: {
-    accent: Colors.primary,  // teal
-    iconBg: Colors.surfaceOverlay,
-    sectionBg: 'rgba(58, 158, 143, 0.03)',
-    sectionBorder: 'rgba(58, 158, 143, 0.06)',
-  },
-} as const;
-
-// ---------------------------------------------------------------------------
 // Score ring
 // ---------------------------------------------------------------------------
-const RING_SIZE = 72;
+const RING_SIZE = 76;
 const RING_STROKE = 5;
 const RING_RADIUS = (RING_SIZE - RING_STROKE) / 2;
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 
 function RoutineScoreRing({ score }: { score: number }) {
+  const P = Glow.palette;
   const safe = Number.isFinite(score) ? Math.max(0, Math.min(100, score)) : 0;
   const progress = safe / 100;
   const strokeDashoffset = RING_CIRCUMFERENCE * (1 - progress);
   const color = scoreColor(safe);
-
   return (
     <View style={ringStyles.container}>
       <Svg width={RING_SIZE} height={RING_SIZE}>
@@ -76,7 +48,7 @@ function RoutineScoreRing({ score }: { score: number }) {
           cx={RING_SIZE / 2}
           cy={RING_SIZE / 2}
           r={RING_RADIUS}
-          stroke={color + '20'}
+          stroke={P.glow}
           strokeWidth={RING_STROKE}
           fill="none"
         />
@@ -94,7 +66,10 @@ function RoutineScoreRing({ score }: { score: number }) {
           origin={`${RING_SIZE / 2}, ${RING_SIZE / 2}`}
         />
       </Svg>
-      <Text style={[ringStyles.text, { color }]}>{safe}</Text>
+      <View style={ringStyles.labelWrap}>
+        <Text style={[ringStyles.value, { color: P.ink }]}>{safe}</Text>
+        <Text style={[ringStyles.suffix, { color: P.muted }]}>/100</Text>
+      </View>
     </View>
   );
 }
@@ -106,15 +81,24 @@ const ringStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  text: {
+  labelWrap: {
     position: 'absolute',
+    alignItems: 'center',
+  },
+  value: {
     fontFamily: FontFamily.sansBold,
-    fontSize: FontSize.xl,
+    fontSize: 22,
+    lineHeight: 24,
+  },
+  suffix: {
+    fontFamily: FontFamily.sans,
+    fontSize: 10,
+    marginTop: 1,
   },
 });
 
 // ---------------------------------------------------------------------------
-// Grouping helpers
+// Schedule groups
 // ---------------------------------------------------------------------------
 type ScheduleGroup = 'AM' | 'PM' | 'both';
 
@@ -125,44 +109,38 @@ interface ProductDatum {
 }
 
 const SCHEDULE_ORDER: ScheduleGroup[] = ['AM', 'PM', 'both'];
-const SCHEDULE_LABEL: Record<ScheduleGroup, string> = {
-  AM: 'Morning',
-  PM: 'Evening',
-  both: 'All Day',
+const SCHEDULE_COPY: Record<ScheduleGroup, { eyebrow: string; accentLabel: string }> = {
+  AM:   { eyebrow: 'IN THE MORNING', accentLabel: 'sunrise' },
+  PM:   { eyebrow: 'IN THE EVENING', accentLabel: 'dusk' },
+  both: { eyebrow: 'TWICE A DAY',    accentLabel: 'always' },
 };
-const SCHEDULE_ICON: Record<ScheduleGroup, string> = {
-  AM: 'sunrise',
-  PM: 'moon',
-  both: 'repeat',
+const SCHEDULE_ICON: Record<ScheduleGroup, 'sun' | 'sparkle' | 'leaf'> = {
+  AM:   'sun',
+  PM:   'sparkle',
+  both: 'leaf',
 };
 
 function groupBySchedule(data: ProductDatum[]): Map<ScheduleGroup, ProductDatum[]> {
-  const groups = new Map<ScheduleGroup, ProductDatum[]>();
-  for (const d of data) {
-    const key = (d.product.usage_schedule || 'both') as ScheduleGroup;
-    const list = groups.get(key) || [];
-    list.push(d);
-    groups.set(key, list);
+  const map = new Map<ScheduleGroup, ProductDatum[]>();
+  for (const datum of data) {
+    const schedule = (datum.product.usage_schedule || 'both') as ScheduleGroup;
+    const key = schedule === 'AM' || schedule === 'PM' ? schedule : 'both';
+    const list = map.get(key) ?? [];
+    list.push(datum);
+    map.set(key, list);
   }
-  return groups;
+  return map;
 }
 
 // ---------------------------------------------------------------------------
-// Routine coaching insight
+// Coaching line
 // ---------------------------------------------------------------------------
-function buildInsight(data: ProductDatum[], routineScore: number): { text: string; color: string } | null {
+function buildInsight(data: ProductDatum[], routineScore: number): string | null {
   if (data.length === 0) return null;
-  const weakest = data.reduce((min, d) => (d.score < min.score ? d : min), data[0]);
-  if (weakest.score < 35 && data.length > 1) {
-    const name = weakest.product.product_name.length > 25
-      ? weakest.product.product_name.slice(0, 22) + '...'
-      : weakest.product.product_name;
-    return { text: `${name} is pulling your score down. Consider swapping it.`, color: Colors.warning };
-  }
-  if (routineScore >= 75) return { text: 'Strong routine — your products work well together.', color: Colors.success };
-  if (routineScore >= 55) return { text: 'Solid foundation. A targeted serum could push you higher.', color: Colors.primary };
-  if (routineScore >= 35) return { text: 'Room to improve. Check your ingredient matches.', color: Colors.textSecondary };
-  return null;
+  if (routineScore >= 75) return 'This routine is doing real work for your goal.';
+  if (routineScore >= 55) return 'Mostly on point — a swap or two could lift the rest.';
+  if (routineScore >= 35) return 'A few products are along for the ride. See if they earn their slot.';
+  return 'Most of this stack isn\u2019t helping the goal you set. Time to edit.';
 }
 
 // ---------------------------------------------------------------------------
@@ -170,23 +148,23 @@ function buildInsight(data: ProductDatum[], routineScore: number): { text: strin
 // ---------------------------------------------------------------------------
 export default function RoutineScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const products = useStore((s) => s.products);
   const protocol = useStore((s) => s.protocol);
   const modelOutputs = useStore((s) => s.modelOutputs);
   const dailyRecords = useStore((s) => s.dailyRecords);
-
   const [showAddSheet, setShowAddSheet] = useState(false);
+
+  const P = Glow.palette;
 
   const overallInsight = useMemo(() => {
     const latestOutput = modelOutputs.length > 0 ? modelOutputs[modelOutputs.length - 1] : null;
     const baseline = modelOutputs.length > 0 ? modelOutputs[0] : null;
-    const latestDaily = getLatestDailyForOutput(latestOutput, dailyRecords);
-    const baselineDaily = getLatestDailyForOutput(baseline, dailyRecords);
     return buildOverallSkinInsight({
       latestOutput,
       baselineOutput: baseline,
-      latestDaily,
-      baselineDaily,
+      latestDaily: getLatestDailyForOutput(latestOutput, dailyRecords),
+      baselineDaily: getLatestDailyForOutput(baseline, dailyRecords),
       serverSignalScores: latestOutput?.signal_scores,
       serverSignalFeatures: latestOutput?.signal_features,
       serverSignalConfidence: latestOutput?.signal_confidence,
@@ -234,7 +212,7 @@ export default function RoutineScreen() {
     return result;
   }, [grouped]);
 
-  // Conflict detection: find ingredient conflicts in PM products
+  // Conflict detection: find ingredient conflicts in AM/PM products
   const conflicts = useMemo(() => {
     const pmProducts = (grouped.get('PM') || []).map((d) => d.product);
     const amProducts = (grouped.get('AM') || []).map((d) => d.product);
@@ -249,420 +227,439 @@ export default function RoutineScreen() {
 
   const openAdd = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    trackEvent('product_add_sheet_opened', { source: 'products_tab' });
+    trackEvent('product_add_sheet_opened', { source: 'routine_screen' });
     setShowAddSheet(true);
   };
 
   return (
-    <AtmosphereScreen>
-      {/* Header */}
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.title}>Your Routine</Text>
-          {products.length > 0 && (
-            <Text style={styles.count}>
-              {products.length} product{products.length !== 1 ? 's' : ''}
-            </Text>
-          )}
-        </View>
-        {products.length > 0 && (
-          <TouchableOpacity
-            style={styles.addButton}
-            onPress={openAdd}
-            activeOpacity={0.7}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            accessibilityRole="button"
-            accessibilityLabel="Add product"
-          >
-            <Feather name="plus" size={18} color={Colors.primary} />
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {/* Routine Score Card */}
-      {products.length > 0 && (
-        <View style={styles.scoreCard}>
-          {/* Colored left accent bar driven by score */}
-          <View style={[styles.scoreAccent, { backgroundColor: scoreColor(routineScore) }]} />
-          <View style={styles.scoreCardContent}>
-            <View style={styles.scoreTextCol}>
-              <Text style={styles.scoreLabel}>Routine Score</Text>
-              <Text style={styles.scoreDesc}>
-                Average effectiveness across your products
+    <View style={[styles.host, { backgroundColor: P.bg }]}>
+      <ScrollView
+        contentContainerStyle={{
+          paddingTop: insets.top + 16,
+          paddingBottom: insets.bottom + 140,
+          paddingHorizontal: 20,
+        }}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Header */}
+        <FadeUp index={0}>
+          <View style={styles.header}>
+            <TouchableOpacity
+              onPress={() => router.back()}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel="Back"
+              style={[styles.iconBtn, { backgroundColor: P.surface, borderColor: P.glow }]}
+            >
+              <GlowIcon name="back" size={16} color={P.ink} stroke={1.8} />
+            </TouchableOpacity>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.eyebrow, { color: P.muted }]}>YOUR ROUTINE</Text>
+              <Text style={[styles.title, { color: P.ink }]}>
+                What you actually{' '}
+                <Text style={[styles.titleAccent, { color: P.accent }]}>use</Text>
               </Text>
-              {insight && (
-                <Text style={[styles.scoreInsight, { color: insight.color }]}>{insight.text}</Text>
+              {products.length > 0 && (
+                <Text style={[styles.count, { color: P.muted }]}>
+                  {products.length} product{products.length !== 1 ? 's' : ''} on your shelf
+                </Text>
               )}
             </View>
-            <RoutineScoreRing score={routineScore} />
           </View>
-        </View>
-      )}
+        </FadeUp>
 
-      {/* Signal-driven adjustment tips */}
-      {adjustments.length > 0 && (
-        <View style={styles.adjustmentSection}>
-          {adjustments.map((tip, i) => (
-            <View key={i} style={styles.adjustmentTip}>
-              <Feather name={tip.color === 'warning' ? 'alert-circle' : 'info'} size={14} color={tip.color === 'warning' ? Colors.warning : Colors.primary} />
-              <Text style={styles.adjustmentText} numberOfLines={3}>{tip.text}</Text>
-            </View>
-          ))}
-        </View>
-      )}
-
-      {/* Grouped product list */}
-      {productData.length > 0 ? (
-        <View style={styles.sections}>
-          {SCHEDULE_ORDER.map((schedule) => {
-            const items = sortedGrouped.get(schedule);
-            if (!items || items.length === 0) return null;
-            const palette = SCHEDULE_PALETTE[schedule];
-            const sectionNames = new Set(items.map((d) => d.product.product_name));
-            const sectionConflicts = conflicts.filter((c) =>
-              sectionNames.has(c.productA) || sectionNames.has(c.productB)
-            );
-
-            return (
-              <View
-                key={schedule}
-                style={[
-                  styles.section,
-                  {
-                    backgroundColor: palette.sectionBg,
-                    borderColor: palette.sectionBorder,
-                  },
-                ]}
-              >
-                <View style={styles.sectionHeader}>
-                  <View style={[styles.sectionIconWrap, { backgroundColor: palette.iconBg }]}>
-                    <Feather
-                      name={SCHEDULE_ICON[schedule] as any}
-                      size={13}
-                      color={palette.accent}
-                    />
-                  </View>
-                  <Text style={[styles.sectionLabel, { color: palette.accent }]}>
-                    {SCHEDULE_LABEL[schedule]}
+        {products.length > 0 && (
+          <>
+            {/* Routine Score */}
+            <FadeUp index={1}>
+              <View style={[styles.scoreCard, { backgroundColor: P.surface, borderColor: P.glow }]}>
+                <View style={styles.scoreCol}>
+                  <Text style={[styles.scoreLabel, { color: P.muted }]}>ROUTINE SCORE</Text>
+                  <Text style={[styles.scoreInsight, { color: P.ink }]}>
+                    {insight ?? 'Add a few products to start scoring.'}
                   </Text>
-                  <View style={[styles.sectionCountPill, { backgroundColor: palette.iconBg }]}>
-                    <Text style={[styles.sectionCount, { color: palette.accent }]}>{items.length}</Text>
-                  </View>
                 </View>
-                <View style={styles.sectionList}>
-                  {items.map((d) => (
-                    <ProductCard
-                      key={d.product.user_product_id}
-                      product={d.product}
-                      score={d.score}
-                      topContributor={d.topContributor}
-                      timingLabel={d.timingLabel}
-                      onPress={() =>
-                        router.push({
-                          pathname: '/product/[id]',
-                          params: { id: d.product.user_product_id },
-                        })
-                      }
-                    />
+                <RoutineScoreRing score={routineScore} />
+              </View>
+            </FadeUp>
+
+            {/* Signal-driven adjustment tips */}
+            {adjustments.length > 0 && (
+              <FadeUp index={2}>
+                <View style={styles.tipsBlock}>
+                  {adjustments.map((tip, i) => (
+                    <View
+                      key={i}
+                      style={[styles.tipRow, { backgroundColor: P.surface, borderColor: P.glow }]}
+                    >
+                      <GlowIcon
+                        name={tip.color === 'warning' ? 'flame' : 'sparkle'}
+                        size={14}
+                        color={tip.color === 'warning' ? P.accent : P.muted}
+                        stroke={1.8}
+                      />
+                      <Text style={[styles.tipText, { color: P.ink }]} numberOfLines={3}>
+                        {tip.text}
+                      </Text>
+                    </View>
                   ))}
                 </View>
+              </FadeUp>
+            )}
 
-                {/* Ingredient conflict warnings */}
-                {sectionConflicts.length > 0 && (
-                  <View style={styles.conflictSection}>
-                    {sectionConflicts.map((c, i) => (
-                      <View key={i} style={styles.conflictBanner}>
-                        <Feather name="alert-triangle" size={14} color={Colors.warning} />
-                        <View style={styles.conflictTextWrap}>
-                          <Text style={styles.conflictMessage} numberOfLines={2}>{c.productA} + {c.productB}</Text>
-                          <Text style={styles.conflictResolution} numberOfLines={2}>{c.resolution}</Text>
+            {/* Conflicts banner — surfaced here at the top of the page so the
+                user notices it before scrolling through individual products. */}
+            {conflicts.length > 0 && (
+              <FadeUp index={3}>
+                <View
+                  style={[
+                    styles.conflictBlock,
+                    { backgroundColor: P.surface, borderColor: P.accent },
+                  ]}
+                >
+                  <View style={styles.conflictHeader}>
+                    <GlowIcon name="flame" size={14} color={P.accent} stroke={1.9} />
+                    <Text style={[styles.conflictTitle, { color: P.accent }]}>
+                      {conflicts.length === 1
+                        ? 'One pairing worth a second look'
+                        : `${conflicts.length} pairings worth a second look`}
+                    </Text>
+                  </View>
+                  {conflicts.map((c, i) => (
+                    <View key={i} style={styles.conflictItem}>
+                      <Text style={[styles.conflictPair, { color: P.ink }]} numberOfLines={2}>
+                        {c.productA} <Text style={{ color: P.muted }}>+</Text> {c.productB}
+                      </Text>
+                      <Text style={[styles.conflictResolution, { color: P.muted }]} numberOfLines={3}>
+                        {c.resolution}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </FadeUp>
+            )}
+
+            {/* Grouped product list */}
+            <View style={styles.sections}>
+              {SCHEDULE_ORDER.map((schedule, sectionIdx) => {
+                const items = sortedGrouped.get(schedule);
+                if (!items || items.length === 0) return null;
+                const copy = SCHEDULE_COPY[schedule];
+                return (
+                  <FadeUp key={schedule} index={4 + sectionIdx}>
+                    <View>
+                      <View style={styles.sectionHeader}>
+                        <View style={[styles.sectionIconWrap, { backgroundColor: P.glow }]}>
+                          <GlowIcon
+                            name={SCHEDULE_ICON[schedule]}
+                            size={14}
+                            color={P.accent}
+                            stroke={1.8}
+                          />
+                        </View>
+                        <Text style={[styles.sectionEyebrow, { color: P.muted }]}>
+                          {copy.eyebrow}
+                        </Text>
+                        <Text style={[styles.sectionAccent, { color: P.accent }]}>
+                          {copy.accentLabel}
+                        </Text>
+                        <View style={[styles.sectionCountPill, { backgroundColor: P.glow }]}>
+                          <Text style={[styles.sectionCount, { color: P.ink }]}>{items.length}</Text>
                         </View>
                       </View>
-                    ))}
-                  </View>
-                )}
-              </View>
-            );
-          })}
+                      <View style={styles.sectionList}>
+                        {items.map((d) => (
+                          <ProductCard
+                            key={d.product.user_product_id}
+                            product={d.product}
+                            score={d.score}
+                            topContributor={d.topContributor}
+                            timingLabel={d.timingLabel}
+                            onPress={() =>
+                              router.push({
+                                pathname: '/product/[id]',
+                                params: { id: d.product.user_product_id },
+                              })
+                            }
+                          />
+                        ))}
+                      </View>
+                    </View>
+                  </FadeUp>
+                );
+              })}
 
-          {/* Inline add row */}
-          <TouchableOpacity
-            style={styles.addRow}
-            onPress={openAdd}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel="Add another product"
-          >
-            <View style={styles.addRowIcon}>
-              <Feather name="plus" size={16} color={Colors.primary} />
+              {/* Inline add row */}
+              <FadeUp index={7}>
+                <TouchableOpacity
+                  style={[styles.addRow, { borderColor: P.muted }]}
+                  onPress={openAdd}
+                  activeOpacity={0.85}
+                  accessibilityRole="button"
+                  accessibilityLabel="Add another product"
+                >
+                  <GlowIcon name="plus" size={14} color={P.ink} stroke={1.9} />
+                  <Text style={[styles.addRowText, { color: P.ink }]}>Add another product</Text>
+                </TouchableOpacity>
+              </FadeUp>
             </View>
-            <Text style={styles.addRowText}>Add product</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <View style={styles.emptyState}>
-          <View style={styles.emptyIconWrap}>
-            <Feather name="shopping-bag" size={40} color={Colors.textDim} />
-          </View>
-          <Text style={styles.emptyTitle}>No products yet</Text>
-          <Text style={styles.emptyDesc}>
-            Add your skincare products to track their effectiveness and get personalized recommendations.
-          </Text>
-          <TouchableOpacity
-            style={styles.emptyButton}
-            onPress={openAdd}
-            activeOpacity={0.8}
-            accessibilityRole="button"
-            accessibilityLabel="Add your first product"
-          >
-            <Feather name="plus" size={18} color="#FFFFFF" />
-            <Text style={styles.emptyButtonText}>Add your first product</Text>
-          </TouchableOpacity>
-        </View>
-      )}
+          </>
+        )}
 
-      <View style={styles.footerSpacer} />
+        {products.length === 0 && (
+          <FadeUp index={1}>
+            <View style={[styles.emptyState, { backgroundColor: P.surface, borderColor: P.glow }]}>
+              <Text style={[styles.emptyEyebrow, { color: P.muted }]}>EMPTY SHELF</Text>
+              <Text style={[styles.emptyTitle, { color: P.ink }]}>
+                Start with one{' '}
+                <Text style={[styles.emptyTitleAccent, { color: P.accent }]}>thing</Text>
+              </Text>
+              <Text style={[styles.emptyBody, { color: P.muted }]}>
+                Add a product and we'll track how it shows up in your readings over time.
+              </Text>
+              <TouchableOpacity
+                style={[styles.emptyBtn, { backgroundColor: P.ink }]}
+                onPress={openAdd}
+                activeOpacity={0.85}
+              >
+                <GlowIcon name="plus" size={14} color={P.surface} stroke={1.9} />
+                <Text style={[styles.emptyBtnText, { color: P.surface }]}>Add a product</Text>
+              </TouchableOpacity>
+            </View>
+          </FadeUp>
+        )}
+      </ScrollView>
 
       <AddProductSheet visible={showAddSheet} onClose={() => setShowAddSheet(false)} />
-    </AtmosphereScreen>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  host: {
+    flex: 1,
+  },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: Spacing.lg,
+    gap: 14,
+    marginBottom: 22,
   },
-  title: {
-    color: Glow.palette.ink,
-    fontFamily: FontFamily.sansBold,
-    fontSize: FontSize.xxl,
-  },
-  count: {
-    color: Glow.palette.muted,
-    fontFamily: FontFamily.sansMedium,
-    fontSize: FontSize.sm,
-    marginTop: 2,
-  },
-  addButton: {
-    width: 36,
-    height: 36,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Glow.palette.surface,
+  iconBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    marginTop: 6,
+  },
+  eyebrow: {
+    fontFamily: FontFamily.sansMedium,
+    fontSize: 11,
+    letterSpacing: 1.2,
+  },
+  title: {
+    fontFamily: FontFamily.sans,
+    fontSize: 28,
+    lineHeight: 34,
     marginTop: 2,
   },
+  titleAccent: {
+    fontFamily: FontFamily.accent,
+    fontSize: 32,
+  },
+  count: {
+    fontFamily: FontFamily.sans,
+    fontSize: 13,
+    fontStyle: 'italic',
+    marginTop: 4,
+  },
+
   // Score card
   scoreCard: {
-    ...Surfaces.hero,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.lg,
-    paddingLeft: 0,
-    marginBottom: Spacing.lg,
-    flexDirection: 'row',
-    overflow: 'hidden',
-  },
-  scoreAccent: {
-    width: 4,
-    alignSelf: 'stretch',
-    borderTopLeftRadius: BorderRadius.xl,
-    borderBottomLeftRadius: BorderRadius.xl,
-    marginRight: Spacing.md,
-  },
-  scoreCardContent: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 18,
+    borderRadius: 22,
+    borderWidth: 1,
+    paddingVertical: 18,
+    paddingHorizontal: 18,
+    marginBottom: 16,
   },
-  scoreTextCol: {
+  scoreCol: {
     flex: 1,
-    gap: Spacing.xs,
-    marginRight: Spacing.md,
+    gap: 6,
   },
   scoreLabel: {
-    color: Glow.palette.ink,
-    fontFamily: FontFamily.sansBold,
-    fontSize: FontSize.lg,
-  },
-  scoreDesc: {
-    color: Glow.palette.muted,
     fontFamily: FontFamily.sansMedium,
-    fontSize: FontSize.sm,
-    lineHeight: 20,
+    fontSize: 11,
+    letterSpacing: 1.2,
   },
   scoreInsight: {
-    fontFamily: FontFamily.sansMedium,
-    fontSize: FontSize.xs,
-    lineHeight: 18,
-    marginTop: Spacing.xxs,
+    fontFamily: FontFamily.sans,
+    fontSize: 15,
+    lineHeight: 21,
   },
+
+  // Adjustment tips
+  tipsBlock: {
+    gap: 8,
+    marginBottom: 16,
+  },
+  tipRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+  },
+  tipText: {
+    flex: 1,
+    fontFamily: FontFamily.sans,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+
+  // Conflicts
+  conflictBlock: {
+    borderRadius: 20,
+    borderWidth: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginBottom: 18,
+    gap: 10,
+  },
+  conflictHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  conflictTitle: {
+    fontFamily: FontFamily.sansBold,
+    fontSize: 13,
+    letterSpacing: 0.4,
+  },
+  conflictItem: {
+    gap: 3,
+  },
+  conflictPair: {
+    fontFamily: FontFamily.sansBold,
+    fontSize: 14,
+  },
+  conflictResolution: {
+    fontFamily: FontFamily.sans,
+    fontSize: 12,
+    lineHeight: 17,
+    fontStyle: 'italic',
+  },
+
   // Sections
   sections: {
-    gap: Spacing.md,
-  },
-  section: {
-    borderRadius: BorderRadius.xl,
-    borderWidth: 1,
-    padding: Spacing.md,
-    gap: Spacing.sm,
+    gap: 22,
   },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.sm,
-    marginBottom: Spacing.xxs,
+    gap: 10,
+    marginBottom: 10,
   },
   sectionIconWrap: {
-    width: 26,
-    height: 26,
-    borderRadius: BorderRadius.full,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sectionLabel: {
-    fontFamily: FontFamily.sansSemiBold,
-    fontSize: FontSize.xs,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
+  sectionEyebrow: {
+    fontFamily: FontFamily.sansMedium,
+    fontSize: 11,
+    letterSpacing: 1.2,
+  },
+  sectionAccent: {
+    fontFamily: FontFamily.accent,
+    fontSize: 18,
     flex: 1,
   },
   sectionCountPill: {
-    width: 22,
-    height: 22,
-    borderRadius: BorderRadius.full,
+    minWidth: 24,
+    height: 24,
+    paddingHorizontal: 8,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
   sectionCount: {
     fontFamily: FontFamily.sansBold,
-    fontSize: FontSize.xxs,
+    fontSize: 12,
   },
   sectionList: {
-    gap: Spacing.sm,
+    gap: 10,
   },
-  // Conflicts
-  conflictSection: {
-    gap: Spacing.sm,
-    marginTop: Spacing.sm,
-  },
-  conflictBanner: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: Spacing.sm,
-    backgroundColor: Colors.warning + '10',
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.md,
-    borderLeftWidth: 3,
-    borderLeftColor: Colors.warning,
-  },
-  conflictTextWrap: {
-    flex: 1,
-    gap: Spacing.xxs,
-  },
-  conflictMessage: {
-    color: Glow.palette.ink,
-    fontFamily: FontFamily.sansSemiBold,
-    fontSize: FontSize.sm,
-  },
-  conflictResolution: {
-    color: Glow.palette.muted,
-    fontFamily: FontFamily.sans,
-    fontSize: FontSize.xs,
-  },
-  // Adjustments
-  adjustmentSection: {
-    gap: Spacing.sm,
-    marginBottom: Spacing.lg,
-  },
-  adjustmentTip: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: Spacing.sm,
-    backgroundColor: Glow.palette.surface,
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.md,
-  },
-  adjustmentText: {
-    flex: 1,
-    color: Glow.palette.muted,
-    fontFamily: FontFamily.sansMedium,
-    fontSize: FontSize.sm,
-    lineHeight: 20,
-  },
+
   // Add row
   addRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.sm,
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.md,
-    borderRadius: BorderRadius.xl,
-    borderWidth: 1,
-    borderColor: Glow.palette.glow,
-    borderStyle: 'dashed',
-  },
-  addRowIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Glow.palette.surface,
-    alignItems: 'center',
     justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    marginTop: 6,
   },
   addRowText: {
-    color: Glow.palette.accent,
-    fontFamily: FontFamily.sansSemiBold,
-    fontSize: FontSize.sm,
+    fontFamily: FontFamily.sansBold,
+    fontSize: 14,
   },
+
   // Empty state
   emptyState: {
+    borderRadius: 22,
+    borderWidth: 1,
+    paddingVertical: 32,
+    paddingHorizontal: 24,
     alignItems: 'center',
-    paddingVertical: Spacing.xxl,
-    gap: Spacing.md,
+    gap: 8,
   },
-  emptyIconWrap: {
-    width: 80,
-    height: 80,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Glow.palette.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Spacing.sm,
+  emptyEyebrow: {
+    fontFamily: FontFamily.sansMedium,
+    fontSize: 11,
+    letterSpacing: 1.2,
   },
   emptyTitle: {
-    color: Glow.palette.ink,
-    fontFamily: FontFamily.sansBold,
-    fontSize: FontSize.lg,
-  },
-  emptyDesc: {
-    color: Glow.palette.muted,
-    fontFamily: FontFamily.sansMedium,
-    fontSize: FontSize.sm,
+    fontFamily: FontFamily.sans,
+    fontSize: 24,
+    lineHeight: 30,
     textAlign: 'center',
-    lineHeight: 22,
-    paddingHorizontal: Spacing.lg,
+    marginTop: 4,
   },
-  emptyButton: {
+  emptyTitleAccent: {
+    fontFamily: FontFamily.accent,
+    fontSize: 28,
+  },
+  emptyBody: {
+    fontFamily: FontFamily.sans,
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: 'center',
+    marginTop: 4,
+    paddingHorizontal: 8,
+  },
+  emptyBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.sm,
-    backgroundColor: Glow.palette.accent,
-    borderRadius: BorderRadius.full,
-    paddingVertical: Spacing.sm + 4,
-    paddingHorizontal: Spacing.lg,
-    marginTop: Spacing.sm,
-    ...Shadows.glow,
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 22,
+    borderRadius: 999,
+    marginTop: 18,
   },
-  emptyButtonText: {
-    color: Glow.palette.surface,
+  emptyBtnText: {
     fontFamily: FontFamily.sansBold,
-    fontSize: FontSize.md,
-  },
-  footerSpacer: {
-    height: 100,
+    fontSize: 14,
   },
 });
