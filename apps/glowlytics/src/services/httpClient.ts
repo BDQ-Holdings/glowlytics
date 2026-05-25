@@ -26,13 +26,35 @@ export const setAuthTokenProvider = (provider: () => Promise<string | null>) => 
 };
 
 // ---------------------------------------------------------------------------
-// Token cache — Clerk getToken issues a JWT each call; rapid bursts can be
-// throttled. We hold the last token for ~50s (well under the 60s JWT lifetime)
-// so a tab-switch storm of API calls doesn't hammer the auth service.
+// Token cache — Clerk getToken issues a JWT each call. We parse the JWT's own
+// `exp` claim and cache until just before it expires, so we automatically
+// honor whatever JWT lifetime is configured in the Clerk dashboard (default
+// 60s, up to 7200s). The hard floor of TOKEN_TTL_FLOOR_MS exists so a malformed
+// token doesn't trip us into a tight refresh loop.
 // ---------------------------------------------------------------------------
 let cachedToken: string | null = null;
 let cachedTokenExpiresAt = 0;
-const TOKEN_TTL_MS = 50_000;
+const TOKEN_TTL_FLOOR_MS = 30_000;
+const TOKEN_TTL_FALLBACK_MS = 50_000;
+const TOKEN_REFRESH_BUFFER_MS = 5_000;
+
+/** Decode a JWT's `exp` (seconds since epoch) without verifying — we only
+ *  use it to decide how long to cache the token before fetching a fresh one. */
+const expiresAtFromJwt = (token: string): number | null => {
+  const parts = token.split('.');
+  if (parts.length < 2) return null;
+  try {
+    // JWTs use base64url. atob() handles standard base64; pad and translate first.
+    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
+    const json = typeof atob === 'function' ? atob(padded) : Buffer.from(padded, 'base64').toString('binary');
+    const payload = JSON.parse(json) as { exp?: unknown };
+    if (typeof payload.exp !== 'number' || !Number.isFinite(payload.exp)) return null;
+    return payload.exp * 1000;
+  } catch {
+    return null;
+  }
+};
 
 const fetchToken = async (forceRefresh = false): Promise<string | null> => {
   if (!getAuthToken) return null;
@@ -42,7 +64,17 @@ const fetchToken = async (forceRefresh = false): Promise<string | null> => {
   }
   const token = await getAuthToken();
   cachedToken = token;
-  cachedTokenExpiresAt = token ? now + TOKEN_TTL_MS : 0;
+  if (token) {
+    const expMs = expiresAtFromJwt(token);
+    // Cache until exp − buffer, or fall back to 50s on undecodable tokens.
+    // Floor at 30s so a misconfigured short-lived token can't melt us down.
+    const ttl = expMs
+      ? Math.max(TOKEN_TTL_FLOOR_MS, expMs - TOKEN_REFRESH_BUFFER_MS - now)
+      : TOKEN_TTL_FALLBACK_MS;
+    cachedTokenExpiresAt = now + ttl;
+  } else {
+    cachedTokenExpiresAt = 0;
+  }
   return token;
 };
 

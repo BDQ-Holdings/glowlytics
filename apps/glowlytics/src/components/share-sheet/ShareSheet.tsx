@@ -11,6 +11,7 @@
  */
 
 import React, { useRef, useState } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ActivityIndicator,
   FlatList,
@@ -97,6 +98,7 @@ export function ShareSheet({
   onClose,
 }: ShareSheetProps) {
   const { width: screenWidth } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const [aspect, setAspect] = useState<AspectId>('story');
   const [activeTemplate, setActiveTemplate] = useState<TemplateId>(initialTemplate);
   const [exporting, setExporting] = useState(false);
@@ -196,91 +198,106 @@ export function ShareSheet({
   return (
     <Modal
       visible={visible}
-      transparent
+      // Full-screen presentation (not transparent + flex-end) so the sheet
+      // owns every pixel — including the area behind the Dynamic Island,
+      // which used to clip the title bar. We push the close button down past
+      // the top safe-area inset and drop the redundant "Share your glow"
+      // header (the action label below makes the intent obvious).
       animationType="slide"
       onRequestClose={onClose}
       statusBarTranslucent
+      presentationStyle="overFullScreen"
+      transparent={false}
     >
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-          <View style={styles.handle} />
-
-          <View style={styles.titleRow}>
-            <Text style={styles.title}>Share your glow</Text>
-            <TouchableOpacity onPress={onClose} accessibilityRole="button" accessibilityLabel="Close share sheet">
-              <GlowIcon name="x" size={18} color={P.muted} stroke={1.8} />
-            </TouchableOpacity>
-          </View>
-
-          {/* Aspect picker — three pills at the top */}
-          <View style={styles.aspectRow}>
-            {ASPECTS.map((a) => {
-              const active = a.id === aspect;
-              return (
-                <TouchableOpacity
-                  key={a.id}
-                  onPress={() => setAspect(a.id)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Aspect ${a.label}, ${a.ratio}`}
-                  style={[styles.aspectBtn, active && styles.aspectBtnActive]}
-                >
-                  <Text style={[styles.aspectLabel, active && styles.aspectLabelActive]}>{a.label}</Text>
-                  <Text style={[styles.aspectRatio, active && styles.aspectRatioActive]}>{a.ratio}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          {/* Template carousel — swipe between 5 card designs */}
-          <View style={[styles.carouselWrap, { height: slotHeight }]}>
-            <FlatList
-              ref={listRef}
-              data={TEMPLATES.map((t) => t.id)}
-              keyExtractor={(t) => t}
-              horizontal
-              pagingEnabled
-              showsHorizontalScrollIndicator={false}
-              renderItem={renderCard}
-              onViewableItemsChanged={onViewableItemsChanged}
-              viewabilityConfig={viewabilityConfig}
-              snapToInterval={slotWidth}
-              decelerationRate="fast"
-            />
-          </View>
-
-          <View style={styles.dots}>
-            {TEMPLATES.map((t) => (
-              <View
-                key={t.id}
-                style={[styles.dot, activeTemplate === t.id && styles.dotActive]}
-              />
-            ))}
-          </View>
-
-          <Text style={styles.templateLabel}>
-            {TEMPLATES.find((t) => t.id === activeTemplate)?.label}
-          </Text>
-
-          {/* Share action — single button hands off to the native share sheet,
-              which lets the user pick IG / X / Save / Copy / etc. */}
+      <View style={[styles.fullSheet, { paddingTop: insets.top + 8 }]}>
+        {/* Floating close affordance — sits below the Dynamic Island, no
+            covered header text. */}
+        <View style={styles.closeRow}>
           <TouchableOpacity
-            onPress={exportAndShare}
-            disabled={exporting}
+            onPress={onClose}
             accessibilityRole="button"
-            accessibilityLabel="Share or save"
-            style={[styles.shareBtn, exporting && styles.shareBtnDisabled]}
+            accessibilityLabel="Close share sheet"
+            hitSlop={12}
+            style={styles.closeBtn}
           >
-            {exporting ? (
-              <ActivityIndicator color={P.surface} />
-            ) : (
-              <>
-                <GlowIcon name="share" size={18} color={P.surface} stroke={1.7} />
-                <Text style={styles.shareBtnText}>Share or save</Text>
-              </>
-            )}
+            <GlowIcon name="x" size={20} color={P.ink} stroke={1.9} />
           </TouchableOpacity>
-        </Pressable>
-      </Pressable>
+        </View>
+
+        {/* Aspect picker — three pills at the top */}
+        <View style={styles.aspectRow}>
+          {ASPECTS.map((a) => {
+            const active = a.id === aspect;
+            return (
+              <TouchableOpacity
+                key={a.id}
+                onPress={() => setAspect(a.id)}
+                accessibilityRole="button"
+                accessibilityLabel={`Aspect ${a.label}, ${a.ratio}`}
+                style={[styles.aspectBtn, active && styles.aspectBtnActive]}
+              >
+                <Text style={[styles.aspectLabel, active && styles.aspectLabelActive]}>{a.label}</Text>
+                <Text style={[styles.aspectRatio, active && styles.aspectRatioActive]}>{a.ratio}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {/* Template carousel — swipe between card designs. flex: 1 so it
+            takes all the vertical space the full-screen sheet now offers,
+            instead of the fixed slot height the old bottom-sheet used. */}
+        <View style={[styles.carouselWrap, { flex: 1, justifyContent: 'center' }]}>
+          <FlatList
+            ref={listRef}
+            data={TEMPLATES.map((t) => t.id)}
+            keyExtractor={(t) => t}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            renderItem={renderCard}
+            onViewableItemsChanged={onViewableItemsChanged}
+            viewabilityConfig={viewabilityConfig}
+            snapToInterval={slotWidth}
+            decelerationRate="fast"
+          />
+        </View>
+
+        <View style={styles.dots}>
+          {TEMPLATES.map((t) => (
+            <View
+              key={t.id}
+              style={[styles.dot, activeTemplate === t.id && styles.dotActive]}
+            />
+          ))}
+        </View>
+
+        <Text style={styles.templateLabel}>
+          {TEMPLATES.find((t) => t.id === activeTemplate)?.label}
+        </Text>
+
+        {/* Share action — single button hands off to the native share sheet,
+            which lets the user pick IG / X / Save / Copy / etc. */}
+        <TouchableOpacity
+          onPress={exportAndShare}
+          disabled={exporting}
+          accessibilityRole="button"
+          accessibilityLabel="Share or save"
+          style={[
+            styles.shareBtn,
+            { marginBottom: Math.max(insets.bottom, 16) },
+            exporting && styles.shareBtnDisabled,
+          ]}
+        >
+          {exporting ? (
+            <ActivityIndicator color={P.surface} />
+          ) : (
+            <>
+              <GlowIcon name="share" size={18} color={P.surface} stroke={1.7} />
+              <Text style={styles.shareBtnText}>Share or save</Text>
+            </>
+          )}
+        </TouchableOpacity>
+      </View>
     </Modal>
   );
 }
@@ -316,33 +333,23 @@ function renderTemplate(
 // ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
-  backdrop: {
+  fullSheet: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    justifyContent: 'flex-end',
-  },
-  sheet: {
     backgroundColor: P.bg,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    paddingBottom: 32,
-    paddingTop: 12,
     paddingHorizontal: 16,
   },
-  handle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: P.muted + '40',
-    alignSelf: 'center',
+  closeRow: {
+    alignItems: 'flex-end',
+    paddingBottom: 4,
   },
-  titleRow: {
-    paddingTop: 16,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  closeBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: P.surface,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  title: { fontFamily: FontFamily.sansBold, fontSize: 18, color: P.ink },
   aspectRow: {
     flexDirection: 'row',
     gap: 8,

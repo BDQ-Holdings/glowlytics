@@ -195,6 +195,14 @@ export const GlowPalettes: Record<'dusk' | 'meadow' | 'rose', GlowPalette> = {
   rose:   { bg: '#F6ECEB', surface: '#FCF5F4', ink: '#2D1F23', muted: '#85686D', accent: '#A14A55', accent2: '#E0B8A6', glow: '#EFD2CE' },
 };
 
+/** Dark counterparts. Same accent identity, inverted surface stack. Picked so
+ *  serif italics + Switzer body retain enough contrast for AA at body sizes. */
+export const GlowPalettesDark: Record<'dusk' | 'meadow' | 'rose', GlowPalette> = {
+  dusk:   { bg: '#15101A', surface: '#1E1623', ink: '#F1E6E9', muted: '#9B8C97', accent: '#C8A2CB', accent2: '#D9A28B', glow: '#3B2A40' },
+  meadow: { bg: '#0F1813', surface: '#17221C', ink: '#E8EEE7', muted: '#8F9C92', accent: '#9DD2B0', accent2: '#C9B786', glow: '#28362D' },
+  rose:   { bg: '#1A1213', surface: '#241A1C', ink: '#F4E6E5', muted: '#A89093', accent: '#E29AA1', accent2: '#E0B8A6', glow: '#3A2628' },
+};
+
 export const Glow = {
   palette: GlowPalettes.dusk,
   motion: {

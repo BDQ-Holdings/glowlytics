@@ -5,6 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlowIcon } from '../../src/components/glow/GlowIcons';
 import { FadeUp, SectionHead } from '../../src/components/glow/GlowPrimitives';
+import { FocusFade } from '../../src/components/FocusFade';
 import {
   Colors,
   FontFamily,
@@ -146,7 +147,8 @@ export default function MeTab() {
   }, [goals, streak, products.length, modelOutputs]);
 
   return (
-    <ScrollView
+    <FocusFade>
+      <ScrollView
       style={{ flex: 1, backgroundColor: palette.bg }}
       contentContainerStyle={{
         paddingTop: insets.top + Spacing.xl,
@@ -256,6 +258,7 @@ export default function MeTab() {
         </View>
       </FadeUp>
     </ScrollView>
+    </FocusFade>
   );
 }
 

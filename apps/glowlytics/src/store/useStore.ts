@@ -76,6 +76,12 @@ interface AppState {
   // side-effects (icon swap, font scale, motion gating) live in callers.
   appearance: AppearancePreferences;
 
+  // Cross-component camera intent. The tab-bar's camera FAB on the Shelf tab
+  // increments this counter; the ShelfTab listens and pops its AddProductSheet.
+  // Counter (not boolean) so a second press while the sheet is open still
+  // triggers a fresh open.
+  openAddProductTrigger: number;
+
   // Actions
   setOnboardingStep: (step: number) => void;
   setOnboardingFlow: (flow: OnboardingScreenName[]) => void;
@@ -122,6 +128,7 @@ interface AppState {
   toggleRitualStep: (stepId: string, dateStr?: string) => void;
   setAppearance: (patch: Partial<AppearancePreferences>) => Promise<void>;
   resetAppearance: () => Promise<void>;
+  requestAddProduct: () => void;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -271,6 +278,7 @@ export const useStore = create<AppState>((set, get) => ({
   ritualCompletions: {},
 
   appearance: { ...DEFAULT_APPEARANCE },
+  openAddProductTrigger: 0,
 
   setOnboardingStep: (step) => set({ onboardingStep: step }),
   setOnboardingFlow: (flow) => set({ onboardingFlow: flow }),
@@ -676,6 +684,12 @@ export const useStore = create<AppState>((set, get) => ({
         debouncedPersist(() => get().persistData());
       }
     }
+  },
+
+  // Bump the cross-component counter so the Shelf tab opens its
+  // AddProductSheet. Used by the tab-bar camera FAB when on the Shelf tab.
+  requestAddProduct: () => {
+    set((s) => ({ openAddProductTrigger: s.openAddProductTrigger + 1 }));
   },
 
   runPatternDetection: () => {

@@ -12,12 +12,23 @@ export default function TabsLayout() {
   const dailyRecords = useStore((s) => s.dailyRecords);
   const isFirstScan = dailyRecords.length === 0;
 
-  const handleCameraPress = async () => {
+  const handleCameraPress = async (activeRouteName: string) => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    // Shelf tab → add a product (the camera fronts the AddProductSheet's
+    // OCR/barcode flow). No paywall — the scanner is free.
+    if (activeRouteName === 'products') {
+      trackEvent('camera_fab_route', { route: activeRouteName, target: 'add_product' });
+      useStore.getState().requestAddProduct();
+      return;
+    }
+
+    // Today (and any other route that exposes the FAB) → facial-scan camera.
     if (!useStore.getState().canPerformScan()) {
       trackEvent('paywall_shown', { trigger: 'camera_tab' });
     }
     if (!(await gateWithPaywall())) return;
+    trackEvent('camera_fab_route', { route: activeRouteName, target: 'scan' });
     router.push('/scan/camera');
   };
 

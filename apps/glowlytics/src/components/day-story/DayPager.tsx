@@ -16,7 +16,15 @@ import {
   useWindowDimensions,
   type ViewToken,
   type LayoutChangeEvent,
+  type NativeSyntheticEvent,
+  type NativeScrollEvent,
 } from 'react-native';
+import Animated, {
+  Extrapolation,
+  interpolate,
+  useAnimatedStyle,
+  useSharedValue,
+} from 'react-native-reanimated';
 // (LinearGradient removed — the calendar strip + day-pager now sit on the
 // page background directly; no warm-coral wash behind the schedule per
 // May 2026 redesign feedback.)
@@ -84,19 +92,30 @@ export function DayPager({ onScan, onOpenRitual, onShare }: DayPagerProps) {
     [screenWidth],
   );
 
+  const scrollX = useSharedValue(0);
+
   const renderItem = useCallback(
     ({ item, index }: { item: DayEntry; index: number }) => (
-      <DayPage
-        day={item}
-        index={index}
-        width={screenWidth}
-        arcSeries={arcSeries}
-        onScan={onScan}
-        onOpenRitual={onOpenRitual}
-        onShare={onShare}
-      />
+      <FadePage scrollX={scrollX} index={index} width={screenWidth}>
+        <DayPage
+          day={item}
+          index={index}
+          width={screenWidth}
+          arcSeries={arcSeries}
+          onScan={onScan}
+          onOpenRitual={onOpenRitual}
+          onShare={onShare}
+        />
+      </FadePage>
     ),
-    [screenWidth, arcSeries, onScan, onOpenRitual, onShare],
+    [screenWidth, arcSeries, onScan, onOpenRitual, onShare, scrollX],
+  );
+
+  const handleScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      scrollX.value = e.nativeEvent.contentOffset.x;
+    },
+    [scrollX],
   );
 
   const handleLayout = (_e: LayoutChangeEvent) => {
@@ -129,6 +148,8 @@ export function DayPager({ onScan, onOpenRitual, onShare }: DayPagerProps) {
         windowSize={3}
         initialNumToRender={2}
         maxToRenderPerBatch={2}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
       />
     </View>
   );
@@ -138,3 +159,26 @@ const styles = StyleSheet.create({
   host: { flex: 1 },
   strip: { paddingTop: 12, paddingBottom: 6 },
 });
+
+interface FadePageProps {
+  scrollX: ReturnType<typeof useSharedValue<number>>;
+  index: number;
+  width: number;
+  children: React.ReactNode;
+}
+
+// Top-level so React reconciles each instance as the same component rather
+// than treating the closure as a fresh definition every parent render.
+function FadePage({ scrollX, index, width, children }: FadePageProps) {
+  const animatedStyle = useAnimatedStyle(() => {
+    const distance = Math.abs(scrollX.value - index * width);
+    const opacity = interpolate(
+      distance,
+      [0, width * 0.5, width],
+      [1, 0.35, 0],
+      Extrapolation.CLAMP,
+    );
+    return { opacity };
+  });
+  return <Animated.View style={[{ width }, animatedStyle]}>{children}</Animated.View>;
+}

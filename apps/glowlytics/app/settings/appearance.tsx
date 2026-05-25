@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View, useColorScheme } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { FontFamily, Glow } from '../../src/constants/theme';
+import { FontFamily, Glow, GlowPalette } from '../../src/constants/theme';
 import {
   ListGroup,
   Row,
@@ -11,14 +11,15 @@ import {
   Toggle,
 } from '../../src/components/settings/SettingsPrimitives';
 import { useStore } from '../../src/store/useStore';
-import { supportsAlternateAppIcon } from '../../src/services/appearance';
+import {
+  supportsAlternateAppIcon,
+  resolveColorMode,
+} from '../../src/services/appearance';
 import type {
   AppearanceIconKey,
   AppearanceMode,
   AppearancePaletteId,
 } from '../../src/types';
-
-const P = Glow.palette;
 
 // ---------------------------------------------------------------------------
 // Static option metadata
@@ -66,13 +67,216 @@ const ICON_OPTIONS: IconOption[] = [
 // Screen
 // ---------------------------------------------------------------------------
 
+const ICON_TILE = 60;
+
+/** Build the screen styles fresh on every appearance change so the live
+ *  palette is reflected immediately — module-level `StyleSheet.create` would
+ *  bake the old palette at module-load time and never update mid-session. */
+function makeStyles(P: GlowPalette) {
+  return StyleSheet.create({
+    paletteGrid: {
+      paddingHorizontal: 16,
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 10,
+    },
+    paletteCard: {
+      width: '47.5%',
+      backgroundColor: P.surface,
+      borderRadius: 18,
+      padding: 12,
+    },
+    swatchRow: {
+      flexDirection: 'row',
+      height: 56,
+      borderRadius: 12,
+      overflow: 'hidden',
+    },
+    swatch: { flex: 1 },
+    paletteFoot: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginTop: 10,
+    },
+    paletteName: {
+      fontFamily: FontFamily.sansBold,
+      fontSize: 13,
+      color: P.ink,
+    },
+    activeDot: {
+      width: 16,
+      height: 16,
+      borderRadius: 8,
+      backgroundColor: P.ink,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    paletteNote: {
+      fontFamily: FontFamily.sans,
+      fontSize: 10,
+      color: P.muted,
+      marginTop: 2,
+    },
+    modeRow: {
+      marginHorizontal: 16,
+      flexDirection: 'row',
+      gap: 2,
+      backgroundColor: P.surface,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: P.glow,
+      padding: 4,
+    },
+    modeBtn: {
+      flex: 1,
+      paddingVertical: 10,
+      borderRadius: 11,
+      alignItems: 'center',
+    },
+    modeBtnActive: {
+      backgroundColor: P.ink,
+    },
+    modeLabel: {
+      fontFamily: FontFamily.sansMedium,
+      fontSize: 13,
+      color: P.ink,
+    },
+    modeLabelActive: {
+      color: P.surface,
+    },
+    sliderRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    sliderLabelSmall: {
+      fontFamily: FontFamily.sans,
+      fontSize: 11,
+      color: P.muted,
+    },
+    sliderLabelLarge: {
+      fontFamily: FontFamily.sans,
+      fontSize: 16,
+      color: P.muted,
+    },
+    sliderTrack: {
+      width: 90,
+      height: 4,
+      backgroundColor: P.bg,
+      borderRadius: 999,
+      justifyContent: 'center',
+    },
+    sliderFill: {
+      height: 4,
+      backgroundColor: P.accent,
+      borderRadius: 999,
+    },
+    sliderThumb: {
+      position: 'absolute',
+      width: 16,
+      height: 16,
+      borderRadius: 8,
+      backgroundColor: 'white',
+      marginLeft: -8,
+      top: -6,
+      shadowColor: '#000',
+      shadowOpacity: 0.15,
+      shadowRadius: 3,
+      shadowOffset: { width: 0, height: 1 },
+    },
+    iconUnsupportedNote: {
+      marginHorizontal: 16,
+      marginBottom: 10,
+      fontFamily: FontFamily.sans,
+      fontSize: 11,
+      color: P.muted,
+      lineHeight: 16,
+    },
+    iconGrid: {
+      paddingHorizontal: 16,
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      rowGap: 16,
+      columnGap: 14,
+    },
+    iconCell: {
+      alignItems: 'center',
+      width: ICON_TILE + 4,
+    },
+    iconTileWrap: {
+      width: ICON_TILE,
+      height: ICON_TILE,
+      borderRadius: 14,
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: 'rgba(0,0,0,0.08)',
+      position: 'relative',
+    },
+    iconTileWrapActive: {
+      borderWidth: 2,
+      borderColor: P.ink,
+    },
+    iconTileImage: {
+      width: '100%',
+      height: '100%',
+    },
+    iconActiveDot: {
+      position: 'absolute',
+      right: 4,
+      bottom: 4,
+      width: 18,
+      height: 18,
+      borderRadius: 9,
+      backgroundColor: P.ink,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    iconLabel: {
+      marginTop: 6,
+      fontFamily: FontFamily.sansMedium,
+      fontSize: 10,
+      color: P.muted,
+      letterSpacing: 0.4,
+    },
+    iconLabelActive: {
+      color: P.ink,
+    },
+    livePreviewNote: {
+      marginHorizontal: 16,
+      marginTop: -4,
+      marginBottom: 8,
+      fontFamily: FontFamily.sans,
+      fontSize: 11,
+      color: P.muted,
+      lineHeight: 16,
+      fontStyle: 'italic',
+    },
+  });
+}
+
 export default function AppearanceScreen() {
   const appearance = useStore((s) => s.appearance);
   const setAppearance = useStore((s) => s.setAppearance);
+  const systemScheme = useColorScheme();
+
+  // Rebuild styles whenever any appearance dimension changes — this is the
+  // "live preview" hook. The host (`AppearanceHost`) also mutates Glow.palette
+  // so reads via `Glow.palette.x` outside this screen pick up the new values
+  // on their next render.
+  const P = Glow.palette;
+  const styles = useMemo(
+    () => makeStyles(P),
+    // We *want* this to re-run on every appearance change. Reading the
+    // primitive fields keeps the dep array stable + correct.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [appearance.palette, appearance.mode, systemScheme, P.bg, P.ink, P.surface, P.accent, P.glow, P.muted],
+  );
 
   // iOS-only feature. Checked once; the underlying device capability doesn't
   // change at runtime.
   const iconSwapSupported = useMemo(() => supportsAlternateAppIcon(), []);
+  const concreteMode = resolveColorMode(appearance.mode, systemScheme);
 
   return (
     <SettingsPage>
@@ -131,6 +335,10 @@ export default function AppearanceScreen() {
           );
         })}
       </View>
+      <Text style={styles.livePreviewNote}>
+        Currently showing the {concreteMode} {appearance.palette === 'auto' ? 'dusk' : appearance.palette} look.
+        Some surfaces fully refresh after the next app launch.
+      </Text>
 
       <SectionLabel>Text</SectionLabel>
       <ListGroup>
@@ -145,9 +353,14 @@ export default function AppearanceScreen() {
                 />
                 <Pressable
                   onPress={() => {
-                    const next = appearance.textSize >= 1
-                      ? 0
-                      : Math.min(1, Math.round((appearance.textSize + 0.2) * 10) / 10);
+                    // Cycle through 5 evenly-spaced presets (0, 0.25, 0.5,
+                    // 0.75, 1) — small but tappable steps make the slider
+                    // useful without a real range gesture.
+                    const steps = [0, 0.25, 0.5, 0.75, 1];
+                    const nearestIdx = steps.reduce((best, v, i) =>
+                      Math.abs(v - appearance.textSize) < Math.abs(steps[best] - appearance.textSize) ? i : best,
+                    0);
+                    const next = steps[(nearestIdx + 1) % steps.length];
                     setAppearance({ textSize: next });
                   }}
                   hitSlop={10}
@@ -225,181 +438,3 @@ export default function AppearanceScreen() {
     </SettingsPage>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Styles
-// ---------------------------------------------------------------------------
-
-const ICON_TILE = 60;
-
-const styles = StyleSheet.create({
-  paletteGrid: {
-    paddingHorizontal: 16,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  paletteCard: {
-    width: '47.5%',
-    backgroundColor: P.surface,
-    borderRadius: 18,
-    padding: 12,
-  },
-  swatchRow: {
-    flexDirection: 'row',
-    height: 56,
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  swatch: { flex: 1 },
-  paletteFoot: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  paletteName: {
-    fontFamily: FontFamily.sansBold,
-    fontSize: 13,
-    color: P.ink,
-  },
-  activeDot: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: P.ink,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  paletteNote: {
-    fontFamily: FontFamily.sans,
-    fontSize: 10,
-    color: P.muted,
-    marginTop: 2,
-  },
-  modeRow: {
-    marginHorizontal: 16,
-    flexDirection: 'row',
-    gap: 2,
-    backgroundColor: P.surface,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: P.glow,
-    padding: 4,
-  },
-  modeBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 11,
-    alignItems: 'center',
-  },
-  modeBtnActive: {
-    backgroundColor: P.ink,
-  },
-  modeLabel: {
-    fontFamily: FontFamily.sansMedium,
-    fontSize: 13,
-    color: P.ink,
-  },
-  modeLabelActive: {
-    color: P.surface,
-  },
-  sliderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  sliderLabelSmall: {
-    fontFamily: FontFamily.sans,
-    fontSize: 11,
-    color: P.muted,
-  },
-  sliderLabelLarge: {
-    fontFamily: FontFamily.sans,
-    fontSize: 16,
-    color: P.muted,
-  },
-  sliderTrack: {
-    width: 90,
-    height: 4,
-    backgroundColor: P.bg,
-    borderRadius: 999,
-    justifyContent: 'center',
-  },
-  sliderFill: {
-    height: 4,
-    backgroundColor: P.accent,
-    borderRadius: 999,
-  },
-  sliderThumb: {
-    position: 'absolute',
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: 'white',
-    marginLeft: -8,
-    top: -6,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 3,
-    shadowOffset: { width: 0, height: 1 },
-  },
-  iconUnsupportedNote: {
-    marginHorizontal: 16,
-    marginBottom: 10,
-    fontFamily: FontFamily.sans,
-    fontSize: 11,
-    color: P.muted,
-    lineHeight: 16,
-  },
-  iconGrid: {
-    paddingHorizontal: 16,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    rowGap: 16,
-    columnGap: 14,
-  },
-  iconCell: {
-    alignItems: 'center',
-    width: ICON_TILE + 4,
-  },
-  iconTileWrap: {
-    width: ICON_TILE,
-    height: ICON_TILE,
-    borderRadius: 14,
-    overflow: 'hidden',
-    // iOS-style subtle border so the cream icons still have a contour.
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.08)',
-    position: 'relative',
-  },
-  iconTileWrapActive: {
-    borderWidth: 2,
-    borderColor: P.ink,
-  },
-  iconTileImage: {
-    width: '100%',
-    height: '100%',
-  },
-  iconActiveDot: {
-    position: 'absolute',
-    right: 4,
-    bottom: 4,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: P.ink,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  iconLabel: {
-    marginTop: 6,
-    fontFamily: FontFamily.sansMedium,
-    fontSize: 10,
-    color: P.muted,
-    letterSpacing: 0.4,
-  },
-  iconLabelActive: {
-    color: P.ink,
-  },
-});

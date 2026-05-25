@@ -10,7 +10,13 @@
  * registered.
  */
 
-import type { AppearanceIconKey, AppearancePreferences } from '../types';
+import type {
+  AppearanceIconKey,
+  AppearanceMode,
+  AppearancePaletteId,
+  AppearancePreferences,
+} from '../types';
+import { Glow, GlowPalettes, GlowPalettesDark } from '../constants/theme';
 import { trackEvent } from './analytics';
 
 // ---------------------------------------------------------------------------
@@ -147,4 +153,56 @@ export function currentNativeIcon(): AppearanceIconKey {
   } catch {
     return 'og-dusk';
   }
+}
+
+// ---------------------------------------------------------------------------
+// Live palette + mode resolution
+// ---------------------------------------------------------------------------
+
+type ConcretePalette = 'dusk' | 'meadow' | 'rose';
+type ConcreteMode = 'light' | 'dark';
+
+/** Resolve the user-facing palette intent to one of the three concrete keys.
+ *  `auto` follows the system color scheme: dark → dusk-dark, light → dusk-light.
+ *  This is a UX choice — we don't auto-switch palette family by environment. */
+export function resolvePaletteId(
+  palette: AppearancePaletteId,
+  _systemScheme: 'light' | 'dark' | null | undefined,
+): ConcretePalette {
+  if (palette === 'auto') return 'dusk';
+  return palette;
+}
+
+/** Resolve light/dark/auto against the system color scheme. */
+export function resolveColorMode(
+  mode: AppearanceMode,
+  systemScheme: 'light' | 'dark' | null | undefined,
+): ConcreteMode {
+  if (mode === 'auto') return systemScheme === 'dark' ? 'dark' : 'light';
+  return mode;
+}
+
+/** Mutate `Glow.palette` in-place so the new colors propagate to every
+ *  component that re-renders after this call. Returning the new palette
+ *  lets callers stamp a state version to force the tree to re-render. */
+export function applyPalette(
+  palette: AppearancePaletteId,
+  mode: AppearanceMode,
+  systemScheme: 'light' | 'dark' | null | undefined,
+): void {
+  const concreteMode = resolveColorMode(mode, systemScheme);
+  const concretePalette = resolvePaletteId(palette, systemScheme);
+  const source = concreteMode === 'dark'
+    ? GlowPalettesDark[concretePalette]
+    : GlowPalettes[concretePalette];
+
+  // In-place mutation. Existing `const P = Glow.palette;` destructured
+  // references stay valid because the *object reference* is unchanged.
+  Glow.palette.bg = source.bg;
+  Glow.palette.surface = source.surface;
+  Glow.palette.ink = source.ink;
+  Glow.palette.muted = source.muted;
+  Glow.palette.accent = source.accent;
+  Glow.palette.accent2 = source.accent2;
+  Glow.palette.glow = source.glow;
 }

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlowIcon } from '../../src/components/glow/GlowIcons';
 import { FadeUp } from '../../src/components/glow/GlowPrimitives';
 import { AddProductSheet } from '../../src/components/AddProductSheet';
+import { FocusFade } from '../../src/components/FocusFade';
 import {
   BorderRadius,
   Colors,
@@ -47,6 +48,19 @@ export default function ShelfTab() {
   const modelOutputs = useStore((s) => s.modelOutputs);
   const dailyRecords = useStore((s) => s.dailyRecords);
   const [showAddSheet, setShowAddSheet] = useState(false);
+  const addProductTrigger = useStore((s) => s.openAddProductTrigger);
+  const lastSeenTrigger = useRef(addProductTrigger);
+
+  // Open the AddProductSheet whenever the cross-component trigger increments
+  // (the tab-bar camera FAB calls `requestAddProduct()` from the Shelf tab).
+  // Counter, not boolean: a second press while the sheet is open re-opens it.
+  useEffect(() => {
+    if (addProductTrigger === lastSeenTrigger.current) return;
+    lastSeenTrigger.current = addProductTrigger;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    trackEvent('product_add_sheet_opened', { source: 'camera_fab' });
+    setShowAddSheet(true);
+  }, [addProductTrigger]);
 
   const overallInsight = useMemo(() => {
     const latest = modelOutputs[modelOutputs.length - 1] ?? null;
@@ -80,7 +94,8 @@ export default function ShelfTab() {
   };
 
   return (
-    <ScrollView
+    <FocusFade>
+      <ScrollView
       style={{ flex: 1, backgroundColor: palette.bg }}
       contentContainerStyle={{
         paddingTop: insets.top + Spacing.xl,
@@ -208,6 +223,7 @@ export default function ShelfTab() {
         />
       )}
     </ScrollView>
+    </FocusFade>
   );
 }
 

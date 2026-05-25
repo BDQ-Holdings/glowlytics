@@ -156,9 +156,12 @@ interface AnimatedCameraProps {
   pulseCamera: boolean;
   accessibilityLabel?: string;
   isFocused: boolean;
+  /** When true the FAB animates to 0 opacity and stops receiving taps. Used
+   *  on the Me tab — the camera CTA has no meaningful action there. */
+  hidden?: boolean;
 }
 
-function AnimatedCameraButton({ onPress, pulseCamera, accessibilityLabel, isFocused }: AnimatedCameraProps) {
+function AnimatedCameraButton({ onPress, pulseCamera, accessibilityLabel, isFocused, hidden }: AnimatedCameraProps) {
   const reducedMotion = useReducedMotion();
   const pressScale = useSharedValue(1);
   const pulseScale = useSharedValue(1);
@@ -186,8 +189,24 @@ function AnimatedCameraButton({ onPress, pulseCamera, accessibilityLabel, isFocu
     pressScale.value = withSpring(1, { damping: 12, stiffness: 180 });
   };
 
+  // Compose press scale × pulse × hide opacity into one transform/opacity
+  // pair. The animated style is read by the outer wrapper so taps fall
+  // through to the bar (or to nothing) once the FAB fades out.
+  const hideProgress = useSharedValue(hidden ? 1 : 0);
+  useEffect(() => {
+    if (reducedMotion) {
+      hideProgress.value = hidden ? 1 : 0;
+      return;
+    }
+    hideProgress.value = withTiming(hidden ? 1 : 0, { duration: 220, easing: CALM_EASING });
+  }, [hidden, reducedMotion]);
+
   const outerStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: pressScale.value * pulseScale.value }],
+    opacity: 1 - hideProgress.value,
+    transform: [
+      { scale: pressScale.value * pulseScale.value * (1 - 0.15 * hideProgress.value) },
+      { translateY: 6 * hideProgress.value },
+    ],
   }));
 
   return (
@@ -196,11 +215,14 @@ function AnimatedCameraButton({ onPress, pulseCamera, accessibilityLabel, isFocu
     // the centered 56px button intercepts taps across the entire upper strip
     // of the tab bar (the icon zone of every other tab), so side-tab presses
     // get eaten and "require multiple clicks to change tab."
-    <View style={styles.cameraAnchor} pointerEvents="box-none">
+    <Animated.View
+      style={[styles.cameraAnchor, outerStyle]}
+      pointerEvents={hidden ? 'none' : 'box-none'}
+    >
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel ?? 'Open camera'}
-        accessibilityState={{ selected: isFocused }}
+        accessibilityState={{ selected: isFocused, disabled: hidden }}
         // FAB sits in empty space above the bar — generous symmetric slop
         // is safe (won't poach any side tab) and brings the tap target up
         // to a comfortable 80×80.
@@ -208,8 +230,9 @@ function AnimatedCameraButton({ onPress, pulseCamera, accessibilityLabel, isFocu
         onPress={onPress}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
+        disabled={hidden}
       >
-        <Animated.View style={[styles.cameraOuter, outerStyle]}>
+        <View style={styles.cameraOuter}>
           <View style={styles.gradientClip} pointerEvents="none">
             <LinearGradient
               colors={[...GRADIENT_COLORS]}
@@ -219,15 +242,19 @@ function AnimatedCameraButton({ onPress, pulseCamera, accessibilityLabel, isFocu
             />
           </View>
           <GlowIcon name="camera" size={22} color={Glow.palette.surface} stroke={1.6} />
-        </Animated.View>
+        </View>
       </Pressable>
-    </View>
+    </Animated.View>
   );
 }
 
 // ─── Main Tab Bar ────────────────────────────────────────────────────
 type NotchedTabBarProps = BottomTabBarProps & {
-  onCameraPress: () => void;
+  /** Called when the FAB is tapped. Receives the currently-focused route
+   *  name so the host can branch (today → /scan/camera, products → add a
+   *  product, etc). The host is responsible for the actual side-effect; the
+   *  bar stays presentation-only. */
+  onCameraPress: (activeRouteName: string) => void;
   pulseCamera?: boolean;
 };
 
@@ -308,6 +335,10 @@ export function NotchedTabBar({
   const cameraRoute = typeof cameraIndex === 'number' ? state.routes[cameraIndex] : undefined;
   const cameraOptions = cameraRoute ? descriptors[cameraRoute.key]?.options : undefined;
   const isCameraFocused = typeof cameraIndex === 'number' && state.index === cameraIndex;
+  const activeRouteName = state.routes[state.index]?.name ?? '';
+  // The FAB has no action on the Me tab — fade it out rather than leaving
+  // a dead-tap target above the bar.
+  const cameraHidden = activeRouteName === 'profile';
 
   const bottomPad = Math.max(insets.bottom - SAFE_AREA_OVERLAP, BOTTOM_INSET_MIN);
 
@@ -327,10 +358,11 @@ export function NotchedTabBar({
 
           {/* Camera button — floats above the bar */}
           <AnimatedCameraButton
-            onPress={onCameraPress}
+            onPress={() => onCameraPress(activeRouteName)}
             pulseCamera={pulseCamera}
             accessibilityLabel={cameraOptions?.tabBarAccessibilityLabel}
             isFocused={isCameraFocused}
+            hidden={cameraHidden}
           />
         </View>
       </Animated.View>

@@ -15,16 +15,16 @@ import Animated, {
 } from 'react-native-reanimated';
 import { tokenCache } from '../src/config/tokenCache';
 import { env } from '../src/config/env';
-import { Colors, FontFamily, FontSize, Spacing } from '../src/constants/theme';
+import { Colors, FontFamily, FontSize, Glow, Spacing } from '../src/constants/theme';
 import { useStore } from '../src/store/useStore';
 import { setAuthTokenProvider } from '../src/services/api';
 import { initRevenueCat, identifyUser, subscriptionFromCustomerInfo, setupCustomerInfoListener } from '../src/services/subscription';
 import { initAnalytics, identifyUser as identifyAnalyticsUser, trackEvent } from '../src/services/analytics';
 import {
   applyAppIcon,
-  appearanceTextScaleFactor,
   currentNativeIcon,
 } from '../src/services/appearance';
+import { AppearanceHost } from '../src/components/AppearanceHost';
 // Lazy import — onnxruntime-react-native crashes in Expo Go
 const initLesionDetection = () =>
   import('../src/services/onDeviceLesionDetection').then((m) => m.initLesionDetection());
@@ -271,20 +271,8 @@ function ClerkGatedApp() {
         // Best-effort; this never blocks the splash.
       }
 
-      // Apply the user's preferred text scale to RN's default Text. This is
-      // a one-time mutation, not a context — every Text in the app picks it
-      // up without per-component plumbing. `defaultProps` is the only RN
-      // surface that affects the bare `<Text>` import everywhere.
-      try {
-        const scale = appearanceTextScaleFactor(useStore.getState().appearance.textSize);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const TextAny = Text as unknown as { defaultProps?: any };
-        TextAny.defaultProps = TextAny.defaultProps || {};
-        TextAny.defaultProps.maxFontSizeMultiplier = scale;
-        TextAny.defaultProps.allowFontScaling = true;
-      } catch {
-        // Some RN builds make defaultProps read-only; non-fatal.
-      }
+      // Text-scale + palette are wired by AppearanceHost (mounted below) so
+      // they react to every store change rather than only at cold start.
 
       if (__DEV__) console.log(`[App] Critical init ready in ${Date.now() - t0}ms`);
     };
@@ -379,32 +367,34 @@ function ClerkGatedApp() {
 
   return (
     <SafeAreaProvider>
-      <View style={{ flex: 1, backgroundColor: Colors.background }}>
-        <StatusBar style="dark" />
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: Colors.background },
-            animation: 'slide_from_right',
-          }}
-        >
-          <Stack.Screen name="index" options={{ animation: 'fade' }} />
-          <Stack.Screen name="auth" options={{ animation: 'fade' }} />
-          <Stack.Screen name="oauth-native-callback" options={{ animation: 'fade' }} />
-          <Stack.Screen name="(tabs)" options={{ animation: 'none' }} />
-          <Stack.Screen name="onboarding" options={{ animation: 'fade' }} />
-          <Stack.Screen name="scan" options={{ animation: 'slide_from_bottom' }} />
-          <Stack.Screen name="product" options={{ animation: 'slide_from_right' }} />
-          <Stack.Screen name="signal" options={{ animation: 'slide_from_bottom' }} />
-          <Stack.Screen name="privacy-policy" options={{ animation: 'slide_from_right' }} />
-          <Stack.Screen name="paywall" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
-          <Stack.Screen name="pattern" options={{ animation: 'slide_from_right' }} />
-          <Stack.Screen name="settings" options={{ animation: 'slide_from_right' }} />
-          <Stack.Screen name="ritual" options={{ animation: 'slide_from_right' }} />
-        </Stack>
-        <AuthRedirector />
-        <DemoSeeder />
-      </View>
+      <AppearanceHost>
+        <View style={{ flex: 1, backgroundColor: Glow.palette.bg }}>
+          <StatusBar style={useStore.getState().appearance.mode === 'dark' ? 'light' : 'dark'} />
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: Glow.palette.bg },
+              animation: 'slide_from_right',
+            }}
+          >
+            <Stack.Screen name="index" options={{ animation: 'fade' }} />
+            <Stack.Screen name="auth" options={{ animation: 'fade' }} />
+            <Stack.Screen name="oauth-native-callback" options={{ animation: 'fade' }} />
+            <Stack.Screen name="(tabs)" options={{ animation: 'none' }} />
+            <Stack.Screen name="onboarding" options={{ animation: 'fade' }} />
+            <Stack.Screen name="scan" options={{ animation: 'slide_from_bottom' }} />
+            <Stack.Screen name="product" options={{ animation: 'slide_from_right' }} />
+            <Stack.Screen name="signal" options={{ animation: 'slide_from_bottom' }} />
+            <Stack.Screen name="privacy-policy" options={{ animation: 'slide_from_right' }} />
+            <Stack.Screen name="paywall" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
+            <Stack.Screen name="pattern" options={{ animation: 'slide_from_right' }} />
+            <Stack.Screen name="settings" options={{ animation: 'slide_from_right' }} />
+            <Stack.Screen name="ritual" options={{ animation: 'slide_from_right' }} />
+          </Stack>
+          <AuthRedirector />
+          <DemoSeeder />
+        </View>
+      </AppearanceHost>
     </SafeAreaProvider>
   );
 }
