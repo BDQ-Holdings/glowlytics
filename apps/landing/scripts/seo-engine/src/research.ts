@@ -63,6 +63,8 @@ async function researchCluster(cluster: KeywordCluster): Promise<ResearchDossier
     recommendedAngle: aiResult.recommendedAngle,
     recommendedWordCount: aiResult.recommendedWordCount,
     recommendedHeadings: aiResult.recommendedHeadings,
+    paaQuestions: cluster.paaQuestions || [],
+    metrics: cluster.metrics,
   };
 
   return dossier;

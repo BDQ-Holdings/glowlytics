@@ -14,7 +14,9 @@
     "seo:review": "node --import ./scripts/seo-engine/node_modules/tsx/dist/loader.mjs ./scripts/seo-engine/src/review.ts",
     "seo:refresh": "node --import ./scripts/seo-engine/node_modules/tsx/dist/loader.mjs ./scripts/seo-engine/src/refresh.ts",
     "seo:daily": "node --import ./scripts/seo-engine/node_modules/tsx/dist/loader.mjs ./scripts/seo-engine/src/daily-run.ts",
-    "seo:health": "node --import ./scripts/seo-engine/node_modules/tsx/dist/loader.mjs ./scripts/seo-engine/src/health.ts"
+    "seo:health": "node --import ./scripts/seo-engine/node_modules/tsx/dist/loader.mjs ./scripts/seo-engine/src/health.ts",
+    "seo:reseed": "node --import ./scripts/seo-engine/node_modules/tsx/dist/loader.mjs ./scripts/seo-engine/src/reseed.ts",
+    "seo:test": "node --import ./scripts/seo-engine/node_modules/tsx/dist/loader.mjs --test ./scripts/seo-engine/src/lib/__tests__/*.test.ts"
   },
   "keywords": [],
   "author": "",

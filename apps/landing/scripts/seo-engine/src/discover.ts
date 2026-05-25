@@ -7,6 +7,10 @@ import { filterKeywords } from "./lib/keyword-filter.js";
 import { sleep } from "./lib/pipeline.js";
 import { scrapeSERP } from "./lib/serp.js";
 import { clusterKeywords } from "./lib/clustering.js";
+import {
+  computeOpportunityScore,
+  getKeywordMetricsProvider,
+} from "./lib/keyword-metrics.js";
 import type { KeywordCluster } from "./lib/types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -51,20 +55,42 @@ async function main() {
   const uniqueSuggestions = filterKeywords(allSuggestions);
   console.log(`\n\nUsable unique suggestions: ${uniqueSuggestions.length}`);
 
-  console.log("Clustering keywords...");
-  const newClusters = clusterKeywords(uniqueSuggestions, paaMap);
+  console.log("Clustering keywords (lexical + semantic)...");
+  const newClusters = await clusterKeywords(uniqueSuggestions, paaMap);
   console.log(`Created ${newClusters.length} clusters.`);
 
   const merged: KeywordCluster[] = [...existing];
-  let addedCount = 0;
+  const newlyAdded: KeywordCluster[] = [];
   for (const cluster of newClusters) {
     if (!existingSlugs.has(cluster.slug)) {
       merged.push(cluster);
-      addedCount++;
+      newlyAdded.push(cluster);
     }
   }
+  console.log(`\nAdded ${newlyAdded.length} new clusters. Total: ${merged.length}`);
 
-  console.log(`\nAdded ${addedCount} new clusters. Total: ${merged.length}`);
+  // Enrich new clusters with volume/difficulty metrics, then recompute the
+  // opportunityScore so we don't just rank on PAA depth.
+  const provider = getKeywordMetricsProvider();
+  if (provider.name !== "noop" && newlyAdded.length > 0) {
+    console.log(`\nFetching keyword metrics via ${provider.name} for ${newlyAdded.length} new clusters...`);
+    const primaryKeywords = newlyAdded.map((c) => c.primaryKeyword);
+    const metrics = await provider.fetchMetrics(primaryKeywords);
+    console.log(`  Got metrics for ${metrics.size}/${primaryKeywords.length} keywords.`);
+
+    for (const cluster of newlyAdded) {
+      const snapshot = metrics.get(cluster.primaryKeyword.toLowerCase());
+      if (snapshot) cluster.metrics = snapshot;
+      cluster.opportunityScore = computeOpportunityScore({
+        relatedKeywordCount: cluster.relatedKeywords.length,
+        paaQuestionCount: cluster.paaQuestions.length,
+        metrics: cluster.metrics,
+      });
+    }
+
+    // Resort by the refreshed scores so seo:research picks the strongest first.
+    merged.sort((a, b) => b.opportunityScore - a.opportunityScore);
+  }
 
   fs.writeFileSync(KEYWORDS_PATH, JSON.stringify(merged, null, 2));
   console.log(`\nSaved to ${KEYWORDS_PATH}`);

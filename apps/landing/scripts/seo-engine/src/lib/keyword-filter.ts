@@ -1,55 +1,57 @@
-const BANNED_PATTERNS = [
-  /\breddit\b/i,
-  /\bquora\b/i,
-  /\bnear me\b/i,
-  /\bmeme\b/i,
-  /\bemoji\b/i,
-  /\bgif\b/i,
-  /\bdraw(?:ing)?\b/i,
-  /\bquote(?:s)?\b/i,
-  /\bimage(?:s)?\b/i,
-  /\bvideo\b/i,
-  /\byoutube\b/i,
-  /\btiktok\b/i,
-  /\bzoom(?:ed)?\b/i,
-  /\bolive young\b/i,
-  /\bin spanish\b/i,
-  /\bke liye\b/i,
-  /\ber jonno\b/i,
-  /\bgharelu\b/i,
-  /\bkya\b/i,
-  /\bkaren\b/i,
-  /\bdog(?:s)?\b/i,
-  /\bcat(?:s)?\b/i,
-  /\bpet(?:s)?\b/i,
-  /\bicd[-\s]?10\b/i,
-  /\bcode\b/i,
-  /\busa meme\b/i,
-  /\bnano brows\b/i,
-  /\besthetician\b/i,
-  /\bdoctor near me\b/i,
-  /\bclinic near me\b/i,
-  /\bprice\b/i,
-  /\bcost\b/i,
-  /\bpakistan\b/i,
-  /\bknee\b/i,
-  /\binjection(?:s)?\b/i,
-  /\bweathering\b/i,
-  /\baddison'?s\b/i,
-  /\bjan aushadhi\b/i,
-  /\bsymptom of\b/i,
-  /\bla roche posay\b/i,
-  /\bcerave\b/i,
-  /\bcetaphil\b/i,
-  /\bthe ordinary\b/i,
-  /\bgood molecules\b/i,
-  /\bzoryve\b/i,
-];
+/**
+ * Keyword normalization + banned-pattern filtering.
+ *
+ * The pattern list lives in `data/banned-keywords.json` so non-engineers
+ * (and future engineers spotting noise in a discovery run) can update it
+ * without touching code.
+ */
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const BANNED_KEYWORDS_PATH = path.resolve(__dirname, "../../../../data/banned-keywords.json");
+
+interface BannedKeywordsFile {
+  patterns: string[];
+}
+
+let cachedPatterns: RegExp[] | null = null;
+
+function loadBannedPatterns(): RegExp[] {
+  if (cachedPatterns) return cachedPatterns;
+
+  const patterns: RegExp[] = [];
+
+  if (fs.existsSync(BANNED_KEYWORDS_PATH)) {
+    try {
+      const raw = fs.readFileSync(BANNED_KEYWORDS_PATH, "utf-8");
+      const parsed = JSON.parse(raw) as BannedKeywordsFile;
+      for (const source of parsed.patterns || []) {
+        try {
+          patterns.push(new RegExp(source, "i"));
+        } catch (err) {
+          console.warn(`[keyword-filter] Skipping invalid pattern ${JSON.stringify(source)}: ${(err as Error).message}`);
+        }
+      }
+    } catch (err) {
+      console.warn(`[keyword-filter] Failed to load ${BANNED_KEYWORDS_PATH}: ${(err as Error).message}`);
+    }
+  }
+
+  cachedPatterns = patterns;
+  return patterns;
+}
 
 export function normalizeKeyword(keyword: string): string {
   return keyword
     .toLowerCase()
+    // Fold smart quotes to ASCII apostrophe so "What\u2019s" matches "what's".
     .replace(/[\u2018\u2019]/g, "'")
+    // Strip combining diacritics so "acné" → "acne", "café" → "cafe".
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    // Drop any remaining non-ASCII (other scripts, exotic symbols).
     .replace(/[^\x00-\x7f]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -65,7 +67,7 @@ export function isAllowedKeyword(keyword: string): boolean {
   const words = normalized.split(/\s+/);
   if (words.length > 8) return false;
 
-  for (const pattern of BANNED_PATTERNS) {
+  for (const pattern of loadBannedPatterns()) {
     if (pattern.test(normalized)) return false;
   }
 
@@ -74,4 +76,9 @@ export function isAllowedKeyword(keyword: string): boolean {
 
 export function filterKeywords(keywords: string[]): string[] {
   return [...new Set(keywords.map(normalizeKeyword).filter(isAllowedKeyword))];
+}
+
+/** Force a re-read of `data/banned-keywords.json` (used by tests). */
+export function _resetBannedPatternsCache(): void {
+  cachedPatterns = null;
 }

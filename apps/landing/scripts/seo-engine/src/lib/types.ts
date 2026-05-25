@@ -13,6 +13,9 @@ export interface KeywordCluster {
   opportunityScore: number;
   paaQuestions: string[];
   status: ClusterStatus;
+  /** Volume / difficulty snapshot. Populated by `seo:discover` when a
+   *  keyword-metrics provider is configured. */
+  metrics?: KeywordMetricsSnapshot;
 }
 
 export interface SerpResult {
@@ -39,6 +42,19 @@ export interface ResearchDossier {
   recommendedAngle: string;
   recommendedWordCount: number;
   recommendedHeadings: string[];
+  /** People-Also-Ask questions surfaced for this cluster during discovery. */
+  paaQuestions: string[];
+  /** Optional volume / difficulty snapshot from the keyword-metrics provider. */
+  metrics?: KeywordMetricsSnapshot;
+}
+
+export interface KeywordMetricsSnapshot {
+  provider: string;
+  fetchedAt: string;
+  searchVolume?: number;
+  competition?: number;
+  cpc?: number;
+  keywordDifficulty?: number;
 }
 
 export interface ContentFrontmatter {
