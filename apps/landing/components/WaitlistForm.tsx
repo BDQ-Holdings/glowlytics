@@ -347,13 +347,54 @@ export default function WaitlistForm({
           white-space: nowrap;
         }
 
+        /* Mobile: break the single-pill layout. On phones the input + button
+         * stacking inside one rounded pill reads as "button trapped inside the
+         * textbox". Strip the outer chrome and let the input become its own
+         * bordered field with the button sitting beneath it as a standalone
+         * full-width CTA — same brand language, much more legible at thumb
+         * size. */
         @media (max-width: 520px) {
-          .wl-form { flex-wrap: wrap; padding: 8px; }
-          .wl-form input { flex: 1 1 100%; padding: 12px 14px; }
-          .wl-btn { flex: 1 1 100%; padding: 12px; }
-          .wl-success { padding: 10px 14px; }
+          .wl-form {
+            background: transparent;
+            border: none;
+            border-radius: 0;
+            padding: 0;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 10px;
+          }
+          .wl-form-hero,
+          .wl-form-band { padding: 0; }
+
+          .wl-form input {
+            flex: 1 1 100%;
+            padding: 14px 16px;
+            background: var(--surface);
+            border: 1px solid var(--glow);
+            border-radius: 14px;
+            font-size: 16px; /* prevent iOS zoom on focus */
+            min-height: 48px;
+          }
+          .wl-form-band input { padding: 13px 16px; }
+
+          .wl-btn {
+            flex: 1 1 100%;
+            padding: 14px;
+            border-radius: 14px;
+            font-size: 15px;
+            min-height: 48px;
+            width: 100%;
+          }
+          .wl-form-band .wl-btn { padding: 13px; font-size: 14px; }
+
+          .wl-success {
+            border-radius: 18px;
+            padding: 14px 16px;
+            align-items: flex-start;
+          }
           .wl-success-text strong { font-size: 15px; }
           .wl-success-text span { white-space: normal; }
+          .wl-error { margin: 4px 2px 0; }
         }
 
         @media (prefers-reduced-motion: reduce) {

@@ -909,6 +909,15 @@ html.dusk-landing > body > footer:last-of-type {
 
   /* "Shelf" verdict cards: text was running flush against the rounded edge. */
   .dusk-page .shelf-card { padding: 22px 20px; }
+
+  /* "How we talk to you" voice columns — the 2-up layout squeezed each side
+     to ~140px on phones, breaking the italic phrases across 3-4 lines each.
+     Stack them, drop the rule between the two columns, and tighten the
+     line-height so the italics don't tower. */
+  .dusk-page .voice-grid          { grid-template-columns: 1fr; gap: 32px; }
+  .dusk-page .voice-col h3        { font-size: 26px; margin: 0 0 16px; }
+  .dusk-page .voice-line          { font-size: 16px; padding: 14px 0; }
+  .dusk-page .voice-col.we .voice-line { font-size: 19px; }
 }
 
 /* Very small phones (Galaxy Fold closed, etc.) — give the page one more pass. */
