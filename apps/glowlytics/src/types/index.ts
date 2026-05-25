@@ -17,6 +17,52 @@ export type HealthDataType =
   | 'mindful_minutes'
   | 'menstrual_flow';
 
+// ---------------------------------------------------------------------------
+// Appearance preferences (Settings → Appearance)
+// ---------------------------------------------------------------------------
+
+/**
+ * Palette identifier from `GlowPalettes`. `auto` ties to system-time so dusk
+ * morphs into rose at sunrise / sunset on capable devices.
+ */
+export type AppearancePaletteId = 'dusk' | 'meadow' | 'rose' | 'auto';
+
+/** App-wide colour-scheme override. `auto` defers to OS. */
+export type AppearanceMode = 'light' | 'dark' | 'auto';
+
+/**
+ * Alternate iOS app icon. `og-dusk` is the bundle's primary icon (no native
+ * swap needed). The other six map to the names in
+ * `app.json > plugins > expo-alternate-app-icons`.
+ */
+export type AppearanceIconKey =
+  | 'og-dusk'
+  | 'og-sunset'
+  | 'og-meadow'
+  | 'og-rose'
+  | 'og-plum'
+  | 'lowercase-g'
+  | 'cursive-g';
+
+export interface AppearancePreferences {
+  /** Glow palette identifier — drives the cream/plum/rose theme. */
+  palette: AppearancePaletteId;
+  /** Light / dark / system. */
+  mode: AppearanceMode;
+  /**
+   * Body-text scale factor (0–1 slider position). Resolved to a multiplier
+   * via `appearanceTextScaleFactor(textSize)` so the slider math stays in
+   * one place.
+   */
+  textSize: number;
+  /** Render accent text in DancingScript italics (the brand's flourish). */
+  serifItalics: boolean;
+  /** Soften / disable non-essential animations. */
+  reduceMotion: boolean;
+  /** Currently active iOS app icon. */
+  icon: AppearanceIconKey;
+}
+
 // Onboarding profile types
 export type BiologicalSex = 'male' | 'female' | 'other' | 'prefer_not';
 export type MenstrualStatus = 'regular' | 'irregular' | 'no' | 'prefer_not';
@@ -111,6 +157,12 @@ export interface DailyRecord {
   sleep_quality?: SleepQuality;
   stress_level?: StressLevel;
   drinks_yesterday?: string;
+  /**
+   * ISO timestamp of when the scan was completed (set by analyzing.tsx).
+   * Local-only: the backend silently ignores unknown columns. Used by
+   * gamification (early_bird badge, scan-time consistency analyses).
+   */
+  scanned_at?: string;
 }
 
 export interface ModelOutput {

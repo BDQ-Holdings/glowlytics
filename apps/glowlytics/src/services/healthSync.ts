@@ -25,8 +25,11 @@ export function pickMaxSeverity(
   samples: { value: number }[],
 ): MenstrualFlowLevel | null {
   if (samples.length === 0) return null;
+  // Default to `null` so callers can distinguish "no enum-matching sample"
+  // from "no period today". The legacy implementation defaulted to 'none',
+  // which silently labeled garbage data as a confident no-flow reading.
   let maxRank = -1;
-  let maxLabel: MenstrualFlowLevel = 'none';
+  let maxLabel: MenstrualFlowLevel | null = null;
   for (const s of samples) {
     const entry = FLOW_SEVERITY[s.value];
     if (entry && entry.rank > maxRank) {
@@ -106,8 +109,21 @@ export function deriveCycleDay(
   if (episodes.length === 0) return null;
 
   const lastEpisode = episodes[episodes.length - 1];
-  const elapsed = today.getTime() - lastEpisode.startDate.getTime();
 
+  // Normalise both ends to local midnight before subtracting so a sample
+  // logged at 23:00 on day N still counts as "day 1" when the user checks
+  // their cycle day at 07:00 on day N+1. Without this, the elapsed math
+  // would silently bias toward "day 2" depending on capture time.
+  const startOfDay = (d: Date): Date => {
+    const out = new Date(d);
+    out.setHours(0, 0, 0, 0);
+    return out;
+  };
+  const lastStart = startOfDay(lastEpisode.startDate);
+  const todayStart = startOfDay(today);
+  const elapsed = todayStart.getTime() - lastStart.getTime();
+
+  if (elapsed < 0) return null; // future "today" → no cycle day
   if (elapsed > SIXTY_DAYS_MS) return null;
 
   return Math.floor(elapsed / (1000 * 60 * 60 * 24)) + 1;

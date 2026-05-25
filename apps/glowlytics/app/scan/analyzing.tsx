@@ -383,6 +383,10 @@ export default function AnalyzingScreen() {
         cycle_day_estimated: cycleDayRef.current,
         sleep_quality: prev?.sleep_quality,
         stress_level: prev?.stress_level,
+        // ISO timestamp captured at scan completion. Powers the early_bird
+        // badge + future scan-time consistency analyses; backend silently
+        // ignores the field on insert.
+        scanned_at: new Date().toISOString(),
       });
 
       // Stage 2: Stream personalized insights in background (non-blocking).

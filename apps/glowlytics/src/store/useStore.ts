@@ -8,7 +8,9 @@ import type {
   OnboardingScreenName, SubscriptionState, NotificationSettings,
   DetectedLesion, HealthDailyRecord, HealthSyncStatus, Pattern, FirstLookInsight,
   PatternNotificationsState,
+  AppearancePreferences,
 } from '../types';
+import { DEFAULT_APPEARANCE, applyAppIcon } from '../services/appearance';
 import { defaultSubscription, canScan as canScanPure, startTrial as computeTrial } from '../services/subscription';
 import * as api from '../services/api';
 import { enqueueSync } from '../services/syncOutbox';
@@ -70,6 +72,10 @@ interface AppState {
   // `services/ritual.ts`.
   ritualCompletions: Record<string, Record<string, boolean>>;
 
+  // Appearance preferences (Settings → Appearance). Stored verbatim;
+  // side-effects (icon swap, font scale, motion gating) live in callers.
+  appearance: AppearancePreferences;
+
   // Actions
   setOnboardingStep: (step: number) => void;
   setOnboardingFlow: (flow: OnboardingScreenName[]) => void;
@@ -114,6 +120,8 @@ interface AppState {
   runPatternDetection: () => void;
   setFirstUnlockNotifSent: (sent: boolean) => void;
   toggleRitualStep: (stepId: string, dateStr?: string) => void;
+  setAppearance: (patch: Partial<AppearancePreferences>) => Promise<void>;
+  resetAppearance: () => Promise<void>;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -261,6 +269,8 @@ export const useStore = create<AppState>((set, get) => ({
   firstLookInsight: null,
   patternNotifications: { first_pattern_unlock_sent: false },
   ritualCompletions: {},
+
+  appearance: { ...DEFAULT_APPEARANCE },
 
   setOnboardingStep: (step) => set({ onboardingStep: step }),
   setOnboardingFlow: (flow) => set({ onboardingFlow: flow }),
@@ -634,6 +644,40 @@ export const useStore = create<AppState>((set, get) => ({
     debouncedPersist(() => get().persistData());
   },
 
+  setAppearance: async (patch) => {
+    const prev = get().appearance;
+    const next = { ...prev, ...patch };
+    set({ appearance: next });
+    debouncedPersist(() => get().persistData());
+
+    // Native icon swap is the only side-effect that has to talk to the OS.
+    // We do it AFTER persisting the optimistic state — that way a transient
+    // failure (unsupported device, user-cancelled iOS alert) leaves the
+    // store reflecting reality once we revert. Resolves to `false` when the
+    // module/device can't fulfil the request; we revert the stored value
+    // and let the UI re-render against the previous icon.
+    if (patch.icon && patch.icon !== prev.icon) {
+      const ok = await applyAppIcon(patch.icon);
+      if (!ok) {
+        set({ appearance: { ...get().appearance, icon: prev.icon } });
+        debouncedPersist(() => get().persistData());
+      }
+    }
+  },
+
+  resetAppearance: async () => {
+    const prev = get().appearance;
+    set({ appearance: { ...DEFAULT_APPEARANCE } });
+    debouncedPersist(() => get().persistData());
+    if (prev.icon !== DEFAULT_APPEARANCE.icon) {
+      const ok = await applyAppIcon(DEFAULT_APPEARANCE.icon);
+      if (!ok) {
+        set({ appearance: { ...get().appearance, icon: prev.icon } });
+        debouncedPersist(() => get().persistData());
+      }
+    }
+  },
+
   runPatternDetection: () => {
     const state = get();
     if (!state.user) return;
@@ -909,6 +953,12 @@ export const useStore = create<AppState>((set, get) => ({
           firstLookInsight: parsed.firstLookInsight || null,
           patternNotifications: parsed.patternNotifications || { first_pattern_unlock_sent: false },
           ritualCompletions: parsed.ritualCompletions || {},
+          appearance: {
+            // Partial merge so a new field in DEFAULT_APPEARANCE picks up on
+            // upgrade without wiping the user's existing choices.
+            ...DEFAULT_APPEARANCE,
+            ...(parsed.appearance ?? {}),
+          },
         });
 
         // Backfill: upgraded users from pre-paywall builds may have no trial dates.
@@ -937,7 +987,7 @@ export const useStore = create<AppState>((set, get) => ({
         user, protocol, products, dailyRecords, modelOutputs, gamification,
         subscription, notificationSettings, onboardingFlow, onboardingFlowIndex,
         healthDailyRecords, healthSyncStatus, patterns, firstLookInsight,
-        patternNotifications, ritualCompletions,
+        patternNotifications, ritualCompletions, appearance,
       } = get();
       // Cap stored records to last 365 days to prevent AsyncStorage bloat
       const cutoff = new Date();
@@ -959,6 +1009,7 @@ export const useStore = create<AppState>((set, get) => ({
         healthDailyRecords: cappedHealthRecords,
         healthSyncStatus, patterns, firstLookInsight, patternNotifications,
         ritualCompletions: cappedRitualCompletions,
+        appearance,
       }));
     } catch (e) {
       console.log('Failed to persist data', e);
@@ -994,6 +1045,7 @@ export const useStore = create<AppState>((set, get) => ({
       firstLookInsight: null,
       patternNotifications: { first_pattern_unlock_sent: false },
       ritualCompletions: {},
+      appearance: { ...DEFAULT_APPEARANCE },
     });
     try {
       await AsyncStorage.removeItem('glowlytics_data');

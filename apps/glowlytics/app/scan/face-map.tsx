@@ -22,56 +22,74 @@ type FacetRow = {
   label: string;
   zone: ZoneKey;
   score: number;
-  delta: number;
+  delta: number | null;
   note: string;
 };
 
-/**
- * Map the production 5-signal model to the design's 5 face areas.
- * We keep the model unchanged — this is purely the visual mapping.
- */
-function mapSignalsToFacets(signals: Record<string, number> | undefined): FacetRow[] {
-  const s = signals ?? {};
-  return [
-    {
-      label: 'Forehead',
-      zone: 'forehead',
-      score: Math.round(s.hydration ?? 70),
-      delta: 3,
-      note: 'Hydration crisp this morning',
-    },
-    {
-      label: 'Cheeks',
-      zone: 'cheekL',
-      score: Math.round(s.inflammation != null ? 100 - s.inflammation : 76),
-      delta: 5,
-      note: 'No new redness · holding',
-    },
-    {
-      label: 'T-zone',
-      zone: 'tzone',
-      score: Math.round(s.sunDamage != null ? 100 - s.sunDamage * 0.6 : 71),
-      delta: -2,
-      note: 'A touch of shine vs. typical',
-    },
-    {
-      label: 'Jaw',
-      zone: 'jaw',
-      score: Math.round(s.structure ?? 88),
-      delta: 1,
-      note: 'Clear · 12-day streak',
-    },
-    {
-      label: 'Under-eye',
-      zone: 'undereyeL',
-      score: Math.round(s.elasticity ?? 62),
-      delta: 0,
-      note: 'Still a bit tired-looking',
-    },
-  ];
+// Severity bands match the convention used elsewhere (100 = optimal):
+// >= 75 healthy, 50-74 watching, < 50 needs attention.
+function noteForScore(label: string, score: number): string {
+  if (score >= 85) return `${label} looking peak`;
+  if (score >= 75) return `${label} holding strong`;
+  if (score >= 60) return `${label} steady — keep an eye on it`;
+  if (score >= 40) return `${label} drifting — small changes will help`;
+  return `${label} needs attention`;
 }
 
-function formatDelta(d: number): string {
+interface SignalLike {
+  structure?: number;
+  hydration?: number;
+  inflammation?: number;
+  sunDamage?: number;
+  elasticity?: number;
+}
+
+/**
+ * Per-zone read derived from the active signal channels. Each facet maps to
+ * the signal that most directly reflects that anatomical region:
+ *  - Forehead  → hydration (first to show TEWL / dehydration lines)
+ *  - Cheeks    → inflammation (where redness / breakouts cluster)
+ *  - T-zone    → sunDamage   (most UV-exposed region of the face)
+ *  - Jaw       → structure   (jawline definition tracks pore + texture)
+ *  - Under-eye → elasticity  (collagen-driven crepiness shows here first)
+ *
+ * Deltas come from the prior scan's same channel. `null` means "no prior scan
+ * yet" — UI hides the delta in that case rather than fabricating a number.
+ */
+function mapSignalsToFacets(
+  current: SignalLike | undefined,
+  previous: SignalLike | undefined,
+): FacetRow[] {
+  const safe = (v: number | undefined): number | null =>
+    Number.isFinite(v) ? Math.round(v as number) : null;
+  const buildDelta = (cur: number | null, prev: number | null): number | null =>
+    cur == null || prev == null ? null : cur - prev;
+
+  type Slot = { label: string; zone: ZoneKey; key: keyof SignalLike };
+  const slots: Slot[] = [
+    { label: 'Forehead',  zone: 'forehead',  key: 'hydration' },
+    { label: 'Cheeks',    zone: 'cheekL',    key: 'inflammation' },
+    { label: 'T-zone',    zone: 'tzone',     key: 'sunDamage' },
+    { label: 'Jaw',       zone: 'jaw',       key: 'structure' },
+    { label: 'Under-eye', zone: 'undereyeL', key: 'elasticity' },
+  ];
+
+  return slots.map(({ label, zone, key }) => {
+    const score = safe(current?.[key]);
+    const prevScore = safe(previous?.[key]);
+    const displayScore = score ?? 0;
+    return {
+      label,
+      zone,
+      score: displayScore,
+      delta: buildDelta(score, prevScore),
+      note: score != null ? noteForScore(label, score) : 'No reading yet',
+    };
+  });
+}
+
+function formatDelta(d: number | null): string {
+  if (d == null) return '—';
   if (d === 0) return '0';
   if (d > 0) return `+${d}`;
   return `−${Math.abs(d)}`;
@@ -86,6 +104,34 @@ function formatScanTime(date: Date): string {
   return `${weekday} · ${month} ${day} · ${time}`;
 }
 
+// Same weighting as `scoreFromSignals` in skinInsights.ts / gamification.ts —
+// keeps the composite shown here aligned with the score shown on Today, Story,
+// and Personal Bests. Returns null when no valid channels are present so the
+// UI can render an empty state rather than fabricate a number.
+function compositeFromSignals(scores: SignalLike | undefined): number | null {
+  if (!scores) return null;
+  const s = {
+    structure: Number.isFinite(scores.structure) ? (scores.structure as number) : null,
+    hydration: Number.isFinite(scores.hydration) ? (scores.hydration as number) : null,
+    inflammation: Number.isFinite(scores.inflammation) ? (scores.inflammation as number) : null,
+    sunDamage: Number.isFinite(scores.sunDamage) ? (scores.sunDamage as number) : null,
+    elasticity: Number.isFinite(scores.elasticity) ? (scores.elasticity as number) : null,
+  };
+  if (
+    s.structure == null || s.hydration == null || s.inflammation == null ||
+    s.sunDamage == null || s.elasticity == null
+  ) {
+    return null;
+  }
+  return Math.round(
+    s.structure * 0.22 +
+      s.hydration * 0.18 +
+      s.inflammation * 0.20 +
+      s.sunDamage * 0.20 +
+      s.elasticity * 0.20,
+  );
+}
+
 export default function FaceMapScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -98,25 +144,13 @@ export default function FaceMapScreen() {
     return dailyRecords.find((d) => d.daily_id === latest.daily_id) ?? null;
   }, [dailyRecords, latest]);
 
-  const composite = latest?.signal_scores
-    ? Math.round(
-        Object.values(latest.signal_scores).reduce((a, b) => a + (b as number), 0) /
-          Math.max(Object.keys(latest.signal_scores).length, 1),
-      )
-    : 78;
-
-  const prevComposite = prev?.signal_scores
-    ? Math.round(
-        Object.values(prev.signal_scores).reduce((a, b) => a + (b as number), 0) /
-          Math.max(Object.keys(prev.signal_scores).length, 1),
-      )
-    : composite - 5;
-
-  const delta = composite - prevComposite;
+  const composite = compositeFromSignals(latest?.signal_scores);
+  const prevComposite = compositeFromSignals(prev?.signal_scores);
+  const delta = composite != null && prevComposite != null ? composite - prevComposite : null;
 
   const facets = useMemo(
-    () => mapSignalsToFacets(latest?.signal_scores as Record<string, number> | undefined),
-    [latest?.signal_scores],
+    () => mapSignalsToFacets(latest?.signal_scores, prev?.signal_scores),
+    [latest?.signal_scores, prev?.signal_scores],
   );
 
   const zoneStyles = useMemo(
@@ -159,7 +193,22 @@ export default function FaceMapScreen() {
             <Feather name="arrow-left" size={20} color={P.ink} />
           </Pressable>
           <Text style={styles.headerLabel}>
-            {formatScanTime(latestDaily?.date ? new Date(`${latestDaily.date}T09:42`) : new Date())}
+            {(() => {
+              // Prefer the real scan timestamp; fall back to the record's
+              // calendar date (no time component) and finally to the empty
+              // string. Never invent an "09:42" stub.
+              if (latestDaily?.scanned_at) {
+                const d = new Date(latestDaily.scanned_at);
+                if (!Number.isNaN(d.getTime())) return formatScanTime(d);
+              }
+              if (latestDaily?.date) {
+                const dateOnly = new Date(`${latestDaily.date}T00:00`);
+                if (!Number.isNaN(dateOnly.getTime())) {
+                  return `${dateOnly.toLocaleDateString(undefined, { weekday: 'short' })} · ${dateOnly.toLocaleDateString(undefined, { month: 'short' })} ${dateOnly.getDate()}`;
+                }
+              }
+              return '';
+            })()}
           </Text>
           <View style={styles.backBtn} />
         </View>
@@ -175,10 +224,12 @@ export default function FaceMapScreen() {
             <View style={{ flex: 1 }}>
               <Text style={styles.eyebrow}>Today's read</Text>
               <View style={styles.scoreRow}>
-                <Text style={styles.scoreBig}>{composite}</Text>
+                <Text style={styles.scoreBig}>{composite ?? '—'}</Text>
                 <View>
                   <Text style={styles.scoreDelta}>{formatDelta(delta)}</Text>
-                  <Text style={styles.scoreDeltaLabel}>vs. yesterday</Text>
+                  <Text style={styles.scoreDeltaLabel}>
+                    {prevComposite != null ? 'vs. last scan' : 'first read'}
+                  </Text>
                 </View>
               </View>
               <Text style={styles.heroQuote}>
@@ -249,7 +300,7 @@ export default function FaceMapScreen() {
                   <Text
                     style={[
                       styles.facetDelta,
-                      f.delta > 0 && { color: P.accent },
+                      f.delta != null && f.delta > 0 && { color: P.accent },
                     ]}
                   >
                     {formatDelta(f.delta)}

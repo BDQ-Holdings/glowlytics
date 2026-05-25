@@ -224,12 +224,13 @@ describe('detectConflicts', () => {
 // ─── generateAdjustments ─────────────────────────────────────────────────────
 
 describe('generateAdjustments', () => {
-  it('warns to pause retinoid when inflammation is high', () => {
+  it('warns to pause retinoid when inflammation score is low (high actual inflammation)', () => {
     const retinol = makeProduct({
       product_name: 'Retinol Night Serum',
       ingredients_list: ['Retinol'],
     });
-    const tips = generateAdjustments([retinol], { inflammation: 75 });
+    // 100=optimal scale: inflammation=25 means severely inflamed skin.
+    const tips = generateAdjustments([retinol], { inflammation: 25 });
 
     const tip = tips.find((t) => t.signal === 'inflammation');
     expect(tip).toBeDefined();
@@ -238,12 +239,12 @@ describe('generateAdjustments', () => {
     expect(tip!.text).toContain('2 weeks');
   });
 
-  it('does not warn about retinoid when inflammation is low', () => {
+  it('does not warn about retinoid when inflammation score is healthy', () => {
     const retinol = makeProduct({
       product_name: 'Retinol Serum',
       ingredients_list: ['Retinol'],
     });
-    const tips = generateAdjustments([retinol], { inflammation: 30 });
+    const tips = generateAdjustments([retinol], { inflammation: 80 });
 
     const tip = tips.find((t) => t.signal === 'inflammation');
     expect(tip).toBeUndefined();
@@ -288,13 +289,13 @@ describe('generateAdjustments', () => {
     expect(addRetinoidTip).toBeUndefined();
   });
 
-  it('suggests moving vitamin C to AM when sun damage is high and it is PM', () => {
+  it('suggests moving vitamin C to AM when sunDamage score is low (high actual UV damage) and it is PM', () => {
     const vitC = makeProduct({
       product_name: 'Vitamin C Brightening Serum',
       ingredients_list: ['Ascorbic Acid'],
       usage_schedule: 'PM',
     });
-    const tips = generateAdjustments([vitC], { sunDamage: 65 });
+    const tips = generateAdjustments([vitC], { sunDamage: 35 });
 
     const tip = tips.find((t) => t.signal === 'sunDamage');
     expect(tip).toBeDefined();
@@ -308,23 +309,25 @@ describe('generateAdjustments', () => {
       ingredients_list: ['Ascorbic Acid'],
       usage_schedule: 'AM',
     });
-    const tips = generateAdjustments([vitC], { sunDamage: 65 });
+    const tips = generateAdjustments([vitC], { sunDamage: 35 });
 
     const tip = tips.find((t) => t.signal === 'sunDamage');
     expect(tip).toBeUndefined();
   });
 
-  it('returns empty tips when all signals are healthy and products are well-matched', () => {
+  it('returns empty tips when all signal scores are healthy and products are well-matched', () => {
     const spf = makeProduct({
       product_name: 'Daily SPF 50',
       ingredients_list: ['Zinc Oxide', 'Avobenzone'],
       usage_schedule: 'AM',
     });
     const tips = generateAdjustments([spf], {
-      inflammation: 20,
+      // 100=optimal — every signal in the "healthy" band.
+      inflammation: 80,
       hydration: 70,
-      sunDamage: 30,
+      sunDamage: 80,
       structure: 70,
+      elasticity: 80,
     });
     expect(tips).toHaveLength(0);
   });

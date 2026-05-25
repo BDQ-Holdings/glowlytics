@@ -38,6 +38,50 @@ describe('pickMaxSeverity', () => {
   });
 });
 
+describe('pickMaxSeverity — defensive', () => {
+  it('returns null when no sample matches the HealthKit flow enum', () => {
+    // value=999 is not in CategoryValueMenstrualFlow → no entry → null.
+    // The legacy default of 'none' silently labeled garbage as a confident
+    // no-flow reading, which surfaced misleading copy in the cycle UI.
+    expect(pickMaxSeverity([{ value: 999 }, { value: 42 }])).toBeNull();
+  });
+
+  it('returns null when only invalid values are present alongside no enum hits', () => {
+    expect(pickMaxSeverity([{ value: 0 }])).toBeNull();
+  });
+});
+
+describe('deriveCycleDay — timezone normalization', () => {
+  // The implementation collapses both endpoints to local midnight before
+  // subtracting so a sample logged late in the evening is still counted as
+  // "yesterday" the next morning, regardless of the hour-of-day mismatch.
+  it('counts as day 2 when the sample was at 23:00 yesterday and check-in is 07:00 today', () => {
+    const yesterday23 = new Date();
+    yesterday23.setDate(yesterday23.getDate() - 1);
+    yesterday23.setHours(23, 0, 0, 0);
+
+    const today07 = new Date();
+    today07.setHours(7, 0, 0, 0);
+
+    const samples = [
+      { startDate: yesterday23, endDate: yesterday23, value: FLOW.heavy },
+      { startDate: yesterday23, endDate: yesterday23, value: FLOW.heavy },
+    ];
+
+    expect(deriveCycleDay(samples, today07)).toBe(2);
+  });
+
+  it('returns null when "today" is before the latest episode start (clock skew guard)', () => {
+    const samples = [
+      buildSample('2026-04-10', FLOW.heavy),
+      buildSample('2026-04-11', FLOW.medium),
+    ];
+    // Today rolled back before the episode → no meaningful cycle day.
+    const today = new Date('2026-04-05T12:00:00');
+    expect(deriveCycleDay(samples, today)).toBeNull();
+  });
+});
+
 describe('groupEpisodes', () => {
   it('returns empty for no samples', () => {
     expect(groupEpisodes([])).toEqual([]);

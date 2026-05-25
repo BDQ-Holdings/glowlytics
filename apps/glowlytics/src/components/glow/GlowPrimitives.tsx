@@ -11,6 +11,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import Svg, { Circle } from 'react-native-svg';
 import { Glow } from '../../constants/theme';
+import { useStore } from '../../store/useStore';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
@@ -114,8 +115,20 @@ export const BreathingGlow: React.FC<BreathingGlowProps> = ({
 }) => {
   const scale = useSharedValue(1);
   const opacity = useSharedValue(0.5);
+  // Honour the user's reduce-motion preference. When on, the glow renders
+  // as a static dimmer halo (still useful as a visual anchor) instead of
+  // breathing continuously. Reading from the store directly is fine here —
+  // the primitive is mounted under a single section header and we want the
+  // change to take effect on the next mount.
+  const reduceMotion = useStore((s) => s.appearance.reduceMotion);
 
   useEffect(() => {
+    if (reduceMotion) {
+      // Skip the repeating timeline entirely and settle in the "calm" pose.
+      scale.value = 1;
+      opacity.value = 0.6;
+      return;
+    }
     scale.value = withRepeat(
       withSequence(
         withTiming(1.08, { duration: duration / 2, easing: Easing.bezier(0.4, 0, 0.6, 1) }),
@@ -134,7 +147,7 @@ export const BreathingGlow: React.FC<BreathingGlowProps> = ({
       cancelAnimation(scale);
       cancelAnimation(opacity);
     };
-  }, [duration, scale, opacity]);
+  }, [duration, scale, opacity, reduceMotion]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
@@ -186,17 +199,24 @@ export const FadeUp: React.FC<FadeUpProps> = ({
   const opacity = useSharedValue(0);
   const translateY = useSharedValue(14);
   const resolved = delay ?? Glow.motion.stagger[Math.min(index, Glow.motion.stagger.length - 1)];
+  const reduceMotion = useStore((s) => s.appearance.reduceMotion);
 
   useEffect(() => {
+    // Reduce-motion drops the translate entirely and collapses the duration
+    // so sections appear without sweeping in. The DelayedReveal stagger is
+    // also short-circuited via `effectiveDelay` below.
+    const dur = reduceMotion ? 120 : duration;
     opacity.value = withTiming(1, {
-      duration,
+      duration: dur,
       easing: Easing.bezier(0.215, 0.61, 0.355, 1),
     });
-    translateY.value = withTiming(0, {
-      duration,
-      easing: Easing.bezier(0.215, 0.61, 0.355, 1),
-    });
-  }, [duration, opacity, translateY]);
+    translateY.value = reduceMotion
+      ? 0
+      : withTiming(0, {
+          duration: dur,
+          easing: Easing.bezier(0.215, 0.61, 0.355, 1),
+        }) as unknown as number;
+  }, [duration, opacity, translateY, reduceMotion]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,
@@ -210,7 +230,7 @@ export const FadeUp: React.FC<FadeUpProps> = ({
       onLayout={() => {}}
     >
       {/* Use entering delay via Reanimated's withDelay alternative: */}
-      <DelayedReveal delay={resolved}>{children}</DelayedReveal>
+      <DelayedReveal delay={reduceMotion ? 0 : resolved}>{children}</DelayedReveal>
     </Animated.View>
   );
 };

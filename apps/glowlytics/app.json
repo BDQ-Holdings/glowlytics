@@ -95,6 +95,17 @@
         {
           "NSHealthShareUsageDescription": "Glowlytics reads sleep, heart rate, HRV, steps, mindful minutes, and menstrual flow from Apple Health to find patterns in your skin. This data stays on your device."
         }
+      ],
+      [
+        "expo-alternate-app-icons",
+        [
+          { "name": "OgSunset", "ios": "./assets/app-icons/og-sunset.png" },
+          { "name": "OgMeadow", "ios": "./assets/app-icons/og-meadow.png" },
+          { "name": "OgRose",   "ios": "./assets/app-icons/og-rose.png" },
+          { "name": "OgPlum",   "ios": "./assets/app-icons/og-plum.png" },
+          { "name": "Lowercase", "ios": "./assets/app-icons/lowercase-g.png" },
+          { "name": "Cursive",   "ios": "./assets/app-icons/cursive-g.png" }
+        ]
       ]
     ],
     "runtimeVersion": {

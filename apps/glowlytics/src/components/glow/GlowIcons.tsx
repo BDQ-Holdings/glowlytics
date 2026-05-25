@@ -30,7 +30,10 @@ export type GlowIconName =
   | 'mood_sad'
   | 'mood_sleep'
   | 'mood_woozy'
-  | 'heart';
+  | 'heart'
+  | 'share'
+  | 'x'
+  | 'calendar';
 
 export interface GlowIconProps {
   name: GlowIconName;
@@ -195,6 +198,28 @@ function renderGlyph(name: GlowIconName, c: any, color: string) {
       );
     case 'heart':
       return <Path {...c} d="M12 20 c-7-5 -9-9 -7-12 a4 4 0 0 1 7-1 a4 4 0 0 1 7 1 c2 3 0 7 -7 12 z" />;
+    case 'share':
+      return (
+        <G {...c}>
+          <Path d="M12 4 v12" />
+          <Path d="M8 8 l4-4 4 4" />
+          <Path d="M4 14 v5 a1 1 0 0 0 1 1 h14 a1 1 0 0 0 1-1 v-5" />
+        </G>
+      );
+    case 'x':
+      return (
+        <G {...c}>
+          <Path d="M5 5 L19 19" />
+          <Path d="M19 5 L5 19" />
+        </G>
+      );
+    case 'calendar':
+      return (
+        <G {...c}>
+          <Rect x="4" y="6" width="16" height="14" rx="2" />
+          <Path d="M4 10 h16 M8 3 v4 M16 3 v4" />
+        </G>
+      );
   }
 }
 

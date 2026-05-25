@@ -14,46 +14,85 @@ import Svg, {
 import Animated, { Easing, FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { FontFamily, Glow, Spacing } from '../../src/constants/theme';
 import { FaceMapZones, ZoneKey } from '../../src/components/scan/FaceMapZones';
+import { useStore } from '../../src/store/useStore';
+import { computeSignalHistory } from '../../src/services/skinInsights';
 
 const P = Glow.palette;
 
 type Finding = { lead: string; body: string; tag: string };
 
-const FINDINGS_BY_ZONE: Record<string, Finding[]> = {
-  undereyeL: [
-    { lead: 'Puffiness', body: 'Faint, mostly on the left. Improves after water + 10 min upright.', tag: 'sleep' },
-    { lead: 'Discoloration', body: 'Cooler tone than your cheek baseline by ~6 LCh. Pigment, not redness.', tag: 'genetic' },
-    { lead: 'Texture', body: 'Soft. No new fine lines vs. last week.', tag: 'stable' },
-  ],
-  forehead: [
-    { lead: 'Hydration', body: 'Reading crisp this morning — above your 14-day baseline.', tag: 'glowing' },
-    { lead: 'Tone', body: 'Even. No new redness detected.', tag: 'stable' },
-    { lead: 'Pores', body: 'Soft visibility, consistent with your normal range.', tag: 'stable' },
-  ],
-  cheekL: [
-    { lead: 'Redness', body: 'No new inflammation since last reading.', tag: 'glowing' },
-    { lead: 'Texture', body: 'Smooth. Holding steady through the week.', tag: 'stable' },
-    { lead: 'Hydration', body: 'Slight dip in afternoon readings — typical for you.', tag: 'watch' },
-  ],
-  tzone: [
-    { lead: 'Shine', body: 'A touch more reflective than typical for this hour.', tag: 'watch' },
-    { lead: 'Pores', body: 'Visible but unchanged.', tag: 'stable' },
-    { lead: 'Pigment', body: 'Even. No new uneven tones.', tag: 'stable' },
-  ],
-  jaw: [
-    { lead: 'Clarity', body: 'Clear · 12-day streak.', tag: 'glowing' },
-    { lead: 'Texture', body: 'Smooth, no new flares.', tag: 'stable' },
-    { lead: 'Structure', body: 'Definition reading is consistent.', tag: 'stable' },
-  ],
+// Zone → primary signal channel mapping (must mirror face-map.tsx).
+const ZONE_SIGNAL: Record<string, 'hydration' | 'inflammation' | 'sunDamage' | 'structure' | 'elasticity'> = {
+  forehead:  'hydration',
+  cheekL:    'inflammation',
+  cheekR:    'inflammation',
+  tzone:     'sunDamage',
+  jaw:       'structure',
+  undereyeL: 'elasticity',
+  undereyeR: 'elasticity',
 };
 
-const VERDICTS: Record<string, { mood: string; quote: string }> = {
-  undereyeL: { mood: 'Tender · watch', quote: 'Still a bit tired-looking — nothing to chase.' },
-  forehead:  { mood: 'Glowing',         quote: 'Hydration crisp this morning.' },
-  cheekL:    { mood: 'Glowing · steady', quote: 'No new redness. You can coast here.' },
-  tzone:     { mood: 'Watching',        quote: 'A touch of shine vs. typical.' },
-  jaw:       { mood: 'Glowing',         quote: 'Clear — twelve days now.' },
-};
+// Generic verdict copy derived from the active score band. We avoid making
+// the legacy hardcoded claims (e.g. "Clear · 12-day streak") because they
+// were shown to every user regardless of their actual data.
+function verdictForScore(label: string, score: number, deltaVs7d: number | null): {
+  mood: string; quote: string;
+} {
+  const direction = deltaVs7d == null ? '' :
+    deltaVs7d >= 4 ? ' · trending up' :
+    deltaVs7d <= -4 ? ' · trending down' :
+    ' · steady';
+
+  if (score >= 85) return { mood: `Glowing${direction}`, quote: `${label} read is peak today.` };
+  if (score >= 75) return { mood: `Holding${direction}`,  quote: `${label} is comfortably in your healthy band.` };
+  if (score >= 60) return { mood: `Watching${direction}`, quote: `${label} is steady — small habits will keep it there.` };
+  if (score >= 40) return { mood: `Drifting${direction}`, quote: `${label} dipped — there is room for a meaningful change.` };
+  return { mood: `Tender${direction}`, quote: `${label} needs attention — protect, soothe, repeat.` };
+}
+
+// Findings synthesised from the current score band + recent trend. Every
+// claim is anchored to a number so a user can verify it against their data.
+function findingsForBand(
+  label: string,
+  score: number,
+  history: number[],
+): Finding[] {
+  const recent = history.slice(-7);
+  const baseline = history.length > 7
+    ? history.slice(0, history.length - 7).reduce((a, b) => a + b, 0) / Math.max(1, history.length - 7)
+    : null;
+  const recentAvg = recent.length > 0
+    ? recent.reduce((a, b) => a + b, 0) / recent.length
+    : score;
+  const baselineDelta = baseline != null ? recentAvg - baseline : null;
+
+  const stateTag = score >= 75 ? 'stable' : score >= 60 ? 'watch' : 'tender';
+  const trendTag = baselineDelta == null
+    ? 'first read'
+    : baselineDelta >= 4 ? 'improving' : baselineDelta <= -4 ? 'slipping' : 'flat';
+
+  return [
+    {
+      lead: 'Current reading',
+      body: `${score}/100 — ${label.toLowerCase()} ${score >= 75 ? 'in the healthy band' : score >= 60 ? 'in the watching band' : 'below your healthy band'}.`,
+      tag: stateTag,
+    },
+    {
+      lead: '7-day trend',
+      body: baselineDelta == null
+        ? 'Not enough history yet — keep scanning daily to build a trendline.'
+        : `Last 7 days average ${recentAvg.toFixed(0)}, prior baseline ${baseline!.toFixed(0)} (${baselineDelta >= 0 ? '+' : ''}${baselineDelta.toFixed(0)}).`,
+      tag: trendTag,
+    },
+    {
+      lead: 'Range this fortnight',
+      body: history.length === 0
+        ? 'No paired readings yet.'
+        : `${Math.min(...history)}–${Math.max(...history)} across ${history.length} scan${history.length === 1 ? '' : 's'}.`,
+      tag: 'range',
+    },
+  ];
+}
 
 function ghostZones(focus: ZoneKey) {
   const focusStyle = { fill: P.accent + 'dd', stroke: P.accent, strokeWidth: 1 };
@@ -115,14 +154,48 @@ export default function ZoneDetailScreen() {
 
   const zone = (params.zone as ZoneKey) ?? 'undereyeL';
   const label = params.label ?? 'Under-eye';
-  const score = params.score ? Number(params.score) : 62;
-  const verdict = VERDICTS[zone] ?? VERDICTS.undereyeL;
-  const findings = FINDINGS_BY_ZONE[zone] ?? FINDINGS_BY_ZONE.undereyeL;
+  const score = params.score ? Number(params.score) : 0;
 
-  const trend = useMemo(
-    () => [60, 61, 60, 62, 61, 63, 62, 64, 63, score],
-    [score],
+  // Real signal-history trend for this zone's mapped channel. Falls back
+  // to a single-point series anchored on the current score so the sparkline
+  // still renders for users with only one scan.
+  const modelOutputs = useStore((s) => s.modelOutputs);
+  const dailyRecords = useStore((s) => s.dailyRecords);
+  const signalKey = ZONE_SIGNAL[zone] ?? 'structure';
+
+  const trend = useMemo(() => {
+    const history = computeSignalHistory(signalKey, dailyRecords, modelOutputs, 14);
+    if (history.length === 0) return [score];
+    return history.map((p) => p.value);
+  }, [signalKey, dailyRecords, modelOutputs, score]);
+
+  // 7-day delta vs the prior baseline (used for verdict + findings).
+  const last7Avg = useMemo(() => {
+    const tail = trend.slice(-7);
+    if (tail.length === 0) return null;
+    return tail.reduce((a, b) => a + b, 0) / tail.length;
+  }, [trend]);
+  const prior7Avg = useMemo(() => {
+    if (trend.length <= 7) return null;
+    const head = trend.slice(0, trend.length - 7);
+    return head.reduce((a, b) => a + b, 0) / head.length;
+  }, [trend]);
+  const deltaVs7d = last7Avg != null && prior7Avg != null
+    ? Math.round(last7Avg - prior7Avg)
+    : null;
+
+  const verdict = useMemo(
+    () => verdictForScore(label, score, deltaVs7d),
+    [label, score, deltaVs7d],
   );
+  const findings = useMemo(
+    () => findingsForBand(label, score, trend),
+    [label, score, trend],
+  );
+
+  const trendLabelSuffix = deltaVs7d == null
+    ? ''
+    : deltaVs7d >= 4 ? ' · ↑' : deltaVs7d <= -4 ? ' · ↓' : ' · holding';
 
   const zoneStyles = useMemo(() => ghostZones(zone), [zone]);
 
@@ -169,7 +242,7 @@ export default function ZoneDetailScreen() {
             <Text style={styles.heroEyebrow}>{verdict.mood}</Text>
             <View style={styles.scoreRow}>
               <Text style={styles.scoreBig}>{score}</Text>
-              <Text style={styles.scoreHolding}>· holding</Text>
+              <Text style={styles.scoreHolding}>{trendLabelSuffix || ' · first read'}</Text>
             </View>
             <Text style={styles.heroQuote}>{verdict.quote}</Text>
           </View>
@@ -201,7 +274,7 @@ export default function ZoneDetailScreen() {
         {/* trend */}
         <View style={styles.trendCard}>
           <View style={styles.trendHead}>
-            <Text style={styles.trendLabel}>Trend · 2 weeks</Text>
+            <Text style={styles.trendLabel}>Trend · {trend.length} scan{trend.length === 1 ? '' : 's'}</Text>
             <Text style={styles.trendRange}>
               {Math.min(...trend)} — {Math.max(...trend)}
             </Text>

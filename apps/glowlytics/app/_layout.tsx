@@ -20,6 +20,11 @@ import { useStore } from '../src/store/useStore';
 import { setAuthTokenProvider } from '../src/services/api';
 import { initRevenueCat, identifyUser, subscriptionFromCustomerInfo, setupCustomerInfoListener } from '../src/services/subscription';
 import { initAnalytics, identifyUser as identifyAnalyticsUser, trackEvent } from '../src/services/analytics';
+import {
+  applyAppIcon,
+  appearanceTextScaleFactor,
+  currentNativeIcon,
+} from '../src/services/appearance';
 // Lazy import — onnxruntime-react-native crashes in Expo Go
 const initLesionDetection = () =>
   import('../src/services/onDeviceLesionDetection').then((m) => m.initLesionDetection());
@@ -252,6 +257,35 @@ function ClerkGatedApp() {
     const initCritical = async () => {
       const t0 = Date.now();
       await loadPersistedData();
+
+      // Hydrate the native iOS app icon to whatever the user picked on a
+      // previous launch — `expo-alternate-app-icons` doesn't persist its
+      // own choice across cold starts, but our store does. We only fire a
+      // swap when the native current diverges from the stored intent so
+      // we don't trigger the iOS confirmation alert on every launch.
+      try {
+        const intent = useStore.getState().appearance.icon;
+        const live = currentNativeIcon();
+        if (intent !== live) await applyAppIcon(intent);
+      } catch {
+        // Best-effort; this never blocks the splash.
+      }
+
+      // Apply the user's preferred text scale to RN's default Text. This is
+      // a one-time mutation, not a context — every Text in the app picks it
+      // up without per-component plumbing. `defaultProps` is the only RN
+      // surface that affects the bare `<Text>` import everywhere.
+      try {
+        const scale = appearanceTextScaleFactor(useStore.getState().appearance.textSize);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const TextAny = Text as unknown as { defaultProps?: any };
+        TextAny.defaultProps = TextAny.defaultProps || {};
+        TextAny.defaultProps.maxFontSizeMultiplier = scale;
+        TextAny.defaultProps.allowFontScaling = true;
+      } catch {
+        // Some RN builds make defaultProps read-only; non-fatal.
+      }
+
       if (__DEV__) console.log(`[App] Critical init ready in ${Date.now() - t0}ms`);
     };
 

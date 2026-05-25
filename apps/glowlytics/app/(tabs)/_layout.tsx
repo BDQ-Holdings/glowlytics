@@ -42,9 +42,11 @@ export default function TabsLayout() {
           name="today"
           options={{ title: 'Today' }}
         />
+        {/* Story merged into Today (the day-story pager). Keep the route
+            registered so deep-links still resolve, but hide it from the bar. */}
         <Tabs.Screen
           name="reports"
-          options={{ title: 'Story' }}
+          options={{ title: 'Story', href: null }}
         />
         <Tabs.Screen
           name="camera"

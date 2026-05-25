@@ -178,10 +178,15 @@ export function generateAdjustments(
 ): AdjustmentTip[] {
   const tips: AdjustmentTip[] = [];
 
-  const inflammation = signals.inflammation ?? 0;
-  const hydration = signals.hydration ?? 0;
-  const sunDamage = signals.sunDamage ?? 0;
-  const structure = signals.structure ?? 0;
+  // Signal scores follow the 100 = optimal health convention (see
+  // `onDeviceInsightsFallback.ts`). A LOW score means a CONCERN, so the
+  // thresholds below trigger on `< X` for "needs attention", not `> X`.
+  // When a signal is missing we default to 100 so we don't fire warnings
+  // off a phantom zero.
+  const inflammation = signals.inflammation ?? 100;
+  const hydration = signals.hydration ?? 100;
+  const sunDamage = signals.sunDamage ?? 100;
+  const structure = signals.structure ?? 100;
 
   // Find products containing specific ingredient classes
   const retinoidProduct = products.find((p) => productMatchesClass(p, 'retinoid'));
@@ -190,8 +195,8 @@ export function generateAdjustments(
   );
   const vitCProduct = products.find((p) => productMatchesClass(p, 'vitamin_c'));
 
-  // ── Inflammation > 60 + has retinoid → warn to pause
-  if (inflammation > 60 && retinoidProduct) {
+  // ── Low inflammation score (<40) means high actual inflammation → pause retinoid
+  if (inflammation < 40 && retinoidProduct) {
     tips.push({
       text: `Your inflammation is elevated \u2014 consider pausing ${shortName(retinoidProduct.product_name)} for 2 weeks`,
       signal: 'inflammation',
@@ -217,8 +222,8 @@ export function generateAdjustments(
     });
   }
 
-  // ── Sun damage > 50 + has vitamin C not in AM → suggest moving
-  if (sunDamage > 50 && vitCProduct) {
+  // ── Low sunDamage score (<50) means high actual UV damage → ensure vitamin C is in AM
+  if (sunDamage < 50 && vitCProduct) {
     const schedule = vitCProduct.usage_schedule;
     if (schedule === 'PM') {
       tips.push({

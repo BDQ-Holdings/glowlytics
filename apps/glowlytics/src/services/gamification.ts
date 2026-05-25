@@ -155,23 +155,31 @@ export function checkBadgeEligibility(
   // Product expert: 5 products
   check('product_expert', products.length >= 5);
 
-  // Early bird: any record with a scanner_reading_id indicating early morning
-  // Since we don't have timestamps, check if the daily record date includes early scan
-  // For simplicity we check if any record was created before 8 AM based on scanner_reading_id timestamp
+  // Early bird: any scan recorded before 8 AM local time. Reads from the
+  // `scanned_at` ISO timestamp set in `app/scan/analyzing.tsx` at scan
+  // completion. The legacy code parsed `scanner_reading_id` for a `scan_<ms>`
+  // suffix, but production IDs are UUIDs so the regex never matched and the
+  // badge was effectively unobtainable. We fall back to the legacy regex so
+  // historical records (and the gamification test fixtures) still work.
   if (!earnedIds.has('early_bird')) {
-    for (const record of dailyRecords) {
+    const earnedEarly = dailyRecords.some((record) => {
+      const iso = record.scanned_at;
+      if (iso) {
+        const t = new Date(iso).getTime();
+        if (Number.isFinite(t)) {
+          return new Date(t).getHours() < 8;
+        }
+      }
       const match = record.scanner_reading_id.match(/scan_(\d+)/);
       if (match) {
         const ts = parseInt(match[1], 10);
-        if (!isNaN(ts)) {
-          const hour = new Date(ts).getHours();
-          if (hour < 8) {
-            newlyEligible.push('early_bird');
-            break;
-          }
+        if (!Number.isNaN(ts)) {
+          return new Date(ts).getHours() < 8;
         }
       }
-    }
+      return false;
+    });
+    if (earnedEarly) newlyEligible.push('early_bird');
   }
 
   // Consistency king: 7 consecutive scans at roughly the same time
@@ -235,6 +243,51 @@ export function generateWeeklyChallenges(existing: WeeklyChallenge[]): WeeklyCha
 // Personal bests
 // ---------------------------------------------------------------------------
 
+// Weighted overall score from the 5 signal channels. Keep in sync with
+// `scoreFromSignals` in `services/skinInsights.ts` — both must produce the
+// same number so the personal best displayed in Profile matches the daily
+// score shown elsewhere.
+function overallScoreFromSignals(signals: {
+  structure: number;
+  hydration: number;
+  inflammation: number;
+  sunDamage: number;
+  elasticity: number;
+}): number {
+  return Math.round(
+    signals.structure * 0.22 +
+      signals.hydration * 0.18 +
+      signals.inflammation * 0.20 +
+      signals.sunDamage * 0.20 +
+      signals.elasticity * 0.20,
+  );
+}
+
+// Max unique scan days inside any rolling 7-day calendar window. The legacy
+// implementation sliced by record count (`sorted.slice(i, i + 7)`), which
+// undercounts when the user has multiple records on the same day or gaps
+// between active days exceed the window. A calendar-window scan is O(n^2)
+// but the data set is bounded so the cost is negligible.
+function maxScanDaysInSevenDayWindow(dates: string[]): number {
+  if (dates.length === 0) return 0;
+  const uniqueSorted = Array.from(new Set(dates)).sort();
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  let best = 0;
+  for (let i = 0; i < uniqueSorted.length; i++) {
+    const anchor = new Date(uniqueSorted[i]).getTime();
+    if (!Number.isFinite(anchor)) continue;
+    const cutoff = anchor + 6 * DAY_MS;
+    let count = 0;
+    for (let j = i; j < uniqueSorted.length; j++) {
+      const t = new Date(uniqueSorted[j]).getTime();
+      if (!Number.isFinite(t) || t > cutoff) break;
+      count += 1;
+    }
+    if (count > best) best = count;
+  }
+  return best;
+}
+
 export function updatePersonalBests(
   current: PersonalBests,
   dailyRecords: DailyRecord[],
@@ -250,25 +303,33 @@ export function updatePersonalBests(
     if (output.acne_score < lowestAcne) {
       lowestAcne = output.acne_score;
     }
-    const skinScore = Math.round(
-      ((100 - output.acne_score) + (100 - output.sun_damage_score) + (100 - output.skin_age_score)) / 3
-    );
+
+    // Prefer the 5-signal weighted score (matches what's shown on Today /
+    // Story / Results screens). Fall back to the legacy 3-score average for
+    // historical outputs that pre-date signal_scores.
+    let skinScore: number;
+    const s = output.signal_scores;
+    if (
+      s &&
+      Number.isFinite(s.structure) && Number.isFinite(s.hydration) &&
+      Number.isFinite(s.inflammation) && Number.isFinite(s.sunDamage) &&
+      Number.isFinite(s.elasticity)
+    ) {
+      skinScore = overallScoreFromSignals(s);
+    } else {
+      skinScore = Math.round(
+        ((100 - output.acne_score) + (100 - output.sun_damage_score) + (100 - output.skin_age_score)) / 3,
+      );
+    }
     if (skinScore > highestSkinScore) {
       highestSkinScore = skinScore;
     }
   }
 
-  // Count consecutive days with scans in the last 7 days for consistency
-  if (dailyRecords.length >= 7) {
-    const sorted = [...dailyRecords].sort((a, b) => b.date.localeCompare(a.date));
-    // Check windows of 7 consecutive calendar days
-    for (let i = 0; i <= sorted.length - 7; i++) {
-      const window = sorted.slice(i, i + 7);
-      const uniqueDays = new Set(window.map((r) => r.date)).size;
-      if (uniqueDays > mostConsistentWeek) {
-        mostConsistentWeek = uniqueDays;
-      }
-    }
+  // Max unique scan-day count in any rolling 7-day calendar window.
+  const dayCount = maxScanDaysInSevenDayWindow(dailyRecords.map((r) => r.date));
+  if (dayCount > mostConsistentWeek) {
+    mostConsistentWeek = dayCount;
   }
 
   return {

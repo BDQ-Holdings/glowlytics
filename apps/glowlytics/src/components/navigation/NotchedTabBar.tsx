@@ -19,9 +19,16 @@ import { GlowIcon, type GlowIconName } from '../glow/GlowIcons';
 // ─── Layout ──────────────────────────────────────────────────────────
 const CALM_EASING = Easing.out(Easing.cubic);
 const TAB_HEIGHT = 64;
-const CAMERA_SIZE = 56;
+const CAMERA_SIZE = 60;
 const BAR_RADIUS = 20;
-const CAMERA_OVERLAP = 20; // how far the camera button extends above the bar
+// FAB hovers fully ABOVE the bar with a clean gap — no overlap means no
+// shadow bleed onto the tab labels behind it. `FAB_GAP_ABOVE` is the
+// vertical space between the FAB's bottom edge and the bar's top edge.
+// Horizontal centering uses a full-width anchor + `alignItems: 'center'`
+// rather than `left: '50%'` + negative margin — the latter is unreliable
+// in RN when the parent has asymmetric padding/insets (visibly drifts
+// right of true centre on iPhone notch devices).
+const FAB_GAP_ABOVE = 10;
 
 /** Bottom content inset for screens behind the tab bar. */
 export const DOCKED_TAB_SPACE = TAB_HEIGHT + Spacing.sm;
@@ -31,9 +38,10 @@ const SAFE_AREA_OVERLAP = 2;
 const BOTTOM_INSET_MIN = 8;
 
 // ─── Tab config ──────────────────────────────────────────────────────
-// Route file names are kept stable (today, products, reports, profile) to
-// preserve deep-links; only the user-facing labels and icons reflect the
-// Glow redesign (Today / Story / Shelf / Me).
+// Route file names are kept stable (today, products, profile) to preserve
+// deep-links; only the user-facing labels and icons reflect the Glow
+// redesign (Today / Shelf / Me). The Story tab was retired in the May 2026
+// redesign hand-off — its content is now folded into the Today day-pager.
 type TabConfig = {
   name: string;
   label: string;
@@ -42,7 +50,6 @@ type TabConfig = {
 
 const SIDE_TABS: TabConfig[] = [
   { name: 'today',    label: 'Today', icon: 'today' },
-  { name: 'reports',  label: 'Story', icon: 'story' },
   { name: 'products', label: 'Shelf', icon: 'shelf' },
   { name: 'profile',  label: 'Me',    icon: 'me' },
 ];
@@ -194,12 +201,10 @@ function AnimatedCameraButton({ onPress, pulseCamera, accessibilityLabel, isFocu
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel ?? 'Open camera'}
         accessibilityState={{ selected: isFocused }}
-        // Lateral hitSlop bounded by the cameraSpacer (CAMERA_SIZE + sm = 64).
-        // Camera button is 56px; spacer leaves 4px gutter each side. Setting
-        // left/right beyond 4 poaches the inner edge of Reports / Shelf and
-        // turns side-tab taps into camera taps — that's the "multiple clicks
-        // to change tab" symptom.
-        hitSlop={{ top: 20, bottom: 24, left: 4, right: 4 }}
+        // FAB sits in empty space above the bar — generous symmetric slop
+        // is safe (won't poach any side tab) and brings the tap target up
+        // to a comfortable 80×80.
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         onPress={onPress}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
@@ -313,11 +318,11 @@ export function NotchedTabBar({
           {/* Bar background — simple rounded pill */}
           <View style={styles.barBackground} />
 
-          {/* Tab buttons — 2 left, spacer for camera, 2 right */}
+          {/* Tab buttons — 3 evenly-spaced tabs. The camera is a true FAB
+              (rendered as a sibling, position: absolute above-right) so the
+              bar itself stays perfectly symmetric. */}
           <View style={styles.tabsRow}>
-            {SIDE_TABS.slice(0, 2).map(renderSideTab)}
-            <View style={styles.cameraSpacer} />
-            {SIDE_TABS.slice(2).map(renderSideTab)}
+            {SIDE_TABS.map(renderSideTab)}
           </View>
 
           {/* Camera button — floats above the bar */}
@@ -376,19 +381,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.xxs,
-    // Pull the icon+label stack up so it visually centers with the camera
-    // button (which floats -20px above the bar). Without this, the side-tab
-    // icons read as "shifted downward" relative to the camera and the eye
-    // tracks higher than the tap actually lands.
-    paddingBottom: 6,
+    // The 3 side tabs now share the bar symmetrically and the camera is a
+    // sibling FAB hovering above the bar, so the bottom-padding bias we
+    // used to apply (to compensate for an overlapping camera circle) is no
+    // longer needed.
+    paddingBottom: 0,
   },
-  cameraSpacer: {
-    width: CAMERA_SIZE + Spacing.sm,
-  },
+  // (cameraSpacer removed — the bar now hosts 3 evenly-spaced tabs.)
 
+  // Camera FAB — hovers fully above the bar, perfectly centered horizontally.
+  // Full-width absolute container + `alignItems: 'center'` is the only
+  // RN-safe way to centre an absolutely-positioned child; `left: '50%'`
+  // computes against the parent's content box which the safe-area inset
+  // and `dockedWrap` padding visibly shifts off-centre.
   cameraAnchor: {
     position: 'absolute',
-    top: -CAMERA_OVERLAP,
+    top: -(CAMERA_SIZE + FAB_GAP_ABOVE),
     left: 0,
     right: 0,
     alignItems: 'center',
@@ -400,6 +408,15 @@ const styles = StyleSheet.create({
     borderRadius: CAMERA_SIZE / 2,
     alignItems: 'center',
     justifyContent: 'center',
+    // Soft brand halo — kept small (radius 12, opacity 0.22) so the FAB
+    // reads as floating rather than glowing. With the FAB fully above the
+    // bar, the halo has empty space to bleed into instead of obscuring
+    // the labels behind it.
+    shadowColor: Glow.palette.accent,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.22,
+    shadowRadius: 12,
+    elevation: 8,
   },
   gradientClip: {
     ...StyleSheet.absoluteFillObject,

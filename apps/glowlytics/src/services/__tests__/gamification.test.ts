@@ -271,4 +271,141 @@ describe('gamification service', () => {
       }
     });
   });
+
+  // ---- early_bird (scanned_at and legacy fallback) ----
+
+  describe('early_bird badge', () => {
+    const earlyMorning = (hour: number): string => {
+      const d = new Date();
+      d.setHours(hour, 0, 0, 0);
+      return d.toISOString();
+    };
+
+    it('awards early_bird from the scanned_at ISO timestamp when before 8 AM', () => {
+      const state = makeGamificationState();
+      const records = [
+        makeDailyRecord({
+          // Force a UUID so the legacy regex cannot satisfy the badge —
+          // proves the win came from scanned_at, not the fallback.
+          scanner_reading_id: 'a07f1234-1111-4222-8333-444455556666',
+          scanned_at: earlyMorning(6),
+        }),
+      ];
+      const result = checkBadgeEligibility(state, records, [], { length: 0 }, 1);
+      expect(result).toContain('early_bird');
+    });
+
+    it('does not award early_bird when scanned_at is after 8 AM and no legacy timestamp is present', () => {
+      const state = makeGamificationState();
+      const records = [
+        makeDailyRecord({
+          scanner_reading_id: 'a07f1234-1111-4222-8333-444455556666',
+          scanned_at: earlyMorning(10),
+        }),
+      ];
+      const result = checkBadgeEligibility(state, records, [], { length: 0 }, 1);
+      expect(result).not.toContain('early_bird');
+    });
+
+    it('falls back to the legacy scan_<ms> regex for historical records', () => {
+      const sixAm = new Date();
+      sixAm.setHours(6, 0, 0, 0);
+      const state = makeGamificationState();
+      const records = [
+        makeDailyRecord({
+          scanner_reading_id: `scan_${sixAm.getTime()}`,
+          scanned_at: undefined,
+        }),
+      ];
+      const result = checkBadgeEligibility(state, records, [], { length: 0 }, 1);
+      expect(result).toContain('early_bird');
+    });
+  });
+
+  // ---- highest_skin_score uses the 5-signal weighted formula ----
+
+  describe('updatePersonalBests highest_skin_score', () => {
+    const base = { longest_streak: 0, lowest_acne: 100, highest_skin_score: 0, most_consistent_week: 0 };
+
+    it('uses the 5-signal weighted score when signal_scores is present', () => {
+      const outputs = [
+        makeModelOutput({
+          // Legacy fallback would give: ((100-90)+(100-90)+(100-90))/3 = 10
+          acne_score: 90,
+          sun_damage_score: 90,
+          skin_age_score: 90,
+          // 5-signal weighted: 80*0.22 + 80*0.18 + 80*0.20 + 80*0.20 + 80*0.20 = 80
+          signal_scores: {
+            structure: 80, hydration: 80, inflammation: 80, sunDamage: 80, elasticity: 80,
+          },
+        }),
+      ];
+      const result = updatePersonalBests(base, [], outputs, 0);
+      expect(result.highest_skin_score).toBe(80);
+    });
+
+    it('falls back to the legacy 3-score average when signal_scores is missing', () => {
+      const outputs = [
+        makeModelOutput({ acne_score: 20, sun_damage_score: 20, skin_age_score: 20 }),
+      ];
+      const result = updatePersonalBests(base, [], outputs, 0);
+      // ((100-20) + (100-20) + (100-20)) / 3 = 80
+      expect(result.highest_skin_score).toBe(80);
+    });
+
+    it('does not regress when a later output has a lower score', () => {
+      const outputs = [
+        makeModelOutput({
+          signal_scores: { structure: 90, hydration: 90, inflammation: 90, sunDamage: 90, elasticity: 90 },
+        }),
+        makeModelOutput({
+          signal_scores: { structure: 50, hydration: 50, inflammation: 50, sunDamage: 50, elasticity: 50 },
+        }),
+      ];
+      const result = updatePersonalBests(base, [], outputs, 0);
+      expect(result.highest_skin_score).toBe(90);
+    });
+  });
+
+  // ---- most_consistent_week uses calendar-window math ----
+
+  describe('updatePersonalBests most_consistent_week', () => {
+    const base = { longest_streak: 0, lowest_acne: 100, highest_skin_score: 0, most_consistent_week: 0 };
+
+    it('counts unique scan days in the densest 7-day calendar window', () => {
+      // 5 scans on consecutive days, then a 10-day gap, then 3 more scans.
+      const dates = [
+        '2026-04-01', '2026-04-02', '2026-04-03', '2026-04-04', '2026-04-05',
+        '2026-04-15', '2026-04-16', '2026-04-17',
+      ];
+      const records = dates.map((d, i) => makeDailyRecord({ daily_id: `d${i}`, date: d }));
+      const result = updatePersonalBests(base, records, [], 0);
+      expect(result.most_consistent_week).toBe(5);
+    });
+
+    it('deduplicates multiple records on the same date', () => {
+      const records = [
+        makeDailyRecord({ daily_id: 'a', date: '2026-04-01' }),
+        makeDailyRecord({ daily_id: 'b', date: '2026-04-01' }),
+        makeDailyRecord({ daily_id: 'c', date: '2026-04-01' }),
+      ];
+      const result = updatePersonalBests(base, records, [], 0);
+      expect(result.most_consistent_week).toBe(1);
+    });
+
+    it('finds a perfect 7-day streak even when the records list spans a long history', () => {
+      const dates = [
+        '2026-04-01', '2026-04-02', '2026-04-03', '2026-04-04', '2026-04-05', '2026-04-06', '2026-04-07',
+        '2026-05-01', '2026-05-15',
+      ];
+      const records = dates.map((d, i) => makeDailyRecord({ daily_id: `d${i}`, date: d }));
+      const result = updatePersonalBests(base, records, [], 0);
+      expect(result.most_consistent_week).toBe(7);
+    });
+
+    it('returns 0 when no records exist', () => {
+      const result = updatePersonalBests(base, [], [], 0);
+      expect(result.most_consistent_week).toBe(0);
+    });
+  });
 });

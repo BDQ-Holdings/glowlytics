@@ -55,6 +55,7 @@ export default function MeTab() {
 
   const user = useStore((s) => s.user);
   const dailyRecords = useStore((s) => s.dailyRecords);
+  const products = useStore((s) => s.products);
   const modelOutputs = useStore((s) => s.modelOutputs);
   // Future: surface user-defined goals from store; the redesign falls back to
   // sensible defaults derived from streak + onboarding data when none exist.
@@ -110,11 +111,31 @@ export default function MeTab() {
 
   const meGoals: MeGoal[] = useMemo(() => {
     if (!goals || goals.length === 0) {
-      // Fall back to a sensible default trio so the section never looks empty.
+      // Derive real progress from the user's data — no hardcoded percentages.
+      // Each goal advertises the metric driving its bar so it's transparent
+      // what the user is being measured on.
+
+      // 1. Daily check-in: streak vs 30-day target.
+      const checkInProgress = Math.min(100, (streak / 30) * 100);
+
+      // 2. Build your shelf: 3 products in the user's catalogue.
+      const shelfProgress = Math.min(100, (products.length / 3) * 100);
+
+      // 3. Calm baseline: % of the last 7 scans with inflammation ≥ 70.
+      // Aligns with the 100=optimal convention so high values = calm skin.
+      const lastSeven = modelOutputs.slice(-7);
+      const calmCount = lastSeven.filter((o) => {
+        const v = o.signal_scores?.inflammation;
+        return Number.isFinite(v) && (v as number) >= 70;
+      }).length;
+      const calmProgress = lastSeven.length === 0
+        ? 0
+        : Math.min(100, (calmCount / Math.min(7, lastSeven.length)) * 100);
+
       return [
-        { label: 'Daily check-in',     target: '30 days in a row', progress: Math.min(100, (streak / 30) * 100) },
-        { label: 'Build your shelf',   target: 'Three core products', progress: 0 },
-        { label: 'Calm baseline',      target: 'Steady redness for a week', progress: 30 },
+        { label: 'Daily check-in',   target: '30 days in a row',         progress: checkInProgress },
+        { label: 'Build your shelf', target: 'Three core products',      progress: shelfProgress },
+        { label: 'Calm baseline',    target: 'Steady redness for a week', progress: calmProgress },
       ];
     }
     return goals.slice(0, 3).map((g: any) => ({
@@ -122,7 +143,7 @@ export default function MeTab() {
       target: g.target || g.subtitle || '',
       progress: Math.max(0, Math.min(100, g.progress ?? 0)),
     }));
-  }, [goals, streak]);
+  }, [goals, streak, products.length, modelOutputs]);
 
   return (
     <ScrollView
