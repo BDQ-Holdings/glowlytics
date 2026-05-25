@@ -198,16 +198,64 @@ export async function lookupBarcode(barcode: string): Promise<ProductResult | nu
 
 // ---- Multi-source search via backend ----
 
+
+// ---------------------------------------------------------------------------
+// Search result cache
+// ---------------------------------------------------------------------------
+// Quick win for "search feels slow": skip the network when we already have
+// a recent result for the same trimmed/lowercased query. 60s TTL is short
+// enough that a curated DB or external update lands within a session; the
+// cap of 32 entries keeps memory bounded.
+// ---------------------------------------------------------------------------
+const SEARCH_CACHE_TTL_MS = 60_000;
+const SEARCH_CACHE_MAX = 32;
+const searchCache = new Map<string, { at: number; results: SearchResult[] }>();
+
+const cacheKey = (q: string) => q.trim().toLowerCase();
+
+const readSearchCache = (q: string): SearchResult[] | null => {
+  const entry = searchCache.get(cacheKey(q));
+  if (!entry) return null;
+  if (Date.now() - entry.at > SEARCH_CACHE_TTL_MS) {
+    searchCache.delete(cacheKey(q));
+    return null;
+  }
+  return entry.results;
+};
+
+const writeSearchCache = (q: string, results: SearchResult[]): void => {
+  if (results.length === 0) return; // Don't cache zero-result queries
+  if (searchCache.size >= SEARCH_CACHE_MAX) {
+    // FIFO eviction — drop the oldest insertion to bound memory.
+    const oldest = searchCache.keys().next().value;
+    if (oldest !== undefined) searchCache.delete(oldest);
+  }
+  searchCache.set(cacheKey(q), { at: Date.now(), results });
+};
+
+/** Test-only escape hatch. */
+export const __clearProductSearchCache = () => searchCache.clear();
+
 /**
  * Search products across sources. If the full query returns 0 results, falls back
  * to a first-word retry (usually just the brand name) — handles the case where
  * users type "cerave hydrating cleanser" but only the brand matches.
+ *
+ * Pass an `AbortSignal` to cancel a stale in-flight request when the caller's
+ * input has moved on. Cancelled calls bypass the cache write.
+ *
  * Logs zero-result queries for telemetry.
  */
-export async function searchProductsMultiSource(query: string): Promise<SearchResult[]> {
+export async function searchProductsMultiSource(
+  query: string,
+  signal?: AbortSignal,
+): Promise<SearchResult[]> {
+  const cached = readSearchCache(query);
+  if (cached) return cached;
+
   const runOnce = async (q: string): Promise<SearchResult[]> => {
     try {
-      const results = await api.searchProducts(q);
+      const results = await api.searchProducts(q, signal);
       return results.map((r) => ({
         name: r.name,
         brand: r.brands || undefined,
@@ -215,14 +263,20 @@ export async function searchProductsMultiSource(query: string): Promise<SearchRe
           ? r.ingredients.split(',').map((s: string) => s.trim()).filter(Boolean)
           : [],
       }));
-    } catch {
+    } catch (err) {
+      // Caller cancelled — surface the cancellation up so the UI can ignore
+      // the result rather than overwriting fresher input with a stale value.
+      if (signal?.aborted) throw err;
       return searchOpenBeautyFacts(q);
     }
   };
 
   const trimmed = query.trim();
   const primary = await runOnce(trimmed);
-  if (primary.length > 0) return primary;
+  if (primary.length > 0) {
+    writeSearchCache(trimmed, primary);
+    return primary;
+  }
 
   // Token-split fallback: try just the first word (usually the brand)
   const firstWord = trimmed.split(/\s+/)[0];
@@ -234,6 +288,7 @@ export async function searchProductsMultiSource(query: string): Promise<SearchRe
         retry_with: firstWord,
         result_count: fallback.length,
       });
+      writeSearchCache(trimmed, fallback);
       return fallback;
     }
   }

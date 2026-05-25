@@ -118,9 +118,17 @@ export const lookupBarcode = (barcode: string) =>
     `/api/products/lookup/${encodeURIComponent(barcode)}`,
   );
 
-export const searchProducts = (query: string) =>
+export const searchProducts = (query: string, signal?: AbortSignal) =>
   request<Array<{ name: string; brands: string; ingredients: string; image_url: string | null; source: string }>>(
     `/api/products/search?q=${encodeURIComponent(query)}`,
+    {
+      signal,
+      // Search is interactive — keep total ceiling well under our default
+      // backend SLO (2s external + ~200ms overhead) and skip retries; the
+      // user is faster than our backoff.
+      timeoutMs: 6_000,
+      retries: 0,
+    },
   );
 
 export interface PhotoIdentifyResult {

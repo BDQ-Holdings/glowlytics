@@ -193,10 +193,14 @@ function AuthRedirector() {
     || root === 'story'
     || root === 'today';
 
+  // Clerk is still booting. Do NOT redirect — return null and let the next
+  // render (with `isLoaded === true`) make the call. The ClerkGatedApp splash
+  // already gates the visible UI on `appReady && clerkLoaded` so this branch
+  // only runs in vanishingly narrow racy windows; redirecting here was the
+  // root cause of "app logs me out for a flash on cold start / resume".
   if (!isLoaded) {
-    if (__DEV__) console.log('[AuthRedirector] Clerk not loaded yet');
-    if (inAuthRoute) return null;
-    return <Redirect href="/auth/sign-in" />;
+    if (__DEV__) console.log('[AuthRedirector] Clerk not loaded yet — holding');
+    return null;
   }
 
   if (!isSignedIn) {
@@ -234,6 +238,7 @@ function ClerkGatedApp() {
   const clerkInitStartedAt = useRef(Date.now());
   const listenerCleanup = useRef<() => void>(() => {});
   const [appReady, setAppReady] = useState(false);
+  const [splashTimedOut, setSplashTimedOut] = useState(false);
 
   useEffect(() => {
     if (clerkLoaded) {
@@ -242,12 +247,23 @@ function ClerkGatedApp() {
       }
       return;
     }
-    const t = setTimeout(() => {
+    // Warn loudly in dev when Clerk takes more than 5s.
+    const warnT = setTimeout(() => {
       if (__DEV__) {
         console.warn(`[Auth] Clerk still loading after ${Date.now() - clerkInitStartedAt.current}ms (${env.CLERK_KEY_ENV}:${env.CLERK_INSTANCE_HOST})`);
       }
     }, 5000);
-    return () => clearTimeout(t);
+    // Safety net: stop blocking the splash on Clerk after 8s — at that point
+    // the user is better served seeing the sign-in screen (AuthRedirector
+    // will route there once the timeout flips).
+    const giveUpT = setTimeout(() => {
+      if (__DEV__) console.warn('[Auth] Clerk load timed out at 8s — dismissing splash');
+      setSplashTimedOut(true);
+    }, 8000);
+    return () => {
+      clearTimeout(warnT);
+      clearTimeout(giveUpT);
+    };
   }, [clerkLoaded]);
 
   useEffect(() => {
@@ -360,8 +376,14 @@ function ClerkGatedApp() {
     return () => sub.remove();
   }, []);
 
-  // Show splash while initializing
-  if (!appReady) {
+  // Splash gates on BOTH our own critical init AND Clerk's session restoration.
+  // Without the `clerkLoaded` gate, the splash dismissed before Clerk had loaded
+  // the persisted session — and AuthRedirector then redirected the user to
+  // /auth/sign-in, producing the "app logs me out at launch" UX bug. Capping
+  // at 8s prevents Clerk being down from holding the splash forever; the
+  // (very rare) "Clerk failed to load" path falls through to AuthRedirector
+  // which now holds rather than redirects.
+  if (!appReady || (!clerkLoaded && !splashTimedOut)) {
     return <SplashScreen />;
   }
 

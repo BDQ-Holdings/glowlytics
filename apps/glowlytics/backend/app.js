@@ -420,69 +420,103 @@ app.get('/api/products/lookup/:barcode', detectRateLimit, async (req, res) => {
   res.status(404).json({ error: 'Product not found in any database' });
 });
 
-// Product text search — multi-source (public, rate-limited)
+// Product text search — multi-source (public, rate-limited).
+//
+// Strategy:
+//  1. Curated DB hit first (synchronous, ~instant).
+//  2. If curated already returns ≥ CURATED_FAST_PATH_MIN results, return them
+//     immediately. This is the fast path — most user searches ("cerave",
+//     "panoxyl", "byoma") hit the curated DB cleanly and don't need the slow
+//     external calls.
+//  3. Otherwise, race the external sources against a 2s timeout so a slow
+//     OBF/OFF response can never block the user beyond that. The curated
+//     fallback is folded in either way.
+//
+// Previously this endpoint blocked on `Promise.all([obf, off])` with no
+// timeout, which made every keystroke wait for both external APIs to settle —
+// the slow source set the floor at 2-5s per call.
+const CURATED_FAST_PATH_MIN = 5;
+const EXTERNAL_SEARCH_TIMEOUT_MS = 2_000;
+const SEARCH_RESULT_CAP = 15;
+
+const withTimeout = (promise, ms) => Promise.race([
+  promise,
+  new Promise((resolve) => setTimeout(() => resolve(null), ms)),
+]);
+
+const mergeSearchResults = (...lists) => {
+  const seen = new Set();
+  const merged = [];
+  for (const list of lists) {
+    if (!list) continue;
+    for (const result of list) {
+      const key = result.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(result);
+      if (merged.length >= SEARCH_RESULT_CAP) return merged;
+    }
+  }
+  return merged;
+};
+
 app.get('/api/products/search', detectRateLimit, async (req, res) => {
   const query = req.query.q;
   if (!query || typeof query !== 'string' || query.length < 2) {
     return res.status(400).json({ error: 'Query parameter "q" must be at least 2 characters' });
   }
 
-  try {
-    // 1. Curated DB (instant)
-    const curatedResults = searchCuratedProducts(query).map(p => ({
-      name: p.name,
-      brands: p.brand,
-      ingredients: p.ingredients.join(', '),
-      image_url: null,
-      source: 'curated',
-    }));
+  // 1. Curated DB (instant)
+  const curatedResults = searchCuratedProducts(query).map(p => ({
+    name: p.name,
+    brands: p.brand,
+    ingredients: p.ingredients.join(', '),
+    image_url: null,
+    source: 'curated',
+  }));
 
-    // 2. Open Beauty Facts + Open Food Facts in parallel
+  // Fast path: curated alone is enough.
+  if (curatedResults.length >= CURATED_FAST_PATH_MIN) {
+    return res.json(curatedResults.slice(0, SEARCH_RESULT_CAP));
+  }
+
+  try {
+    // 2. Open Beauty Facts + Open Food Facts in parallel, each racing a
+    //    timeout so the slowest source can't drag the response over 2s.
     const [obfResults, offResults] = await Promise.all([
-      fetch(`https://world.openbeautyfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&json=1&page_size=10`)
-        .then(r => r.ok ? r.json() : { products: [] })
-        .then(data => (data.products || []).filter(p => p.product_name).map(p => ({
-          name: p.product_name,
-          brands: p.brands || '',
-          ingredients: p.ingredients_text || '',
-          image_url: p.image_url || null,
-          source: 'Open Beauty Facts',
-        })))
-        .catch(() => []),
-      fetch(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&json=1&page_size=5`)
-        .then(r => r.ok ? r.json() : { products: [] })
-        .then(data => (data.products || []).filter(p => p.product_name).map(p => ({
-          name: p.product_name,
-          brands: p.brands || '',
-          ingredients: p.ingredients_text || '',
-          image_url: p.image_url || null,
-          source: 'Open Food Facts',
-        })))
-        .catch(() => []),
+      withTimeout(
+        fetch(`https://world.openbeautyfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&json=1&page_size=10`)
+          .then(r => r.ok ? r.json() : { products: [] })
+          .then(data => (data.products || []).filter(p => p.product_name).map(p => ({
+            name: p.product_name,
+            brands: p.brands || '',
+            ingredients: p.ingredients_text || '',
+            image_url: p.image_url || null,
+            source: 'Open Beauty Facts',
+          })))
+          .catch(() => []),
+        EXTERNAL_SEARCH_TIMEOUT_MS,
+      ),
+      withTimeout(
+        fetch(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&json=1&page_size=5`)
+          .then(r => r.ok ? r.json() : { products: [] })
+          .then(data => (data.products || []).filter(p => p.product_name).map(p => ({
+            name: p.product_name,
+            brands: p.brands || '',
+            ingredients: p.ingredients_text || '',
+            image_url: p.image_url || null,
+            source: 'Open Food Facts',
+          })))
+          .catch(() => []),
+        EXTERNAL_SEARCH_TIMEOUT_MS,
+      ),
     ]);
 
-    // 3. Merge: curated first, then external, deduplicated by normalized name
-    const seen = new Set();
-    const merged = [];
-    for (const result of [...curatedResults, ...obfResults, ...offResults]) {
-      const key = result.name.toLowerCase().replace(/[^a-z0-9]/g, '');
-      if (seen.has(key)) continue;
-      seen.add(key);
-      merged.push(result);
-      if (merged.length >= 15) break;
-    }
-
-    res.json(merged);
+    // 3. Merge curated first, then external, dedup by normalized name.
+    res.json(mergeSearchResults(curatedResults, obfResults, offResults));
   } catch {
     // Fallback to curated-only on total failure
-    const fallback = searchCuratedProducts(query).slice(0, 15).map(p => ({
-      name: p.name,
-      brands: p.brand,
-      ingredients: p.ingredients.join(', '),
-      image_url: null,
-      source: 'curated',
-    }));
-    res.json(fallback);
+    res.json(curatedResults.slice(0, SEARCH_RESULT_CAP));
   }
 });
 

@@ -14,8 +14,9 @@ import {
   ScrollView,
 } from 'react-native';
 import { localDateStr } from '../utils/localDate';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
+import { GlowIcon } from './glow/GlowIcons';
+import { FadeUp } from './glow/GlowPrimitives';
 // Safe VisionCamera import — gracefully degrades in Expo Go where native modules aren't available
 let VisionCamera: any = null;
 let useCameraDeviceHook: (position: string) => any = () => null;
@@ -35,13 +36,14 @@ import { imageToBase64 } from '../services/visionAPI';
 import * as Haptics from 'expo-haptics';
 import {
   BorderRadius,
-  Colors,
   FontFamily,
   FontSize,
+  Glow,
   Spacing,
 } from '../constants/theme';
 import { useStore } from '../store/useStore';
 import { lookupBarcode, searchProductsMultiSource, identifyProductPhoto } from '../services/productLookup';
+import { isApiError } from '../services/httpClient';
 import { trackEvent } from '../services/analytics';
 import type { CaptureMethod, UsageSchedule } from '../types';
 
@@ -57,6 +59,22 @@ interface SelectedProduct {
   ingredients: string[];
   brand?: string;
 }
+
+// Menu entry config — keeps the JSX flat and the entries trivially reorderable.
+interface MenuEntry {
+  id: 'photo' | 'barcode' | 'search' | 'manual';
+  label: string;
+  desc: string;
+  icon: 'camera' | 'sparkle' | 'plus';
+  feather?: keyof typeof Feather.glyphMap;
+}
+
+const MENU: MenuEntry[] = [
+  { id: 'photo',   label: 'Snap the bottle',  desc: 'AI reads the label — no barcode needed', icon: 'camera' },
+  { id: 'barcode', label: 'Scan barcode',     desc: 'Fastest path when there is one',          icon: 'sparkle', feather: 'maximize' },
+  { id: 'search',  label: 'Search by name',   desc: 'Pull from our curated database',          icon: 'sparkle', feather: 'search' },
+  { id: 'manual',  label: 'Enter manually',   desc: 'Type the name and ingredients',           icon: 'plus',    feather: 'edit-3' },
+];
 
 export const AddProductSheet: React.FC<Props> = ({ visible, onClose }) => {
   const addProduct = useStore((s) => s.addProduct);
@@ -78,7 +96,17 @@ export const AddProductSheet: React.FC<Props> = ({ visible, onClose }) => {
   const lastScannedBarcodeRef = useRef<string | null>(null);
   const photoCancelledRef = useRef(false);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Aborts the in-flight backend search when the user types again or closes
+  // the sheet. Without this, a slow response from the previous query would
+  // overwrite results from a fresher query.
+  const searchAbortRef = useRef<AbortController | null>(null);
+  // Each keystroke increments this counter; the async resolver only commits
+  // results when its captured value still matches the latest count. Belt-and-
+  // suspenders alongside the AbortController.
+  const searchSeqRef = useRef(0);
   const cameraRef = useRef<any>(null);
+
+  const palette = Glow.palette;
 
   // Barcode scanner hook — only active when in barcode mode
   const codeScanner = useCodeScannerHook({
@@ -90,15 +118,18 @@ export const AddProductSheet: React.FC<Props> = ({ visible, onClose }) => {
     },
   });
 
-  // Clean up debounce timer on unmount to prevent firing after sheet closes
+  // Clean up debounce timer + abort in-flight search on unmount.
   useEffect(() => {
     return () => {
       if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+      searchAbortRef.current?.abort();
     };
   }, []);
 
   const resetState = () => {
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    searchAbortRef.current?.abort();
+    searchAbortRef.current = null;
     setMode('menu');
     setOriginMode('menu');
     setSearchQuery('');
@@ -125,26 +156,44 @@ export const AddProductSheet: React.FC<Props> = ({ visible, onClose }) => {
     setMode('schedule');
   };
 
-  // Debounced multi-source search
+  // Debounced multi-source search.
+  //
+  // Three guards stack to keep the result UI honest:
+  //   1. setTimeout debounce (220ms) — collapses rapid typing into one call.
+  //   2. AbortController.abort() on each new keystroke — server-side cancels.
+  //   3. Sequence number — only the most recent call writes state, so a slow
+  //      response that survives the abort doesn't clobber fresher results.
   const handleSearchInput = useCallback((query: string) => {
     setSearchQuery(query);
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-    if (query.length < 2) {
+    searchAbortRef.current?.abort();
+    if (query.trim().length < 2) {
       setSearchResults([]);
       setSearching(false);
       return;
     }
     setSearching(true);
+    const mySeq = ++searchSeqRef.current;
     searchTimerRef.current = setTimeout(async () => {
+      const controller = new AbortController();
+      searchAbortRef.current = controller;
       try {
-        const results = await searchProductsMultiSource(query);
+        const results = await searchProductsMultiSource(query, controller.signal);
+        if (mySeq !== searchSeqRef.current) return; // stale
         setSearchResults(results.slice(0, 15));
         trackEvent('product_searched', { query, result_count: results.length });
-      } catch {
+      } catch (err) {
+        // Only swallow legitimate cancellations; surface true failures.
+        if (mySeq !== searchSeqRef.current) return;
+        if (controller.signal.aborted || isApiError(err, 0)) {
+          // cancelled by caller — leave the previous state alone
+          return;
+        }
         setSearchResults([]);
+      } finally {
+        if (mySeq === searchSeqRef.current) setSearching(false);
       }
-      setSearching(false);
-    }, 300);
+    }, 220);
   }, []);
 
   const handleSelectResult = (product: { name: string; brand?: string; ingredients: string[] }) => {
@@ -153,7 +202,6 @@ export const AddProductSheet: React.FC<Props> = ({ visible, onClose }) => {
 
   const handleBarcodeScan = async (barcode: string) => {
     if (processingRef.current) return;
-    // Suppress duplicate scans of the same barcode (camera fires continuously)
     if (lastScannedBarcodeRef.current === barcode) return;
     lastScannedBarcodeRef.current = barcode;
     processingRef.current = true;
@@ -195,7 +243,6 @@ export const AddProductSheet: React.FC<Props> = ({ visible, onClose }) => {
       }
       const base64 = await imageToBase64(photo.path.startsWith('file://') ? photo.path : `file://${photo.path}`);
       const result = await identifyProductPhoto(base64);
-      // Discard result if user cancelled while request was in-flight
       if (photoCancelledRef.current) return;
       if (result) {
         trackEvent('product_photo_identified', { success: true, confidence: result.confidence });
@@ -251,12 +298,25 @@ export const AddProductSheet: React.FC<Props> = ({ visible, onClose }) => {
   const requestCameraAndGo = async (target: SheetMode) => {
     if (!hasPermission) {
       const granted = await requestPermission();
-      if (!granted) return; // User denied — stay on menu
+      if (!granted) return;
     }
     setBarcodeFound(false);
     setPhotoIdentifying(false);
     setMode(target);
   };
+
+  const titleFor = (m: SheetMode) => {
+    switch (m) {
+      case 'menu':     return ['Add a', 'product'];
+      case 'search':   return ['Find your', 'product'];
+      case 'barcode':  return ['Scan the', 'barcode'];
+      case 'photo':    return ['Snap the', 'label'];
+      case 'manual':   return ['Enter', 'manually'];
+      case 'schedule': return ['When do you', 'use it?'];
+    }
+  };
+
+  const [titleLeft, titleRight] = titleFor(mode);
 
   return (
     <Modal visible={visible} animationType="slide" transparent statusBarTranslucent>
@@ -264,25 +324,28 @@ export const AddProductSheet: React.FC<Props> = ({ visible, onClose }) => {
         style={styles.overlay}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <Pressable style={styles.backdrop} onPress={handleClose}>
-          <LinearGradient
-            colors={['transparent', 'rgba(0,0,0,0.5)']}
-            style={StyleSheet.absoluteFill}
-          />
-        </Pressable>
-        <View style={styles.sheet}>
+        <Pressable style={styles.backdrop} onPress={handleClose} />
+        <View style={[styles.sheet, { backgroundColor: palette.bg }]}>
+          {/* Drag handle */}
+          <View style={[styles.handle, { backgroundColor: palette.muted + '55' }]} />
+
           {/* Header */}
           <View style={styles.sheetHeader}>
-            <Text style={styles.sheetTitle}>
-              {mode === 'menu' ? 'Add Product' :
-               mode === 'search' ? 'Search Products' :
-               mode === 'barcode' ? 'Scan Barcode' :
-               mode === 'photo' ? 'Take Photo' :
-               mode === 'manual' ? 'Enter Manually' :
-               'Usage Schedule'}
-            </Text>
-            <TouchableOpacity onPress={handleClose} hitSlop={12}>
-              <Feather name="x" size={22} color={Colors.textMuted} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.eyebrow, { color: palette.muted }]}>SHELF</Text>
+              <Text style={[styles.title, { color: palette.ink }]}>
+                {titleLeft}{' '}
+                <Text style={[styles.titleAccent, { color: palette.accent }]}>{titleRight}</Text>
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={handleClose}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel="Close add product"
+              style={[styles.closeBtn, { backgroundColor: palette.surface }]}
+            >
+              <GlowIcon name="x" size={18} color={palette.ink} stroke={1.9} />
             </TouchableOpacity>
           </View>
 
@@ -294,97 +357,121 @@ export const AddProductSheet: React.FC<Props> = ({ visible, onClose }) => {
           >
             {mode === 'menu' && (
               <View style={styles.menuOptions}>
-                {/* Photo is first — TestFlight feedback #3: "wish I could take a
-                    picture of the product instead of the barcode." The feature
-                    exists but was third in the menu and missed by testers. */}
-                <TouchableOpacity
-                  style={styles.menuOption}
-                  onPress={() => requestCameraAndGo('photo')}
-                >
-                  <View style={styles.menuIconWrap}>
-                    <Feather name="camera" size={20} color={Colors.primary} />
-                  </View>
-                  <View style={styles.menuTextCol}>
-                    <Text style={styles.menuLabel}>Take a photo</Text>
-                    <Text style={styles.menuDesc}>
-                      Snap the front of the product — works without a barcode
-                    </Text>
-                  </View>
-                  <Feather name="chevron-right" size={16} color={Colors.textMuted} />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.menuOption}
-                  onPress={() => requestCameraAndGo('barcode')}
-                >
-                  <View style={styles.menuIconWrap}>
-                    <Feather name="maximize" size={20} color={Colors.primary} />
-                  </View>
-                  <View style={styles.menuTextCol}>
-                    <Text style={styles.menuLabel}>Scan barcode</Text>
-                    <Text style={styles.menuDesc}>Fastest if your product has one</Text>
-                  </View>
-                  <Feather name="chevron-right" size={16} color={Colors.textMuted} />
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.menuOption} onPress={() => setMode('search')}>
-                  <View style={styles.menuIconWrap}>
-                    <Feather name="search" size={20} color={Colors.primary} />
-                  </View>
-                  <View style={styles.menuTextCol}>
-                    <Text style={styles.menuLabel}>Search by name</Text>
-                    <Text style={styles.menuDesc}>Find from our database</Text>
-                  </View>
-                  <Feather name="chevron-right" size={16} color={Colors.textMuted} />
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.menuOption} onPress={() => setMode('manual')}>
-                  <View style={styles.menuIconWrap}>
-                    <Feather name="edit-3" size={20} color={Colors.primary} />
-                  </View>
-                  <View style={styles.menuTextCol}>
-                    <Text style={styles.menuLabel}>Enter manually</Text>
-                    <Text style={styles.menuDesc}>Type name and ingredients</Text>
-                  </View>
-                  <Feather name="chevron-right" size={16} color={Colors.textMuted} />
-                </TouchableOpacity>
+                {MENU.map((entry, i) => (
+                  <FadeUp key={entry.id} index={i}>
+                    <TouchableOpacity
+                      style={[
+                        styles.menuOption,
+                        { backgroundColor: palette.surface, borderColor: palette.glow },
+                      ]}
+                      onPress={() => {
+                        if (entry.id === 'photo' || entry.id === 'barcode') {
+                          void requestCameraAndGo(entry.id);
+                        } else {
+                          setMode(entry.id);
+                        }
+                      }}
+                      activeOpacity={0.85}
+                    >
+                      <View style={[styles.menuIconWrap, { backgroundColor: palette.glow }]}>
+                        {entry.feather ? (
+                          <Feather name={entry.feather} size={18} color={palette.accent} />
+                        ) : (
+                          <GlowIcon name={entry.icon} size={20} color={palette.accent} stroke={1.8} />
+                        )}
+                      </View>
+                      <View style={styles.menuTextCol}>
+                        <Text style={[styles.menuLabel, { color: palette.ink }]}>{entry.label}</Text>
+                        <Text style={[styles.menuDesc, { color: palette.muted }]}>{entry.desc}</Text>
+                      </View>
+                      <GlowIcon name="arrow" size={14} color={palette.muted} stroke={1.7} />
+                    </TouchableOpacity>
+                  </FadeUp>
+                ))}
               </View>
             )}
 
             {mode === 'search' && (
               <View style={styles.searchMode}>
-                <View style={styles.searchInputRow}>
-                  <Feather name="search" size={16} color={Colors.textMuted} />
+                <View
+                  style={[
+                    styles.searchInputRow,
+                    { backgroundColor: palette.surface, borderColor: palette.glow },
+                  ]}
+                >
+                  <Feather name="search" size={16} color={palette.muted} />
                   <TextInput
-                    style={styles.searchInput}
-                    placeholder="Search products..."
-                    placeholderTextColor={Colors.textMuted}
+                    style={[styles.searchInput, { color: palette.ink }]}
+                    placeholder="Try “cerave” or “byoma”"
+                    placeholderTextColor={palette.muted}
                     value={searchQuery}
                     onChangeText={handleSearchInput}
                     autoFocus
                     returnKeyType="search"
+                    autoCorrect={false}
+                    autoCapitalize="none"
                   />
                   {searchQuery.length > 0 && (
-                    <TouchableOpacity onPress={() => { setSearchQuery(''); setSearchResults([]); }}>
-                      <Feather name="x-circle" size={16} color={Colors.textMuted} />
+                    <TouchableOpacity
+                      onPress={() => handleSearchInput('')}
+                      hitSlop={10}
+                      accessibilityLabel="Clear search"
+                    >
+                      <GlowIcon name="x" size={14} color={palette.muted} stroke={1.8} />
                     </TouchableOpacity>
                   )}
                 </View>
-                {searching && <ActivityIndicator style={{ marginTop: 16 }} color={Colors.primary} />}
-                {searchResults.map((r, i) => (
-                  <TouchableOpacity
-                    key={`${r.name}-${i}`}
-                    style={styles.resultRow}
-                    onPress={() => handleSelectResult(r)}
-                  >
-                    <Text style={styles.resultName} numberOfLines={1}>{r.name}</Text>
-                    <Text style={styles.resultMeta}>
-                      {r.brand ? `${r.brand} \u00B7 ` : ''}{r.ingredients.length} ingredients
+
+                {searching && (
+                  <View style={styles.searchingRow}>
+                    <ActivityIndicator color={palette.accent} />
+                    <Text style={[styles.searchingText, { color: palette.muted }]}>
+                      Looking through the shelf…
                     </Text>
-                  </TouchableOpacity>
+                  </View>
+                )}
+
+                {!searching && searchResults.map((r, i) => (
+                  <FadeUp key={`${r.name}-${i}`} index={Math.min(i, 5)}>
+                    <TouchableOpacity
+                      style={[
+                        styles.resultRow,
+                        { backgroundColor: palette.surface, borderColor: palette.glow },
+                      ]}
+                      onPress={() => handleSelectResult(r)}
+                      activeOpacity={0.85}
+                    >
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={[styles.resultName, { color: palette.ink }]} numberOfLines={1}>
+                          {r.name}
+                        </Text>
+                        <Text style={[styles.resultMeta, { color: palette.muted }]} numberOfLines={1}>
+                          {r.brand ? `${r.brand} · ` : ''}
+                          {r.ingredients.length === 0
+                            ? 'No ingredients listed'
+                            : `${r.ingredients.length} ingredient${r.ingredients.length === 1 ? '' : 's'}`}
+                        </Text>
+                      </View>
+                      <GlowIcon name="arrow" size={14} color={palette.muted} stroke={1.7} />
+                    </TouchableOpacity>
+                  </FadeUp>
                 ))}
-                {searchQuery.length >= 2 && !searching && searchResults.length === 0 && (
-                  <Text style={styles.noResults}>No results found. Try a different search or enter manually.</Text>
+
+                {searchQuery.trim().length >= 2 && !searching && searchResults.length === 0 && (
+                  <View style={styles.emptyResults}>
+                    <Text style={[styles.emptyTitle, { color: palette.ink }]}>
+                      Nothing came up
+                    </Text>
+                    <Text style={[styles.emptyBody, { color: palette.muted }]}>
+                      Try a shorter query — or add it manually and we'll learn it for next time.
+                    </Text>
+                    <TouchableOpacity
+                      style={[styles.emptyBtn, { borderColor: palette.muted }]}
+                      onPress={() => setMode('manual')}
+                    >
+                      <Text style={[styles.emptyBtnText, { color: palette.ink }]}>Enter manually</Text>
+                    </TouchableOpacity>
+                  </View>
                 )}
               </View>
             )}
@@ -393,7 +480,7 @@ export const AddProductSheet: React.FC<Props> = ({ visible, onClose }) => {
               <View style={styles.barcodeMode}>
                 {hasPermission && device && VisionCamera ? (
                   <>
-                    <View style={styles.cameraBox}>
+                    <View style={[styles.cameraBox, { backgroundColor: palette.ink }]}>
                       <VisionCamera
                         style={styles.camera}
                         device={device}
@@ -401,14 +488,19 @@ export const AddProductSheet: React.FC<Props> = ({ visible, onClose }) => {
                         codeScanner={codeScanner}
                       />
                       <View style={styles.cameraOverlay}>
-                        <View style={[
-                          styles.scanFrame,
-                          barcodeFound && styles.scanFrameFound,
-                        ]} />
+                        <View
+                          style={[
+                            styles.scanFrame,
+                            { borderColor: barcodeFound ? palette.accent : palette.surface },
+                            barcodeFound && styles.scanFrameFound,
+                          ]}
+                        />
                         {barcodeFound && (
-                          <View style={styles.scanFeedback}>
-                            <Feather name="check-circle" size={28} color={Colors.success} />
-                            <Text style={styles.scanFeedbackText}>Barcode detected</Text>
+                          <View style={[styles.scanFeedback, { backgroundColor: 'rgba(0,0,0,0.55)' }]}>
+                            <GlowIcon name="check" size={16} color={palette.surface} stroke={2} />
+                            <Text style={[styles.scanFeedbackText, { color: palette.surface }]}>
+                              Got it
+                            </Text>
                           </View>
                         )}
                       </View>
@@ -417,12 +509,16 @@ export const AddProductSheet: React.FC<Props> = ({ visible, onClose }) => {
                       style={styles.photoFallbackLink}
                       onPress={() => setMode('photo')}
                     >
-                      <Feather name="camera" size={14} color={Colors.primary} />
-                      <Text style={styles.photoFallbackText}>No barcode? Take a photo instead</Text>
+                      <GlowIcon name="camera" size={14} color={palette.accent} stroke={1.8} />
+                      <Text style={[styles.photoFallbackText, { color: palette.accent }]}>
+                        No barcode? Snap a photo instead
+                      </Text>
                     </TouchableOpacity>
                   </>
                 ) : (
-                  <Text style={styles.noResults}>Camera permission required to scan barcodes.</Text>
+                  <Text style={[styles.emptyBody, { color: palette.muted }]}>
+                    Camera permission required to scan barcodes.
+                  </Text>
                 )}
               </View>
             )}
@@ -431,10 +527,10 @@ export const AddProductSheet: React.FC<Props> = ({ visible, onClose }) => {
               <View style={styles.photoMode}>
                 {hasPermission && device && VisionCamera ? (
                   <>
-                    <Text style={styles.photoHint}>
-                      Point at the product so the name and brand are visible
+                    <Text style={[styles.photoHint, { color: palette.muted }]}>
+                      Aim so the brand and product name read clearly
                     </Text>
-                    <View style={styles.cameraBox}>
+                    <View style={[styles.cameraBox, { backgroundColor: palette.ink }]}>
                       <VisionCamera
                         ref={cameraRef}
                         style={styles.camera}
@@ -444,88 +540,141 @@ export const AddProductSheet: React.FC<Props> = ({ visible, onClose }) => {
                       />
                       {photoIdentifying && (
                         <View style={styles.photoOverlay}>
-                          <ActivityIndicator size="large" color={Colors.textOnDark} />
-                          <Text style={styles.photoOverlayText}>Identifying product...</Text>
+                          <ActivityIndicator size="large" color={palette.surface} />
+                          <Text style={[styles.photoOverlayText, { color: palette.surface }]}>
+                            Reading the label…
+                          </Text>
                           <TouchableOpacity
                             style={styles.photoCancelButton}
                             onPress={() => { photoCancelledRef.current = true; setPhotoIdentifying(false); setMode('menu'); }}
                             hitSlop={12}
                           >
-                            <Text style={styles.photoCancelText}>Cancel</Text>
+                            <Text style={[styles.photoCancelText, { color: palette.surface }]}>Cancel</Text>
                           </TouchableOpacity>
                         </View>
                       )}
                     </View>
                     <TouchableOpacity
-                      style={[styles.shutterButton, photoIdentifying && styles.shutterButtonDisabled]}
+                      style={[
+                        styles.shutterButton,
+                        { borderColor: palette.accent },
+                        photoIdentifying && styles.shutterButtonDisabled,
+                      ]}
                       onPress={handlePhotoCapture}
                       disabled={photoIdentifying}
-                      activeOpacity={0.7}
+                      activeOpacity={0.8}
+                      accessibilityRole="button"
+                      accessibilityLabel="Capture product photo"
                     >
-                      <View style={styles.shutterInner} />
+                      <View style={[styles.shutterInner, { backgroundColor: palette.accent }]} />
                     </TouchableOpacity>
                   </>
                 ) : (
-                  <Text style={styles.noResults}>Camera permission required to take photos.</Text>
+                  <Text style={[styles.emptyBody, { color: palette.muted }]}>
+                    Camera permission required to take photos.
+                  </Text>
                 )}
               </View>
             )}
 
             {mode === 'manual' && (
               <View style={styles.manualMode}>
-                <Text style={styles.fieldLabel}>Product name</Text>
+                <Text style={[styles.fieldLabel, { color: palette.muted }]}>Product name</Text>
                 <TextInput
-                  style={styles.textField}
-                  placeholder="e.g. CeraVe Moisturizer"
-                  placeholderTextColor={Colors.textMuted}
+                  style={[
+                    styles.textField,
+                    { backgroundColor: palette.surface, borderColor: palette.glow, color: palette.ink },
+                  ]}
+                  placeholder="e.g. CeraVe Hydrating Cleanser"
+                  placeholderTextColor={palette.muted}
                   value={manualName}
                   onChangeText={setManualName}
                   autoFocus
                 />
-                <Text style={styles.fieldLabel}>Ingredients (comma-separated)</Text>
+                <Text style={[styles.fieldLabel, { color: palette.muted }]}>
+                  Ingredients (comma-separated)
+                </Text>
                 <TextInput
-                  style={[styles.textField, styles.textFieldMulti]}
+                  style={[
+                    styles.textField,
+                    styles.textFieldMulti,
+                    { backgroundColor: palette.surface, borderColor: palette.glow, color: palette.ink },
+                  ]}
                   placeholder="e.g. Niacinamide, Hyaluronic Acid, Ceramides"
-                  placeholderTextColor={Colors.textMuted}
+                  placeholderTextColor={palette.muted}
                   value={manualIngredients}
                   onChangeText={setManualIngredients}
                   multiline
                 />
                 <TouchableOpacity
-                  style={[styles.confirmButton, !manualName.trim() && styles.confirmButtonDisabled]}
+                  style={[
+                    styles.confirmButton,
+                    { backgroundColor: palette.ink },
+                    !manualName.trim() && styles.confirmButtonDisabled,
+                  ]}
                   onPress={handleManualAdd}
                   disabled={!manualName.trim()}
+                  activeOpacity={0.85}
                 >
-                  <Text style={styles.confirmText}>Continue</Text>
+                  <Text style={[styles.confirmText, { color: palette.surface }]}>Continue</Text>
                 </TouchableOpacity>
               </View>
             )}
 
             {mode === 'schedule' && selected && (
               <View style={styles.scheduleMode}>
-                <Text style={styles.selectedName} numberOfLines={2}>{selected.name}</Text>
+                <Text style={[styles.selectedName, { color: palette.ink }]} numberOfLines={2}>
+                  {selected.name}
+                </Text>
                 {selected.brand && (
-                  <Text style={styles.selectedBrand} numberOfLines={1}>{selected.brand}</Text>
+                  <Text style={[styles.selectedBrand, { color: palette.accent }]} numberOfLines={1}>
+                    {selected.brand}
+                  </Text>
                 )}
-                <Text style={styles.selectedMeta}>{selected.ingredients.length} ingredients</Text>
+                <Text style={[styles.selectedMeta, { color: palette.muted }]}>
+                  {selected.ingredients.length === 0
+                    ? 'No ingredients on file yet'
+                    : `${selected.ingredients.length} ingredient${selected.ingredients.length === 1 ? '' : 's'}`}
+                </Text>
 
-                <Text style={styles.fieldLabel}>When do you use this product?</Text>
+                <Text style={[styles.fieldLabel, { color: palette.muted, marginTop: 24 }]}>
+                  When do you use this?
+                </Text>
                 <View style={styles.scheduleOptions}>
-                  {(['AM', 'PM', 'both'] as UsageSchedule[]).map((s) => (
-                    <TouchableOpacity
-                      key={s}
-                      style={[styles.scheduleChip, schedule === s && styles.scheduleChipActive]}
-                      onPress={() => setSchedule(s)}
-                    >
-                      <Text style={[styles.scheduleChipText, schedule === s && styles.scheduleChipTextActive]}>
-                        {s === 'both' ? 'AM & PM' : s}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+                  {(['AM', 'PM', 'both'] as UsageSchedule[]).map((s) => {
+                    const active = schedule === s;
+                    return (
+                      <TouchableOpacity
+                        key={s}
+                        style={[
+                          styles.scheduleChip,
+                          {
+                            backgroundColor: active ? palette.ink : palette.surface,
+                            borderColor: active ? palette.ink : palette.glow,
+                          },
+                        ]}
+                        onPress={() => setSchedule(s)}
+                        activeOpacity={0.85}
+                      >
+                        <Text
+                          style={[
+                            styles.scheduleChipText,
+                            { color: active ? palette.surface : palette.ink },
+                          ]}
+                        >
+                          {s === 'both' ? 'AM & PM' : s}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
 
-                <TouchableOpacity style={styles.confirmButton} onPress={handleConfirmAdd}>
-                  <Text style={styles.confirmText}>Add Product</Text>
+                <TouchableOpacity
+                  style={[styles.confirmButton, { backgroundColor: palette.ink }]}
+                  onPress={handleConfirmAdd}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[styles.confirmText, { color: palette.surface }]}>Add to shelf</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -543,123 +692,176 @@ const styles = StyleSheet.create({
   },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.35)',
   },
   sheet: {
-    backgroundColor: Colors.background,
-    borderTopLeftRadius: BorderRadius.xl,
-    borderTopRightRadius: BorderRadius.xl,
-    maxHeight: '85%',
-    minHeight: 320,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    maxHeight: '88%',
+    minHeight: 360,
+    paddingBottom: 24,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 16,
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
     elevation: 12,
+  },
+  handle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginTop: 8,
   },
   sheetHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.lg,
+    paddingTop: 16,
     paddingBottom: Spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.divider,
+    gap: 12,
   },
-  sheetTitle: {
-    color: Colors.text,
-    fontFamily: FontFamily.sansBold,
-    fontSize: FontSize.lg,
+  eyebrow: {
+    fontFamily: FontFamily.sansMedium,
+    fontSize: 11,
+    letterSpacing: 1.2,
+  },
+  title: {
+    fontFamily: FontFamily.sans,
+    fontSize: 26,
+    lineHeight: 32,
+    marginTop: 2,
+  },
+  titleAccent: {
+    fontFamily: FontFamily.accent,
+    fontSize: 30,
+  },
+  closeBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   sheetContent: {
     paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.md,
+    paddingTop: Spacing.sm,
   },
   menuOptions: {
-    gap: Spacing.sm,
+    gap: 10,
   },
   menuOption: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.md,
-    backgroundColor: Colors.glass,
-    borderRadius: BorderRadius.lg,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: Colors.border,
-    padding: Spacing.md,
+    paddingVertical: 16,
+    paddingHorizontal: 14,
   },
   menuIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.surfaceOverlay,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
   },
   menuTextCol: {
     flex: 1,
-    gap: 2,
+    gap: 3,
   },
   menuLabel: {
-    color: Colors.text,
-    fontFamily: FontFamily.sansSemiBold,
+    fontFamily: FontFamily.sansBold,
     fontSize: FontSize.md,
   },
   menuDesc: {
-    color: Colors.textMuted,
-    fontFamily: FontFamily.sansMedium,
-    fontSize: FontSize.xs,
+    fontFamily: FontFamily.sans,
+    fontSize: 12,
+    lineHeight: 17,
   },
   searchMode: {
-    gap: Spacing.sm,
+    gap: 10,
   },
   searchInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.sm,
-    backgroundColor: Colors.glass,
-    borderRadius: BorderRadius.full,
+    gap: 10,
+    borderRadius: 999,
     borderWidth: 1,
-    borderColor: Colors.border,
-    paddingHorizontal: Spacing.md,
-    height: 48,
+    paddingHorizontal: 16,
+    height: 50,
+    marginBottom: 6,
   },
   searchInput: {
     flex: 1,
-    color: Colors.text,
-    fontFamily: FontFamily.sansMedium,
+    fontFamily: FontFamily.sans,
     fontSize: FontSize.md,
   },
+  searchingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 4,
+  },
+  searchingText: {
+    fontFamily: FontFamily.sans,
+    fontSize: 13,
+    fontStyle: 'italic',
+  },
   resultRow: {
-    paddingVertical: Spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.divider,
-    gap: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderRadius: 18,
+    borderWidth: 1,
   },
   resultName: {
-    color: Colors.text,
-    fontFamily: FontFamily.sansSemiBold,
-    fontSize: FontSize.sm,
+    fontFamily: FontFamily.sansBold,
+    fontSize: FontSize.sm + 1,
   },
   resultMeta: {
-    color: Colors.textMuted,
-    fontFamily: FontFamily.sansMedium,
-    fontSize: FontSize.xs,
+    fontFamily: FontFamily.sans,
+    fontSize: 12,
+    marginTop: 3,
   },
-  noResults: {
-    color: Colors.textMuted,
-    fontFamily: FontFamily.sansMedium,
-    fontSize: FontSize.sm,
+  emptyResults: {
+    paddingTop: 28,
+    alignItems: 'center',
+    gap: 8,
+  },
+  emptyTitle: {
+    fontFamily: FontFamily.sansBold,
+    fontSize: FontSize.md,
+  },
+  emptyBody: {
+    fontFamily: FontFamily.sans,
+    fontSize: 13,
+    lineHeight: 19,
     textAlign: 'center',
-    marginTop: Spacing.lg,
+    paddingHorizontal: Spacing.lg,
+  },
+  emptyBtn: {
+    marginTop: 14,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 22,
+    paddingVertical: 12,
+  },
+  emptyBtnText: {
+    fontFamily: FontFamily.sansBold,
+    fontSize: 13,
   },
   barcodeMode: {
     alignItems: 'center',
+    gap: 12,
   },
   cameraBox: {
     width: '100%',
     aspectRatio: 1,
-    borderRadius: BorderRadius.lg,
+    borderRadius: 24,
     overflow: 'hidden',
     position: 'relative',
   },
@@ -672,184 +874,162 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   scanFrame: {
-    width: 200,
-    height: 200,
+    width: 220,
+    height: 220,
     borderWidth: 2.5,
-    borderColor: Colors.primary,
-    borderRadius: BorderRadius.md,
-    backgroundColor: 'transparent',
+    borderRadius: 18,
   },
   scanFrameFound: {
-    borderColor: Colors.success,
     borderWidth: 3,
   },
   scanFeedback: {
     position: 'absolute',
-    bottom: 40,
+    bottom: 32,
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: BorderRadius.full,
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 999,
   },
   scanFeedbackText: {
-    color: Colors.textOnDark,
-    fontFamily: FontFamily.sansSemiBold,
-    fontSize: FontSize.sm,
+    fontFamily: FontFamily.sansBold,
+    fontSize: 13,
   },
   photoFallbackLink: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     gap: 6,
-    marginTop: Spacing.md,
-    paddingVertical: Spacing.sm,
+    paddingVertical: 8,
   },
   photoFallbackText: {
-    color: Colors.primary,
-    fontFamily: FontFamily.sansMedium,
-    fontSize: FontSize.sm,
+    fontFamily: FontFamily.sansBold,
+    fontSize: 13,
   },
   photoMode: {
     alignItems: 'center',
-    gap: Spacing.md,
+    gap: 14,
   },
   photoHint: {
-    color: Colors.textSecondary,
-    fontFamily: FontFamily.sansMedium,
-    fontSize: FontSize.sm,
+    fontFamily: FontFamily.sans,
+    fontSize: 13,
+    fontStyle: 'italic',
     textAlign: 'center',
   },
   photoOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.55)',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 12,
+    gap: 14,
   },
   photoOverlayText: {
-    color: Colors.textOnDark,
-    fontFamily: FontFamily.sansSemiBold,
+    fontFamily: FontFamily.sansBold,
     fontSize: FontSize.md,
   },
   photoCancelButton: {
-    marginTop: 8,
+    marginTop: 6,
     paddingVertical: 10,
-    paddingHorizontal: 24,
-    minHeight: 44, // Apple HIG minimum tap target
+    paddingHorizontal: 22,
+    minHeight: 44,
     alignItems: 'center',
     justifyContent: 'center',
   },
   photoCancelText: {
-    color: Colors.textOnDark,
-    fontFamily: FontFamily.sansMedium,
+    fontFamily: FontFamily.sans,
     fontSize: FontSize.md,
     textDecorationLine: 'underline',
   },
   shutterButton: {
-    width: 72, // Apple HIG: camera shutter ≥ 60pt, we use 72pt for comfortable tap
-    height: 72,
-    borderRadius: 36,
+    width: 76,
+    height: 76,
+    borderRadius: 38,
     borderWidth: 4,
-    borderColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: Spacing.sm,
+    marginTop: 4,
   },
   shutterButtonDisabled: {
     opacity: 0.4,
   },
   shutterInner: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    backgroundColor: Colors.primary,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
   },
   manualMode: {
-    gap: Spacing.md,
+    gap: 10,
   },
   fieldLabel: {
-    color: Colors.textSecondary,
-    fontFamily: FontFamily.sansSemiBold,
-    fontSize: FontSize.sm,
+    fontFamily: FontFamily.sansMedium,
+    fontSize: 11,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    marginTop: 8,
   },
   textField: {
-    backgroundColor: Colors.glass,
     borderRadius: BorderRadius.md,
     borderWidth: 1,
-    borderColor: Colors.border,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    color: Colors.text,
-    fontFamily: FontFamily.sansMedium,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontFamily: FontFamily.sans,
     fontSize: FontSize.md,
-    height: 48,
+    minHeight: 48,
   },
   textFieldMulti: {
-    height: 90,
+    minHeight: 96,
     textAlignVertical: 'top',
   },
   scheduleMode: {
-    gap: Spacing.md,
+    gap: 6,
     alignItems: 'center',
   },
   selectedName: {
-    color: Colors.text,
     fontFamily: FontFamily.sansBold,
-    fontSize: FontSize.lg,
+    fontSize: 22,
     textAlign: 'center',
+    paddingHorizontal: 8,
   },
   selectedBrand: {
-    color: Colors.primary,
     fontFamily: FontFamily.sansMedium,
-    fontSize: FontSize.sm,
-    marginTop: -4,
+    fontSize: 13,
+    marginTop: 2,
   },
   selectedMeta: {
-    color: Colors.textMuted,
-    fontFamily: FontFamily.sansMedium,
-    fontSize: FontSize.sm,
+    fontFamily: FontFamily.sans,
+    fontSize: 12,
+    marginTop: 6,
+    fontStyle: 'italic',
   },
   scheduleOptions: {
     flexDirection: 'row',
-    gap: Spacing.sm,
-    justifyContent: 'center',
+    gap: 10,
+    marginTop: 10,
   },
   scheduleChip: {
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.lg,
-    borderRadius: BorderRadius.full,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 999,
     borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.glass,
-  },
-  scheduleChipActive: {
-    borderColor: Colors.primary,
-    backgroundColor: Colors.surfaceOverlay,
+    minWidth: 96,
+    alignItems: 'center',
   },
   scheduleChipText: {
-    color: Colors.textMuted,
-    fontFamily: FontFamily.sansSemiBold,
-    fontSize: FontSize.sm,
-  },
-  scheduleChipTextActive: {
-    color: Colors.primary,
+    fontFamily: FontFamily.sansBold,
+    fontSize: 14,
   },
   confirmButton: {
     width: '100%',
-    height: 52,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.primary,
+    height: 54,
+    borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: Spacing.md,
+    marginTop: 28,
   },
   confirmButtonDisabled: {
-    opacity: 0.5,
+    opacity: 0.4,
   },
   confirmText: {
-    color: Colors.textOnDark,
     fontFamily: FontFamily.sansBold,
     fontSize: FontSize.md,
   },
