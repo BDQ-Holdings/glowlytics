@@ -149,22 +149,23 @@ export function DayPage({ day, index: _index, width, arcSeries, onScan, onOpenRi
         </View>
       )}
 
-      {/* Facet pill row */}
-      <View style={styles.facetRow}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.facetRowContent}>
-          {GLOW_FACETS.map((f) => {
-            const val = facets[f.key];
-            return (
-              <View key={f.key} style={styles.facetPill}>
-                <GlowIcon name={FACET_ICON[f.key] as never} size={16} color={P.accent} stroke={1.6} />
-                <View>
-                  <Text style={styles.facetLabel}>{f.label}</Text>
-                  <Text style={styles.facetValue}>{val == null ? '—' : val}</Text>
-                </View>
-              </View>
-            );
-          })}
-        </ScrollView>
+      {/* Facet grid — 4 equal-width tiles for Hydrated · Calm · Even · Firm.
+          Previously this was a horizontally-scrollable pill row with auto-sized
+          widths driven by the label + value content; the four signals are
+          peers and visually deserve equal real estate. Stack each tile
+          vertically (icon → label → score) so the narrow column reads cleanly
+          without the horizontal cramping the old pill layout caused. */}
+      <View style={styles.facetGrid}>
+        {GLOW_FACETS.map((f) => {
+          const val = facets[f.key];
+          return (
+            <View key={f.key} style={styles.facetTile}>
+              <GlowIcon name={FACET_ICON[f.key] as never} size={18} color={P.accent} stroke={1.7} />
+              <Text style={styles.facetLabel} numberOfLines={1}>{f.label}</Text>
+              <Text style={styles.facetValue}>{val == null ? '—' : val}</Text>
+            </View>
+          );
+        })}
       </View>
 
       {/* Facial structure */}
@@ -336,22 +337,44 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
   },
   ctaPrimaryText: { fontFamily: FontFamily.sansBold, fontSize: 15, color: P.surface },
-  facetRow: { paddingTop: 28 },
-  facetRowContent: { paddingHorizontal: 24, gap: 8 },
-  facetPill: {
+  // 4-column equal-width grid for Hydrated · Calm · Even · Firm. Each tile
+  // gets `flex: 1` so the row always splits the available width into four
+  // identical columns regardless of label/value content. Padding-horizontal
+  // matches the rest of the page chrome (24px) and the 8px gap between tiles
+  // sits inside the page's spacing scale.
+  facetGrid: {
+    paddingTop: 28,
+    paddingHorizontal: 24,
+    flexDirection: 'row',
+    gap: 8,
+  },
+  facetTile: {
+    flex: 1,
+    minWidth: 0, // prevents content (e.g. wide labels) from pushing the tile
     backgroundColor: P.surface,
     borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 8,
     borderWidth: 1,
     borderColor: P.glow,
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    marginRight: 8,
+    justifyContent: 'space-between',
+    gap: 6,
   },
-  facetLabel: { fontSize: 11, color: P.muted, fontFamily: FontFamily.sansMedium },
-  facetValue: { fontFamily: FontFamily.sansBold, fontSize: 18, color: P.ink, lineHeight: 20 },
+  facetLabel: {
+    fontSize: 11,
+    color: P.muted,
+    fontFamily: FontFamily.sansMedium,
+    letterSpacing: 0.2,
+    textAlign: 'center',
+  },
+  facetValue: {
+    fontFamily: FontFamily.sansBold,
+    fontSize: 20,
+    color: P.ink,
+    lineHeight: 22,
+    textAlign: 'center',
+  },
   section: { paddingTop: 24, paddingHorizontal: 24 },
   patternCard: {
     marginTop: 12,
