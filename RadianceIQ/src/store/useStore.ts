@@ -98,6 +98,8 @@ interface AppState {
   startTrial: () => void;
   setNotificationTime: (time: string | null) => void;
   setNotificationsEnabled: (enabled: boolean) => void;
+  setPersonalizedTipsEnabled: (enabled: boolean) => void;
+  syncEngagementNotifications: () => void;
   addHealthDailyRecord: (record: HealthDailyRecord) => void;
   upsertHealthDailyRecord: (date: string, record: HealthDailyRecord) => void;
   syncHealthData: () => Promise<{ added: number; errors: string[] }>;
@@ -230,7 +232,7 @@ export const useStore = create<AppState>((set, get) => ({
   pendingLesions: null,
   gamification: defaultGamification(),
   subscription: defaultSubscription(),
-  notificationSettings: { notifications_enabled: false, notification_time: null },
+  notificationSettings: { notifications_enabled: false, notification_time: null, personalized_tips_enabled: true },
   healthDailyRecords: [],
   healthSyncStatus: {
     last_sync_at: null,
@@ -439,6 +441,8 @@ export const useStore = create<AppState>((set, get) => ({
     const xp = getXPForScan(streak, contextItems);
     get().awardXP(xp);
     get().checkAndAwardBadges();
+    // Re-anchor the drop-off re-engagement series to this fresh scan.
+    get().syncEngagementNotifications();
     return entry;
   },
 
@@ -802,8 +806,15 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   setNotificationTime: (time) => {
-    set({ notificationSettings: { notifications_enabled: time !== null, notification_time: time } });
+    set((s) => ({
+      notificationSettings: {
+        ...s.notificationSettings,
+        notifications_enabled: time !== null,
+        notification_time: time,
+      },
+    }));
     debouncedPersist(() => get().persistData());
+    get().syncEngagementNotifications();
   },
 
   setNotificationsEnabled: (enabled) => {
@@ -811,6 +822,41 @@ export const useStore = create<AppState>((set, get) => ({
       notificationSettings: { ...s.notificationSettings, notifications_enabled: enabled },
     }));
     debouncedPersist(() => get().persistData());
+    get().syncEngagementNotifications();
+  },
+
+  setPersonalizedTipsEnabled: (enabled) => {
+    set((s) => ({
+      notificationSettings: { ...s.notificationSettings, personalized_tips_enabled: enabled },
+    }));
+    debouncedPersist(() => get().persistData());
+    get().syncEngagementNotifications();
+  },
+
+  // Brings all engagement notifications (daily reminder + drop-off series) into
+  // sync with current settings, goal, and scan history. Dynamic require keeps
+  // expo-notifications out of the Jest environment, matching runPatternDetection.
+  syncEngagementNotifications: () => {
+    const state = get();
+    const { notification_time, notifications_enabled, personalized_tips_enabled } =
+      state.notificationSettings;
+    // Most recent scan date drives the drop-off anchor.
+    const lastScanDate = state.dailyRecords.reduce<string | null>(
+      (latest, r) => (latest === null || r.date > latest ? r.date : latest),
+      null,
+    );
+    try {
+      const { syncEngagementNotifications: sync } = require('../services/notifications');
+      sync({
+        enabled: notifications_enabled,
+        time: notification_time,
+        goal: state.protocol?.primary_goal ?? null,
+        personalizedTips: personalized_tips_enabled,
+        lastScanDate,
+      }).catch(() => { /* scheduling is best-effort */ });
+    } catch {
+      // notifications module failed to load (e.g. Jest) — non-fatal
+    }
   },
 
   loadPersistedData: async () => {
@@ -845,7 +891,12 @@ export const useStore = create<AppState>((set, get) => ({
             trial_start_date: parsed.subscription?.trial_start_date ?? null,
             trial_end_date: parsed.subscription?.trial_end_date ?? null,
           },
-          notificationSettings: parsed.notificationSettings || { notifications_enabled: false, notification_time: null },
+          notificationSettings: {
+            notifications_enabled: false,
+            notification_time: null,
+            personalized_tips_enabled: true,
+            ...parsed.notificationSettings,
+          },
           onboardingFlow: restoredFlow,
           onboardingFlowIndex: restoredIndex,
           healthDailyRecords: parsed.healthDailyRecords || [],
@@ -927,7 +978,7 @@ export const useStore = create<AppState>((set, get) => ({
       pendingLesions: null,
       gamification: defaultGamification(),
       subscription: defaultSubscription(),
-      notificationSettings: { notifications_enabled: false, notification_time: null },
+      notificationSettings: { notifications_enabled: false, notification_time: null, personalized_tips_enabled: true },
       healthDailyRecords: [],
       healthSyncStatus: {
         last_sync_at: null,

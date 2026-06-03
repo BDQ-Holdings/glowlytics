@@ -220,6 +220,9 @@ function ClerkGatedApp() {
       if (userId) {
         useStore.getState().reconcileAuthUserId(userId);
       }
+      // Re-seed the rolling daily reminder window + drop-off series from
+      // persisted settings (idempotent; cancels/reschedules our own ids).
+      useStore.getState().syncEngagementNotifications();
       if (__DEV__) console.log(`[App] Critical init ready in ${Date.now() - t0}ms`);
     };
 
@@ -287,6 +290,9 @@ function ClerkGatedApp() {
       if (next !== 'active') return;
       const state = useStore.getState();
       if (!state.user) return;
+      // Roll the daily reminder window forward on each foreground so reminders
+      // never run dry while the app is in active use.
+      state.syncEngagementNotifications();
       const lastSync = state.healthSyncStatus.last_sync_at;
       const hoursSince = lastSync
         ? (Date.now() - new Date(lastSync).getTime()) / (1000 * 60 * 60)

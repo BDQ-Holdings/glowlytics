@@ -21,7 +21,7 @@ import {
   isTrialActive,
   trialDaysRemaining,
 } from '../../src/services/subscription';
-import { scheduleDailyReminder, cancelDailyReminder } from '../../src/services/notifications';
+import { requestNotificationPermissions } from '../../src/services/notifications';
 import { trackEvent, resetAnalytics } from '../../src/services/analytics';
 import { formatRelativeTime } from '../../src/utils/formatRelativeTime';
 import { GamificationCard } from '../../src/components/GamificationCard';
@@ -71,6 +71,7 @@ export default function ProfileTab() {
   const setSubscription = useStore((s) => s.setSubscription);
   const notificationSettings = useStore((s) => s.notificationSettings);
   const setNotificationTime = useStore((s) => s.setNotificationTime);
+  const setPersonalizedTipsEnabled = useStore((s) => s.setPersonalizedTipsEnabled);
   const resetAll = useStore((s) => s.resetAll);
   const healthConnection = useStore((s) => s.user?.health_connection);
   const healthSyncStatus = useStore((s) => s.healthSyncStatus);
@@ -438,16 +439,15 @@ export default function ProfileTab() {
             })()}
             mode="time"
             display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-            onChange={async (_, selected) => {
+            onChange={(_, selected) => {
               setShowTimePicker(Platform.OS === 'ios');
               if (selected) {
                 const h = selected.getHours();
                 const m = selected.getMinutes();
                 const timeStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-                try {
-                  await scheduleDailyReminder(h, m);
-                  setNotificationTime(timeStr);
-                } catch { /* notification scheduling failed — non-fatal */ }
+                // setNotificationTime reschedules the daily reminder + drop-off
+                // series via the store orchestrator (cancelling the old ones).
+                setNotificationTime(timeStr);
               }
             }}
             themeVariant="light"
@@ -464,11 +464,22 @@ export default function ProfileTab() {
               <Text style={[styles.modeButtonText, { color: Colors.primary }]}>Change time</Text>
             </TouchableOpacity>
             <TouchableOpacity
+              style={styles.infoRow}
+              onPress={() => setPersonalizedTipsEnabled(!notificationSettings.personalized_tips_enabled)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.infoLabel}>Personalized tips</Text>
+              <Text style={[styles.infoValue, notificationSettings.personalized_tips_enabled
+                ? { color: Colors.primary }
+                : { color: Colors.textDim }]}>
+                {notificationSettings.personalized_tips_enabled ? 'On' : 'Off'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
               style={styles.modeButton}
-              onPress={async () => {
-                try {
-                  await cancelDailyReminder();
-                } catch { /* non-fatal */ }
+              onPress={() => {
+                // setNotificationTime(null) disables + tears down all scheduled
+                // engagement notifications via the orchestrator.
                 setNotificationTime(null);
                 setShowTimePicker(false);
               }}
@@ -482,12 +493,8 @@ export default function ProfileTab() {
           <TouchableOpacity
             style={styles.modeButton}
             onPress={async () => {
-              const defaultTime = '08:00';
-              const [h, m] = defaultTime.split(':').map(Number);
-              try {
-                await scheduleDailyReminder(h, m);
-                setNotificationTime(defaultTime);
-              } catch { /* non-fatal */ }
+              const granted = await requestNotificationPermissions();
+              if (granted) setNotificationTime('08:00');
             }}
             activeOpacity={0.7}
           >

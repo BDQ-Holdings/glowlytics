@@ -185,6 +185,9 @@ export interface SubscriptionState {
 export interface NotificationSettings {
   notifications_enabled: boolean;
   notification_time: string | null; // HH:MM format
+  // When true, the daily reminder rotates goal-specific tips ("don't pick",
+  // "clean your sheets", etc.) instead of generic copy. Defaults to true.
+  personalized_tips_enabled: boolean;
 }
 
 export interface PatternNotificationsState {

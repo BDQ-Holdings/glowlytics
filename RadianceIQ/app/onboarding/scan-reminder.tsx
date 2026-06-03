@@ -5,7 +5,7 @@ import Svg, { Defs, RadialGradient, Stop, Circle, Ellipse } from 'react-native-s
 import { OnboardingTransition } from '../../src/components/OnboardingTransition';
 import { useStore } from '../../src/store/useStore';
 import { useOnboardingNavigation } from '../../src/hooks/useOnboardingNavigation';
-import { scheduleDailyReminder, requestNotificationPermissions } from '../../src/services/notifications';
+import { requestNotificationPermissions } from '../../src/services/notifications';
 import { trackEvent } from '../../src/services/analytics';
 import { Colors } from '../../src/constants/theme';
 
@@ -59,7 +59,8 @@ export default function ScanReminder() {
     const granted = await requestNotificationPermissions();
     if (granted) {
       trackEvent('onboarding_scan_reminder_set', { time: timeStr });
-      await scheduleDailyReminder(hour, minute);
+      // setNotificationTime triggers the engagement-notification orchestrator,
+      // which schedules the personalized daily reminder + drop-off series.
       setNotificationTime(timeStr);
     } else {
       trackEvent('onboarding_scan_reminder_denied');
