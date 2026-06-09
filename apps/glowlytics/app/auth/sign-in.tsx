@@ -36,6 +36,13 @@ import {
 } from '../../src/constants/theme';
 import { trackEvent } from '../../src/services/analytics';
 import { env } from '../../src/config/env';
+import {
+  SignUpCompletionRequiredError,
+  detectSignUpCompletion,
+  friendlyAuthErrorMessage,
+  isSignUpCompletionRequiredError,
+  mapOpaqueAuthError,
+} from '../../src/services/oauthCompletion';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -60,20 +67,11 @@ const getOAuthRedirectUrl = () =>
     })
     : `glowlytics://${OAUTH_CALLBACK_PATH}`);
 
-const buildOAuthFailureMessage = (err: unknown, redirectUrl: string) => {
-  const base = getAuthErrorMessage(err);
-  const host = decodeClerkHost(env.CLERK_PUBLISHABLE_KEY);
-  const withNetworkHint = (message: string) => {
-    if (/missing external verification redirect url|network|timed out|503|failed to fetch/i.test(message)) {
-      return `${message}\nNetwork may be blocking ${host}. Try cellular or a different Wi-Fi network.`;
-    }
-    return message;
-  };
-  if (/redirect|callback|oauth/i.test(base)) {
-    return withNetworkHint(`${base}\nRedirect URL: ${redirectUrl}\nClerk instance: ${host}`);
-  }
-  return withNetworkHint(base);
-};
+const buildOAuthFailureMessage = (err: unknown, redirectUrl: string) =>
+  friendlyAuthErrorMessage(err, {
+    redirectUrl,
+    clerkHost: decodeClerkHost(env.CLERK_PUBLISHABLE_KEY),
+  });
 
 const getSupportedStrategies = (resource: any): string[] | null => {
   if (!Array.isArray(resource?.supportedFirstFactors)) return null;
@@ -106,7 +104,15 @@ const ensureOAuthSession = async (
   }
 
   if (result?.createdSessionId) {
-    await result.setActive?.({ session: result.createdSessionId });
+    try {
+      await result.setActive?.({ session: result.createdSessionId });
+    } catch (e) {
+      throw new Error(
+        __DEV__
+          ? `We couldn\u2019t start your session. Please try again. (${(e as Error)?.message})`
+          : 'We couldn\u2019t start your session. Please try again.',
+      );
+    }
     const completedEvent = result.signUp?.createdSessionId === result.createdSessionId
       ? 'auth_sign_up_completed'
       : 'auth_sign_in_completed';
@@ -118,27 +124,95 @@ const ensureOAuthSession = async (
   if (result?.signUp?.verifications?.externalAccount?.status === 'verified') {
     const completeSignUp = await result.signUp.update({});
     if (completeSignUp.status === 'complete' && completeSignUp.createdSessionId) {
-      await result.setActive?.({ session: completeSignUp.createdSessionId });
+      try {
+        await result.setActive?.({ session: completeSignUp.createdSessionId });
+      } catch (e) {
+        throw new Error(
+          __DEV__
+            ? `We couldn\u2019t start your session. Please try again. (${(e as Error)?.message})`
+            : 'We couldn\u2019t start your session. Please try again.',
+        );
+      }
+      trackEvent('auth_sign_up_completed', { method });
+      onSuccess();
+      return;
+    }
+  }
+  // SSO fresh-user transferable handoff. `useSignInWithApple` (iOS native)
+  // performs the transfer-create internally, but `useSSO().startSSOFlow`
+  // (Google + non-iOS Apple) hands us back a signIn in `transferable` state
+  // with the signUp resource empty. Without this branch the user falls
+  // through to the generic "Sign-in couldn't finish" error.
+  if (
+    result?.signIn?.status === 'transferable'
+    && result?.signUp
+    && !result?.signUp?.createdSessionId
+    && result?.signUp?.status !== 'complete'
+    && (!result?.signUp?.status || result?.signUp?.status === 'missing_requirements' || result?.signUp?.status === 'abandoned')
+  ) {
+    try {
+      await result.signUp.create({ transfer: true });
+    } catch (transferErr) {
+      // Let outer handler surface the Clerk message — it's user-friendly
+      // (e.g. "That email is taken" if the OAuth identifier collides).
+      throw transferErr;
+    }
+    if (result.signUp.createdSessionId) {
+      try {
+        await result.setActive?.({ session: result.signUp.createdSessionId });
+      } catch (e) {
+        throw new Error(
+          __DEV__
+            ? `We couldn\u2019t start your session. Please try again. (${(e as Error)?.message})`
+            : 'We couldn\u2019t start your session. Please try again.',
+        );
+      }
       trackEvent('auth_sign_up_completed', { method });
       onSuccess();
       return;
     }
   }
 
-  const hasStatuses = Boolean(result?.signIn?.status || result?.signUp?.status);
-  if (!authSessionType && !hasStatuses) {
-    if (method === 'apple') {
-      throw new Error('Apple sign-in returned no session. Verify Apple is enabled for this Clerk instance.');
-    }
-    if (method === 'google') {
-      throw new Error('Google sign-in returned no session. Verify Google is enabled for this Clerk instance.');
-    }
+
+  // Apple in particular often returns with the signUp resource pending one or
+  // two extra fields (email address when the user picked "Hide My Email" or
+  // when Apple has already shared once and is suppressing the email payload).
+  // Throw a typed error so the caller can route to /auth/complete-signup
+  // instead of dead-ending the new user with a toast.
+  const completion = detectSignUpCompletion(result?.signUp, method);
+  if (completion) {
+    trackEvent('auth_sign_up_completion_required', {
+      method,
+      missing: completion.missingFields.join(',') || 'none',
+      unverified: completion.unverifiedFields.join(',') || 'none',
+    });
+    throw new SignUpCompletionRequiredError(completion);
   }
 
   const signInStatus = result?.signIn?.status;
   const signUpStatus = result?.signUp?.status;
+  const hasStatuses = Boolean(signInStatus || signUpStatus);
+  if (!authSessionType && !hasStatuses) {
+    if (method === 'apple') {
+      throw new Error(
+        __DEV__
+          ? 'Apple sign-in returned no session. Verify Apple is enabled for this Clerk instance.'
+          : 'Sign-in couldn\u2019t finish. Please try again or use email.',
+      );
+    }
+    if (method === 'google') {
+      throw new Error(
+        __DEV__
+          ? 'Google sign-in returned no session. Verify Google is enabled for this Clerk instance.'
+          : 'Sign-in couldn\u2019t finish. Please try again or use email.',
+      );
+    }
+  }
+
   throw new Error(
-    `Authentication did not complete (signIn=${signInStatus || 'none'}, signUp=${signUpStatus || 'none'}).`,
+    __DEV__
+      ? `Authentication did not complete (signIn=${signInStatus || 'none'}, signUp=${signUpStatus || 'none'}).`
+      : 'Sign-in couldn\u2019t finish. Please try again or use email.',
   );
 };
 
@@ -175,7 +249,17 @@ const describeIncompleteEmailSignIn = (result: any): string => {
   if (status === 'needs_identifier') {
     return 'Clerk did not accept this sign-in identifier. Verify the demo account email exists in the production Clerk instance.';
   }
-  return `Authentication did not complete (status=${status || 'unknown'}).`;
+  if (status === 'needs_client_trust') {
+    // Server-side trust gate: the password verified but Clerk refused to mint a
+    // session because the device wasn't trusted. Not fixable in-app — the fix is
+    // relaxing Client Trust for the instance / bypassing it for the demo user.
+    return __DEV__
+      ? 'Sign-in blocked by Clerk Client Trust (status=needs_client_trust). Disable Client Trust enforcement for this instance or enable Bypass Client Trust on the demo user.'
+      : 'We couldn’t verify this device for sign-in. Please try again on a different network, or use a different sign-in method.';
+  }
+  return __DEV__
+    ? `Authentication did not complete (status=${status || 'unknown'}).`
+    : 'We couldn’t finish signing you in. Please try again, or use a different sign-in method.';
 };
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -303,7 +387,9 @@ export default function SignInScreen() {
     }
     const t = setTimeout(() => {
       setClerkSlowWarning(
-        `Authentication is taking longer than expected. Network may be blocking ${env.CLERK_INSTANCE_HOST}. Try cellular or another Wi-Fi.`,
+        __DEV__
+          ? `Authentication is taking longer than expected. Network may be blocking ${env.CLERK_INSTANCE_HOST}. Try cellular or another Wi-Fi.`
+          : 'Sign-in is taking longer than expected. Please check your connection and try again.',
       );
     }, 12000);
     return () => clearTimeout(t);
@@ -385,7 +471,11 @@ export default function SignInScreen() {
       try {
         return await run();
       } catch (retryErr) {
-        throw new Error(`${getAuthErrorMessage(retryErr)}\nDetails: ${getSSODebugState(signIn)}`);
+        throw new Error(
+          __DEV__
+            ? `${getAuthErrorMessage(retryErr)}\nDetails: ${getSSODebugState(signIn)}`
+            : getAuthErrorMessage(retryErr),
+        );
       }
     }
   }, [signIn, startSSOFlow]);
@@ -413,6 +503,18 @@ export default function SignInScreen() {
 
       await ensureOAuthSession(result, 'apple', triggerSuccessAnimation);
     } catch (err: unknown) {
+      if (isSignUpCompletionRequiredError(err)) {
+        setOauthLoading(null);
+        router.push({
+          pathname: '/auth/complete-signup',
+          params: {
+            method: err.context.method,
+            missing: err.context.missingFields.join(','),
+            unverified: err.context.unverifiedFields.join(','),
+          },
+        } as any);
+        return;
+      }
       if (!isAppleAuthCancelError(err)) {
         const message = buildOAuthFailureMessage(err, getOAuthRedirectUrl());
         trackEvent('auth_sign_in_failed', { method: 'apple', error: message });
@@ -441,6 +543,18 @@ export default function SignInScreen() {
 
       await ensureOAuthSession(result, 'google', triggerSuccessAnimation);
     } catch (err: unknown) {
+      if (isSignUpCompletionRequiredError(err)) {
+        setOauthLoading(null);
+        router.push({
+          pathname: '/auth/complete-signup',
+          params: {
+            method: err.context.method,
+            missing: err.context.missingFields.join(','),
+            unverified: err.context.unverifiedFields.join(','),
+          },
+        } as any);
+        return;
+      }
       const message = buildOAuthFailureMessage(err, getOAuthRedirectUrl());
       if (!message.includes('cancel')) {
         trackEvent('auth_sign_in_failed', { method: 'google', error: message });
@@ -490,7 +604,11 @@ export default function SignInScreen() {
         setError(message);
       }
     } catch (err: unknown) {
-      const message = getAuthErrorMessage(err, 'Invalid email or password.');
+      const raw = getAuthErrorMessage(err, 'Invalid email or password.');
+      // A thrown client-trust / bot-challenge error reads as developer debug text
+      // ("There is no account to transfer", "Additional verification required").
+      // Map it to actionable copy in production; keep the raw string in dev.
+      const message = __DEV__ ? raw : (mapOpaqueAuthError(raw) ?? raw);
       trackEvent('auth_sign_in_failed', { method: 'email', error: message });
       setError(message);
     } finally {
