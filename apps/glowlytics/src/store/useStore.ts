@@ -39,6 +39,11 @@ interface AppState {
   dailyRecords: DailyRecord[];
   modelOutputs: ModelOutput[];
 
+  // The Clerk user id the local data is currently bound to. null = anonymous /
+  // unclaimed onboarding data. Used to detect a switch to a *different* account
+  // so we never adopt the previous account's data — see reconcileAuthUserId.
+  authedUserId: string | null;
+
   // Onboarding state
   onboardingStep: number;
   onboardingFlow: OnboardingScreenName[];
@@ -82,11 +87,17 @@ interface AppState {
   // triggers a fresh open.
   openAddProductTrigger: number;
 
+  // Daily quote gating — set to YYYY-MM-DD when the user dismisses the
+  // morning quote screen. The DailyQuoteRouter in app/_layout.tsx checks
+  // this against today's local date and shows /quote when stale.
+  dailyQuoteSeenDate: string | null;
+
   // Actions
   setOnboardingStep: (step: number) => void;
   setOnboardingFlow: (flow: OnboardingScreenName[]) => void;
   setOnboardingFlowIndex: (index: number) => void;
-  reconcileAuthUserId: (authUserId: string) => void;
+  reconcileAuthUserId: (authUserId: string) => Promise<void>;
+  hydrateForUser: (authUserId: string) => Promise<void>;
   createUser: (data: Partial<UserProfile>) => void;
   updateUser: (data: Partial<UserProfile>) => void;
   updateHealthConnection: (data: Partial<HealthConnectionState>) => void;
@@ -129,6 +140,7 @@ interface AppState {
   setAppearance: (patch: Partial<AppearancePreferences>) => Promise<void>;
   resetAppearance: () => Promise<void>;
   requestAddProduct: () => void;
+  markDailyQuoteSeen: () => void;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -252,6 +264,7 @@ const debouncedPersist = (persistFn: () => Promise<void>) => {
 
 export const useStore = create<AppState>((set, get) => ({
   user: null,
+  authedUserId: null,
   protocol: null,
   products: [],
   dailyRecords: [],
@@ -279,34 +292,82 @@ export const useStore = create<AppState>((set, get) => ({
 
   appearance: { ...DEFAULT_APPEARANCE },
   openAddProductTrigger: 0,
+  dailyQuoteSeenDate: null,
 
   setOnboardingStep: (step) => set({ onboardingStep: step }),
   setOnboardingFlow: (flow) => set({ onboardingFlow: flow }),
   setOnboardingFlowIndex: (index) => set({ onboardingFlowIndex: index }),
-  reconcileAuthUserId: (authUserId) => {
+  reconcileAuthUserId: async (authUserId) => {
+    if (!authUserId) return;
     const state = get();
-    const user = state.user;
-    if (!authUserId || !user || user.user_id === authUserId) return;
+    const { authedUserId, user } = state;
 
-    const migratedUser = normalizeUser({ ...user, user_id: authUserId });
-    if (!migratedUser) return;
+    // Already bound to this identity — nothing to do.
+    if (authedUserId === authUserId) return;
 
-    set({
-      user: migratedUser,
-      protocol: state.protocol ? { ...state.protocol, user_id: authUserId } : null,
-      products: state.products.map((p) => ({ ...p, user_id: authUserId })),
-      dailyRecords: state.dailyRecords.map((r) => ({ ...r, user_id: authUserId })),
-    });
-    debouncedPersist(() => get().persistData());
+    // Switching to a DIFFERENT already-authenticated account on this device.
+    // NEVER adopt the previous account's data (that was the cross-account bleed
+    // bug). Wipe local state, then load this user's own data from the backend.
+    if (authedUserId && authedUserId !== authUserId) {
+      await get().resetAll();
+      set({ authedUserId: authUserId });
+      await get().hydrateForUser(authUserId);
+      return;
+    }
 
-    syncToBackend('reconcile user id', async () => {
-      try {
-        await api.createUser(toBackendUserProfilePayload(migratedUser));
-      } catch (err) {
-        if (isApiStatus(err, 409)) return;
-        throw err;
-      }
-    });
+    // authedUserId is null → local data (if any) is an anonymous onboarding
+    // session not yet tied to a real account.
+    if (user) {
+      // Claim it for this identity. A brand-new user's just-entered onboarding
+      // data is the source of truth here, so do NOT hydrate-replace it.
+      const migratedUser = normalizeUser({ ...user, user_id: authUserId });
+      if (!migratedUser) return;
+      set({
+        user: migratedUser,
+        authedUserId: authUserId,
+        protocol: state.protocol ? { ...state.protocol, user_id: authUserId } : null,
+        products: state.products.map((p) => ({ ...p, user_id: authUserId })),
+        dailyRecords: state.dailyRecords.map((r) => ({ ...r, user_id: authUserId })),
+      });
+      debouncedPersist(() => get().persistData());
+      syncToBackend('reconcile user id', async () => {
+        try {
+          await api.createUser(toBackendUserProfilePayload(migratedUser));
+        } catch (err) {
+          if (isApiStatus(err, 409)) return;
+          throw err;
+        }
+      });
+      return;
+    }
+
+    // No local user at all → returning user / fresh install. Pull their data.
+    set({ authedUserId: authUserId });
+    await get().hydrateForUser(authUserId);
+  },
+
+  hydrateForUser: async (authUserId) => {
+    if (!authUserId) return;
+    try {
+      const [profile, protocol, products, dailyRecords, modelOutputs] = await Promise.all([
+        api.getUser(authUserId).catch(() => null),
+        api.getProtocol(authUserId).catch(() => null),
+        api.getProducts(authUserId).catch(() => [] as ProductEntry[]),
+        api.getDailyRecords(authUserId, 365).catch(() => [] as DailyRecord[]),
+        api.getModelOutputs(authUserId, 365).catch(() => [] as ModelOutput[]),
+      ]);
+      set({
+        authedUserId: authUserId,
+        user: profile ? normalizeUser(profile) : get().user,
+        protocol: protocol ?? null,
+        products: Array.isArray(products) ? products : [],
+        dailyRecords: Array.isArray(dailyRecords) ? dailyRecords : [],
+        modelOutputs: Array.isArray(modelOutputs) ? modelOutputs : [],
+      });
+      debouncedPersist(() => get().persistData());
+    } catch (e) {
+      if (__DEV__) console.warn('[Store] hydrateForUser failed', e);
+    }
   },
 
   createUser: (data) => {
@@ -326,10 +387,6 @@ export const useStore = create<AppState>((set, get) => ({
       onboarding_complete: data.onboarding_complete || false,
     });
     set({ user });
-    // Auto-start the 7-day trial on first user creation. Idempotent — startTrial() is a no-op
-    // if trial_start_date already exists. Closes the gap where users reach the camera before
-    // hitting the onboarding paywall (e.g. upgraded from a pre-paywall build).
-    get().startTrial();
     debouncedPersist(() => get().persistData());
     if (user) {
       syncToBackend('create user profile', async () => {
@@ -692,6 +749,11 @@ export const useStore = create<AppState>((set, get) => ({
     set((s) => ({ openAddProductTrigger: s.openAddProductTrigger + 1 }));
   },
 
+  markDailyQuoteSeen: () => {
+    set({ dailyQuoteSeenDate: localDateStr(new Date()) });
+    debouncedPersist(() => get().persistData());
+  },
+
   runPatternDetection: () => {
     const state = get();
     if (!state.user) return;
@@ -942,6 +1004,7 @@ export const useStore = create<AppState>((set, get) => ({
 
         set({
           user: normalizeUser(parsed.user),
+          authedUserId: parsed.authedUserId ?? null,
           protocol: parsed.protocol || null,
           products: parsed.products || [],
           dailyRecords: parsed.dailyRecords || [],
@@ -973,6 +1036,7 @@ export const useStore = create<AppState>((set, get) => ({
             ...DEFAULT_APPEARANCE,
             ...(parsed.appearance ?? {}),
           },
+          dailyQuoteSeenDate: typeof parsed.dailyQuoteSeenDate === 'string' ? parsed.dailyQuoteSeenDate : null,
         });
 
         // Backfill: upgraded users from pre-paywall builds may have no trial dates.
@@ -998,10 +1062,10 @@ export const useStore = create<AppState>((set, get) => ({
   persistData: async () => {
     try {
       const {
-        user, protocol, products, dailyRecords, modelOutputs, gamification,
+        user, authedUserId, protocol, products, dailyRecords, modelOutputs, gamification,
         subscription, notificationSettings, onboardingFlow, onboardingFlowIndex,
         healthDailyRecords, healthSyncStatus, patterns, firstLookInsight,
-        patternNotifications, ritualCompletions, appearance,
+        patternNotifications, ritualCompletions, appearance, dailyQuoteSeenDate,
       } = get();
       // Cap stored records to last 365 days to prevent AsyncStorage bloat
       const cutoff = new Date();
@@ -1015,7 +1079,7 @@ export const useStore = create<AppState>((set, get) => ({
         Object.entries(ritualCompletions).filter(([date]) => date >= cutoffStr),
       );
       await AsyncStorage.setItem('glowlytics_data', JSON.stringify({
-        user, protocol, products,
+        user, authedUserId, protocol, products,
         dailyRecords: cappedDailyRecords,
         modelOutputs: cappedModelOutputs,
         gamification, subscription, notificationSettings,
@@ -1023,7 +1087,7 @@ export const useStore = create<AppState>((set, get) => ({
         healthDailyRecords: cappedHealthRecords,
         healthSyncStatus, patterns, firstLookInsight, patternNotifications,
         ritualCompletions: cappedRitualCompletions,
-        appearance,
+        appearance, dailyQuoteSeenDate,
       }));
     } catch (e) {
       console.log('Failed to persist data', e);
@@ -1035,6 +1099,7 @@ export const useStore = create<AppState>((set, get) => ({
     if (persistTimer) { clearTimeout(persistTimer); persistTimer = null; }
     set({
       user: null,
+      authedUserId: null,
       protocol: null,
       products: [],
       dailyRecords: [],
@@ -1060,6 +1125,7 @@ export const useStore = create<AppState>((set, get) => ({
       patternNotifications: { first_pattern_unlock_sent: false },
       ritualCompletions: {},
       appearance: { ...DEFAULT_APPEARANCE },
+      dailyQuoteSeenDate: null,
     });
     try {
       await AsyncStorage.removeItem('glowlytics_data');

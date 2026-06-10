@@ -42,6 +42,7 @@ export default function SettingsHubScreen() {
   const router = useRouter();
   const subscription = useStore((s) => s.subscription);
   const userRecord = useStore((s) => s.user);
+  const resetAll = useStore((s) => s.resetAll);
 
   const clerk = useUser ? useUser() : null;
   const clerkLib = useClerk ? useClerk() : null;
@@ -66,6 +67,9 @@ export default function SettingsHubScreen() {
     if (!clerkLib?.signOut) return;
     try {
       await clerkLib.signOut();
+      // Clear local data on sign-out (parity with account.tsx). Without this,
+      // the next account to sign in on this device inherits this user's data.
+      await resetAll();
       router.replace('/auth/sign-in' as any);
     } catch {
       // swallow; treat as no-op on failure
@@ -136,6 +140,11 @@ export default function SettingsHubScreen() {
           label="Privacy & data"
           value="Quiet"
           onPress={() => router.push('/settings/privacy' as any)}
+        />
+        <Row
+          label="Clinical sources"
+          value="AAD · ACOG · WHO"
+          onPress={() => router.push('/settings/clinical-sources' as any)}
         />
       </ListGroup>
 
