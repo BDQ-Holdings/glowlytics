@@ -103,6 +103,28 @@ describe('reconcileAuthUserId — account isolation', () => {
     expect(api.getProducts).not.toHaveBeenCalled();
   });
 
+  it('treats a lost authedUserId over a real account as a switch, not a claim (pre-upgrade migration hole)', async () => {
+    api.getUser.mockResolvedValueOnce({ user_id: 'user_B', onboarding_complete: true });
+    api.getProducts.mockResolvedValueOnce([{ user_product_id: 'pB', user_id: 'user_B' }]);
+    // Upgraded/shared device: account A's real Clerk data persisted, but the
+    // old build left authedUserId === null. User B now signs in.
+    useStore.setState({
+      authedUserId: null,
+      user: userFixture('user_A'),
+      products: [{ user_product_id: 'p1', user_id: 'user_A' }] as any,
+    } as any);
+
+    await useStore.getState().reconcileAuthUserId('user_B');
+
+    const s = useStore.getState();
+    expect(s.authedUserId).toBe('user_B');
+    // A's data is wiped and B's own data hydrated — NOT A's re-stamped/synced onto B.
+    expect(api.getProducts).toHaveBeenCalledWith('user_B');
+    expect(s.user?.user_id).toBe('user_B');
+    expect(s.products).toEqual([{ user_product_id: 'pB', user_id: 'user_B' }]);
+    expect(api.createUser).not.toHaveBeenCalled();
+  });
+
   it('is a no-op when already bound to the same account', async () => {
     const userObj = userFixture('user_B');
     useStore.setState({ authedUserId: 'user_B', user: userObj } as any);
@@ -134,5 +156,75 @@ describe('resetAll clears the bound identity', () => {
     await useStore.getState().resetAll();
     expect(useStore.getState().authedUserId).toBeNull();
     expect(AsyncStorage.removeItem).toHaveBeenCalledWith('glowlytics_data');
+  });
+});
+
+describe('hydrateForUser — partial-failure resilience', () => {
+  it('preserves existing protocol/products/records/scans when their fetch fails', async () => {
+    const existingProtocol = { protocol_id: 'p1' } as any;
+    const existingProducts = [{ user_product_id: 'prod1', user_id: 'user_A' }] as any;
+    const existingRecords = [{ daily_id: 'd1' }] as any;
+    const existingOutputs = [{ output_id: 'o1', daily_id: 'd1' }] as any;
+    useStore.setState({
+      authedUserId: 'user_A',
+      user: userFixture('user_A'),
+      protocol: existingProtocol,
+      products: existingProducts,
+      dailyRecords: existingRecords,
+      modelOutputs: existingOutputs,
+    } as any);
+
+    // getUser succeeds; the four data fetches fail (transient network blip).
+    api.getUser.mockResolvedValueOnce({ user_id: 'user_A', onboarding_complete: true });
+    api.getProtocol.mockRejectedValueOnce(new Error('network'));
+    api.getProducts.mockRejectedValueOnce(new Error('network'));
+    api.getDailyRecords.mockRejectedValueOnce(new Error('network'));
+    api.getModelOutputs.mockRejectedValueOnce(new Error('network'));
+
+    await useStore.getState().hydrateForUser('user_A');
+
+    const s = useStore.getState();
+    // Signed-in user keeps all their data — a flaky hydrate must not wipe it.
+    expect(s.protocol).toBe(existingProtocol);
+    expect(s.products).toBe(existingProducts);
+    expect(s.dailyRecords).toBe(existingRecords);
+    expect(s.modelOutputs).toBe(existingOutputs);
+    expect(s.authHydrating).toBe(false);
+  });
+
+  it('overwrites with empty when the fetch SUCCEEDS but returns empty', async () => {
+    useStore.setState({
+      authedUserId: 'user_A',
+      user: userFixture('user_A'),
+      products: [{ user_product_id: 'old', user_id: 'user_A' }] as any,
+    } as any);
+
+    api.getUser.mockResolvedValueOnce({ user_id: 'user_A', onboarding_complete: true });
+    api.getProtocol.mockResolvedValueOnce(null);
+    api.getProducts.mockResolvedValueOnce([]); // genuine empty (user deleted all)
+    api.getDailyRecords.mockResolvedValueOnce([]);
+    api.getModelOutputs.mockResolvedValueOnce([]);
+
+    await useStore.getState().hydrateForUser('user_A');
+
+    expect(useStore.getState().products).toEqual([]);
+  });
+
+  it('orders hydrated model outputs newest-LAST despite a newest-first backend (#14)', async () => {
+    useStore.setState({ authedUserId: 'user_A', user: userFixture('user_A') });
+    // GET /api/model-outputs returns ORDER BY date DESC (newest first); each row
+    // carries the joined `date`. The store/UI treat [last] as the latest scan.
+    api.getUser.mockResolvedValueOnce({ user_id: 'user_A', onboarding_complete: true });
+    api.getModelOutputs.mockResolvedValueOnce([
+      { output_id: 'o3', daily_id: 'd3', date: '2026-06-20' },
+      { output_id: 'o2', daily_id: 'd2', date: '2026-06-19' },
+      { output_id: 'o1', daily_id: 'd1', date: '2026-06-18' },
+    ]);
+
+    await useStore.getState().hydrateForUser('user_A');
+
+    const outs = useStore.getState().modelOutputs;
+    expect(outs.map((o) => o.output_id)).toEqual(['o1', 'o2', 'o3']); // oldest → newest
+    expect(outs[outs.length - 1].output_id).toBe('o3'); // latest is last
   });
 });

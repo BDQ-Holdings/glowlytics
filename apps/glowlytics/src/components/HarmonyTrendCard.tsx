@@ -50,6 +50,26 @@ export const HarmonyTrendCard: React.FC<Props> = ({ maxPoints = 10 }) => {
     return out.slice(-maxPoints);
   }, [modelOutputs, maxPoints]);
 
+  // Sparkline geometry. `projected` is computed unconditionally — guarding the
+  // <2-point case inside — so the hook order is identical on every render.
+  // An async attachBoneStructure can take this card from 1 → 2 points while
+  // mounted; a useMemo placed after the early-return below would change the
+  // hook count between renders and crash the tree ("rendered more hooks").
+  const width = 100;
+  const height = 28;
+  const pad = 4;
+  const projected = useMemo(() => {
+    if (points.length < 2) return [] as { x: number; y: number }[];
+    const min = Math.min(...points.map((p) => p.score));
+    const max = Math.max(...points.map((p) => p.score));
+    const range = Math.max(1, max - min);
+    return points.map((p, i) => {
+      const x = (i / (points.length - 1)) * (width - pad * 2) + pad;
+      const y = height - pad - ((p.score - min) / range) * (height - pad * 2);
+      return { x, y };
+    });
+  }, [points]);
+
   if (points.length < 2) return null;
 
   const latest = points[points.length - 1];
@@ -57,22 +77,6 @@ export const HarmonyTrendCard: React.FC<Props> = ({ maxPoints = 10 }) => {
   const delta = Math.round(latest.score - first.score);
   const status = harmonyStatusLabel(latest.score);
 
-  // Sparkline projection
-  const width = 100;
-  const height = 28;
-  const min = Math.min(...points.map((p) => p.score));
-  const max = Math.max(...points.map((p) => p.score));
-  const range = Math.max(1, max - min);
-  const pad = 4;
-  const projected = useMemo(
-    () =>
-      points.map((p, i) => {
-        const x = (i / (points.length - 1)) * (width - pad * 2) + pad;
-        const y = height - pad - ((p.score - min) / range) * (height - pad * 2);
-        return { x, y };
-      }),
-    [points, min, range],
-  );
   const polylinePoints = projected.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
   const last = projected[projected.length - 1];
 

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Linking, StyleSheet, Text, View, TouchableOpacity, useWindowDimensions } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Camera, useCameraDevice, useCameraPermission, useFrameProcessor } from 'react-native-vision-camera';
 import { useFaceDetector } from 'react-native-vision-camera-face-detector';
 import { Worklets } from 'react-native-worklets-core';
@@ -48,6 +48,12 @@ const loadLesionModule = async (): Promise<Awaited<LesionModule> | null> => {
 const persistCaptureForAnalysis = async (sourceUri: string): Promise<string> => {
   const photosDir = `${FileSystemLegacy.documentDirectory}scan_photos/`;
   await FileSystemLegacy.makeDirectoryAsync(photosDir, { intermediates: true });
+  // MOB-02: scans intentionally live under documentDirectory (NOT cacheDirectory) because
+  // the report PDF + 90-day history depend on this path surviving relaunches. expo-file-system
+  // v19 exposes no backup-exclusion / "skip iCloud backup" flag, so we cannot opt this
+  // directory out of device backups at write time. At-rest protection relies on: (1) wipe-on-delete
+  // of scan_photos when the user deletes their data (see useStore), and (2) the OS app sandbox.
+  // The face metadata blob is separately AES-encrypted (MOB-01); the raw JPEGs are not.
   const filename = `scan_${Date.now()}.jpg`;
   const destUri = `${photosDir}${filename}`;
   await FileSystemLegacy.copyAsync({ from: sourceUri, to: destUri });
@@ -66,9 +72,9 @@ export default function CameraScreen() {
   // resolves false. We need to surface a Settings deep-link for the denied path.
   const [permissionStatus, setPermissionStatus] = useState<
     'not-determined' | 'denied' | 'restricted' | 'granted'
-  >(() => Camera.getCameraPermissionStatus() as any);
+  >(() => Camera.getCameraPermissionStatus());
   const refreshPermissionStatus = useCallback(() => {
-    setPermissionStatus(Camera.getCameraPermissionStatus() as any);
+    setPermissionStatus(Camera.getCameraPermissionStatus());
   }, []);
   // Re-check permission whenever the app returns to foreground — covers the case
   // where the user toggled camera access in iOS Settings and returned to Glowlytics.
@@ -105,6 +111,18 @@ export default function CameraScreen() {
     const t = setTimeout(() => setCameraSessionArmed(true), 50);
     return () => clearTimeout(t);
   }, [hasPermission, device]);
+
+  // Reset the in-progress capture flag whenever the camera regains focus. The
+  // capture success path navigates to /scan/analyzing WITHOUT clearing
+  // `capturing` (so flash/tracking stay frozen during the hand-off). If the user
+  // backs out of analyzing, the camera would otherwise stay bricked: the capture
+  // button stays disabled and face tracking stays paused (useFaceTracking is
+  // gated on !capturing). Clearing on focus re-enables capture on return.
+  useFocusEffect(
+    useCallback(() => {
+      setCapturing(false);
+    }, []),
+  );
   const [qualityFailed, setQualityFailed] = useState(false);
   const [qualityIssues, setQualityIssues] = useState<string[]>([]);
   const [autoCountdown, setAutoCountdown] = useState(0);
@@ -190,7 +208,7 @@ export default function CameraScreen() {
   const frameProcessor = useFrameProcessor((frame) => {
     'worklet';
     const result = detectFaces(frame);
-    const mapped: DetectedFace[] = result.map((f: any) => ({
+    const mapped: DetectedFace[] = result.map((f) => ({
       x: f.bounds.x,
       y: f.bounds.y,
       width: f.bounds.width,
@@ -311,8 +329,11 @@ export default function CameraScreen() {
       detectingRef.current = true;
 
       try {
-        // VisionCamera takePhoto for lesion detection frame
-        const photo = await cameraRef.current.takePhoto();
+        // VisionCamera takePhoto for lesion detection frame. Silence the shutter:
+        // this fires ~3×/s during framing and vision-camera defaults the shutter
+        // sound ON, so the camera would click continuously (and can't be silenced
+        // by the ringer in JP/KR) (#26).
+        const photo = await cameraRef.current.takePhoto({ enableShutterSound: false });
         if (!photo?.path) {
           detectingRef.current = false;
           return;
@@ -530,7 +551,7 @@ export default function CameraScreen() {
         // Re-keying on device.id forces a fresh native mount when the device handle
         // changes — works around vision-camera #2143 / #789 where the Camera silently
         // fails to initialize after a permission-grant transition (no onError, no init).
-        key={(device as any)?.id ?? 'no-device'}
+        key={device?.id ?? 'no-device'}
         device={device}
         // Defer isActive by a tick so layout/permission state settles before the native
         // AVCaptureSession opens. Same workaround pattern as the lifecycle docs recommend.

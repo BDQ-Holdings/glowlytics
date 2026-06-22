@@ -695,7 +695,35 @@ function findingsFromScores(metrics, scored, sex) {
 // Top-level orchestration
 // ---------------------------------------------------------------------------
 
+// A mesh with no spatial extent (all-zero / coincident points) must NOT be
+// scored — every metric degenerates to a finite-but-meaningless number and the
+// old code returned harmony 78 / status 'ok' for it (#4). Reject it as 'no_face'.
+function isDegenerateMesh(vertices) {
+  // Accept both Array and TypedArray (real meshes are Float32Array, for which
+  // Array.isArray() is false) — gate on a usable numeric length instead.
+  if (!vertices || typeof vertices.length !== 'number' || vertices.length < 3) return true;
+  let min = Infinity;
+  let max = -Infinity;
+  let anyFinite = false;
+  for (let i = 0; i < vertices.length; i++) {
+    const v = vertices[i];
+    if (!Number.isFinite(v)) continue;
+    anyFinite = true;
+    if (v < min) min = v;
+    if (v > max) max = v;
+  }
+  // No finite coords, or zero bounding-box extent → degenerate.
+  return !anyFinite || (max - min) < 1e-6;
+}
+
 function analyzeBoneStructure({ vertices, blendShapes = null, sex = null, source = 'arkit' }) {
+  // Validate the source up-front: a bogus source is a programmer error and must
+  // throw regardless of mesh content (otherwise the degenerate guard below would
+  // mask it for an all-zero mesh).
+  if (!LANDMARK_TABLES[source]) throw new Error(`Unknown landmark source: ${source}`);
+  if (isDegenerateMesh(vertices)) {
+    return { harmony: null, status: 'no_face', metrics: {}, scored: {}, findings: [], domainScores: {} };
+  }
   const metrics = computeMetrics3D(vertices, blendShapes, sex, source);
   if (!metrics) {
     return { harmony: null, status: 'no_face', metrics: {}, scored: {}, findings: [], domainScores: {} };

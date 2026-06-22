@@ -8,7 +8,7 @@ interface SourceMatcher {
   patterns: RegExp[];
 }
 
-const MEDICAL_SOURCE_MATCHERS: SourceMatcher[] = [
+export const MEDICAL_SOURCE_MATCHERS: SourceMatcher[] = [
   {
     label: 'American Academy of Dermatology',
     url: 'https://www.aad.org/public/diseases/acne/derm-treat/treat',

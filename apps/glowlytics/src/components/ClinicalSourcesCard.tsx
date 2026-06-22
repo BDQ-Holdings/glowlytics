@@ -12,13 +12,31 @@ interface ClinicalSourcesCardProps {
   limit?: number;
 }
 
+const DEFAULT_SOURCES: { citation: string; text: string; url: string }[] = [
+  {
+    citation: 'American Academy of Dermatology',
+    text: 'Evidence-based guidance for acne, sunscreen, and skin-health care.',
+    url: 'https://www.aad.org/public/diseases/acne/derm-treat/treat',
+  },
+  {
+    citation: 'American College of Obstetricians and Gynecologists',
+    text: 'Reference for menstrual cycle context and pregnancy-safe skin guidance.',
+    url: 'https://www.acog.org/womens-health/infographics/the-menstrual-cycle',
+  },
+  {
+    citation: 'World Health Organization \u2014 UV Index',
+    text: 'Global guidance on sun exposure and UV protection.',
+    url: 'https://www.who.int/news-room/questions-and-answers/item/radiation-the-ultraviolet-%28uv%29-index',
+  },
+];
+
 export const ClinicalSourcesCard: React.FC<ClinicalSourcesCardProps> = ({
   recommendations,
   title = 'Clinical Sources',
   subtitle = 'These references anchor the medical guidance shown in Glowlytics.',
   limit = 3,
 }) => {
-  const items = useMemo(() => {
+  const { items, resolvedSubtitle } = useMemo(() => {
     const deduped = new Map<string, { citation: string; text: string; url: string | null }>();
 
     for (const rec of recommendations || []) {
@@ -32,10 +50,17 @@ export const ClinicalSourcesCard: React.FC<ClinicalSourcesCardProps> = ({
       });
     }
 
-    return Array.from(deduped.values()).slice(0, limit);
-  }, [limit, recommendations]);
+    const resolved = Array.from(deduped.values()).slice(0, limit);
+    if (resolved.length === 0) {
+      return {
+        items: DEFAULT_SOURCES.slice(0, limit) as { citation: string; text: string; url: string | null }[],
+        resolvedSubtitle: 'Standard clinical references behind Glowlytics guidance.',
+      };
+    }
+    return { items: resolved, resolvedSubtitle: subtitle };
+  }, [limit, recommendations, subtitle]);
 
-  if (items.length === 0) return null;
+
 
   return (
     <View style={styles.card}>
@@ -43,7 +68,7 @@ export const ClinicalSourcesCard: React.FC<ClinicalSourcesCardProps> = ({
         <Feather name="book-open" size={15} color={Colors.primary} />
         <Text style={styles.title}>{title}</Text>
       </View>
-      <Text style={styles.subtitle}>{subtitle}</Text>
+      <Text style={styles.subtitle}>{resolvedSubtitle}</Text>
       <View style={styles.stack}>
         {items.map((item) => (
           <View key={item.citation} style={styles.sourceRow}>

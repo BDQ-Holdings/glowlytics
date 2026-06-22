@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { FontFamily, Glow, Spacing } from '../../src/constants/theme';
@@ -9,17 +9,12 @@ import {
   SectionLabel,
   SettingsHeader,
   SettingsPage,
-  Toggle,
 } from '../../src/components/settings/SettingsPrimitives';
 
 const P = Glow.palette;
 
 export default function PrivacyScreen() {
   const router = useRouter();
-  const [shareResearch, setShareResearch] = useState(true);
-  const [crash, setCrash] = useState(true);
-  const [shareProvider, setShareProvider] = useState(false);
-  const [hidePreviews, setHidePreviews] = useState(true);
 
   return (
     <SettingsPage>
@@ -30,16 +25,17 @@ export default function PrivacyScreen() {
         <View style={styles.pledgeGlow} pointerEvents="none" />
         <View>
           <Text style={styles.pledgeEyebrow}>Our pledge</Text>
-          <Text style={styles.pledgeTitle}>Your face never leaves your phone.</Text>
+          <Text style={styles.pledgeTitle}>Your scans, handled with care.</Text>
           <Text style={styles.pledgeBody}>
-            Photos are processed on-device. We see numbers, not pictures.
+            Photos are uploaded to our secure backend and OpenAI to generate your
+            skin insights — never sold and never used to identify you.
           </Text>
         </View>
       </View>
 
       <SectionLabel>What's on this device</SectionLabel>
       <ListGroup>
-        <Row label="Face photos"  value="124 MB" sub="Encrypted at rest" />
+        <Row label="Face photos" sub="Stored on this device, uploaded for analysis" />
         <Row label="Scan history" value="9 KB"   sub="47 reads since March" />
         <Row label="Patterns"     value="3 KB"   sub="Discovered locally" />
       </ListGroup>
@@ -47,30 +43,18 @@ export default function PrivacyScreen() {
       <SectionLabel>What leaves</SectionLabel>
       <ListGroup>
         <Row
-          label="Anonymous research"
-          sub="Aggregate skin trends — never your face"
-          control={<Toggle on={shareResearch} onChange={setShareResearch} />}
+          label="Face photos"
+          sub="Sent to our secure backend and OpenAI to generate your insights"
         />
         <Row
-          label="Crash reports"
-          sub="Diagnostic only, no personal data"
-          control={<Toggle on={crash} onChange={setCrash} />}
-        />
-        <Row
-          label="Share with provider"
-          sub="Off · your dermatologist"
-          control={<Toggle on={shareProvider} onChange={setShareProvider} />}
+          label="Account & scan history"
+          sub="Synced to our encrypted database"
         />
       </ListGroup>
 
       <SectionLabel>Controls</SectionLabel>
       <ListGroup>
         <Row label="Who can see your scores" value="Just you" />
-        <Row label="App lock"                value="Face ID" />
-        <Row
-          label="Hide previews on lockscreen"
-          control={<Toggle on={hidePreviews} onChange={setHidePreviews} />}
-        />
       </ListGroup>
 
       <View style={styles.footer}>

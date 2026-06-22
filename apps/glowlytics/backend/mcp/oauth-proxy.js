@@ -51,6 +51,25 @@ const clerkIssuer = () => mcpConfig().clerkIssuer;
 const ourBaseUrl = () => mcpConfig().baseUrl;
 const ourCallbackUrl = () => `${ourBaseUrl()}/oauth/callback`;
 
+// Loopback redirects (the MCP Inspector and other native/CLI clients) may use
+// any port per OAuth 2.1 native-app guidance (RFC 8252 §7.3); they cannot be
+// intercepted by a remote attacker. Everything else must be an EXACT match in
+// the configured allowlist (MCP-01). Defaults cover the Claude connectors; see
+// config.js DEFAULT_MCP_REDIRECT_URIS / MCP_OAUTH_PROXY_REDIRECT_URIS.
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+function isAllowedRedirectUri(uri) {
+  if (typeof uri !== 'string' || !uri) return false;
+  let parsed;
+  try {
+    parsed = new URL(uri);
+  } catch (_err) {
+    return false;
+  }
+  if (parsed.protocol === 'http:' && LOOPBACK_HOSTS.has(parsed.hostname)) return true;
+  return mcpConfig().allowedRedirectUris.has(uri);
+}
+
 function storeState({ clientState, redirectUri, codeChallenge, codeChallengeMethod }) {
   const proxyState = crypto.randomBytes(24).toString('base64url');
   stateStore.set(proxyState, {
@@ -149,9 +168,18 @@ function authorize(req, res) {
   if (!clientRedirectUri) {
     return res.status(400).json({ error: 'invalid_request', error_description: 'redirect_uri required' });
   }
-  // PKCE strongly recommended for public clients with a shared client_id.
-  // We don't reject without it — some clients (Inspector, internal) may opt out —
-  // but we forward it through if provided so Clerk enforces it on /token.
+  // MCP-01: redirect_uri MUST be in the allowlist (exact match, or loopback on
+  // any port). Reject foreign hosts BEFORE storing state so a phished /authorize
+  // can never 302 a victim's auth code to an attacker-controlled callback.
+  if (!isAllowedRedirectUri(clientRedirectUri)) {
+    return res.status(400).json({ error: 'invalid_request', error_description: 'redirect_uri not allowed' });
+  }
+  // MCP-02: PKCE (S256) is required end-to-end — a shared static public client_id
+  // is only safe when every flow carries its own code_verifier. claude.ai and the
+  // Inspector always send S256; enforce it rather than relying on upstream.
+  if (typeof q.code_challenge !== 'string' || !q.code_challenge || q.code_challenge_method !== 'S256') {
+    return res.status(400).json({ error: 'invalid_request', error_description: 'PKCE (S256) required' });
+  }
 
   const proxyState = storeState({
     clientState: typeof q.state === 'string' ? q.state : '',
@@ -165,6 +193,10 @@ function authorize(req, res) {
   upstream.searchParams.set('response_type', 'code');
   upstream.searchParams.set('redirect_uri', ourCallbackUrl());
   upstream.searchParams.set('state', proxyState);
+  // MCP-04: request the MCP resource (RFC 8707) so Clerk can populate `aud`.
+  // Best-effort hardening only — auth.js still accepts the client_id allowlist
+  // path because Clerk may not echo `resource` into the token.
+  upstream.searchParams.set('resource', `${ourBaseUrl()}/mcp`);
   if (typeof q.scope === 'string' && q.scope) upstream.searchParams.set('scope', q.scope);
   if (typeof q.code_challenge === 'string') upstream.searchParams.set('code_challenge', q.code_challenge);
   if (typeof q.code_challenge_method === 'string') upstream.searchParams.set('code_challenge_method', q.code_challenge_method);
@@ -184,6 +216,13 @@ function callback(req, res) {
   const entry = consumeState(proxyState);
   if (!entry) {
     return res.status(400).send('Invalid or expired OAuth state');
+  }
+
+  // MCP-01 (defense in depth): re-assert the stored redirect_uri against the
+  // allowlist before redirecting. Guards against an allowlist tightened while a
+  // flow was in flight, or any future path that could seed state directly.
+  if (!isAllowedRedirectUri(entry.redirectUri)) {
+    return res.status(400).send('Stored redirect_uri is not allowed');
   }
 
   let target;
@@ -216,6 +255,9 @@ async function token(req, res) {
 
   const upstreamBody = new URLSearchParams();
   upstreamBody.set('grant_type', grantType);
+  // MCP-04: mirror the RFC 8707 resource indicator on the token exchange so a
+  // resource-aware AS narrows `aud` to this MCP server (best-effort, see authorize()).
+  upstreamBody.set('resource', `${ourBaseUrl()}/mcp`);
   if (grantType === 'authorization_code') {
     if (!body.code) {
       return res.status(400).json({ error: 'invalid_request', error_description: 'code required' });
@@ -271,7 +313,9 @@ module.exports = {
   isProxyEnabled,
   // exported for tests
   _resetForTest,
+  isAllowedRedirectUri,
   _internal: {
+    isAllowedRedirectUri,
     storeState,
     consumeState,
     getAuthorizationServerMetadata,

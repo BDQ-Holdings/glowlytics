@@ -134,18 +134,10 @@ export default function OnboardingPaywall() {
     }
   };
 
-  const handleStartTrial = () => {
-    if (busy) return;
-    console.log(TAG, 'Starting 7-day trial');
-    trackEvent('onboarding_paywall_trial_started');
-    startTrial();
-    completeOnboarding();
-  };
-
-  const handleViewPlans = async () => {
+  const handleStartTrial = async () => {
     if (busy) return;
     setBusy(true);
-    trackEvent('onboarding_paywall_view_plans');
+    trackEvent('onboarding_paywall_trial_started');
     try {
       const result = await RevenueCatUI.presentPaywallIfNeeded({
         requiredEntitlementIdentifier: ENTITLEMENT_ID,
@@ -153,14 +145,25 @@ export default function OnboardingPaywall() {
       if (result === PAYWALL_RESULT.PURCHASED || result === PAYWALL_RESULT.RESTORED) {
         trackEvent('onboarding_paywall_purchased');
         await refreshSubscription();
+        // RevenueCat's customer-info listener will set trial_start_date/end_date
+        // via subscriptionFromCustomerInfo; the local startTrial() fallback is
+        // only used if the listener races us, which is rare in the onboarding flow.
+        startTrial();
         completeOnboarding();
+        return;
       }
-      // CANCELLED / NOT_PRESENTED / ERROR — stay on screen, user can still start the free trial.
+      if (result === PAYWALL_RESULT.NOT_PRESENTED) {
+        // User already entitled (e.g. restored on prior install). Treat as success.
+        await refreshSubscription();
+        completeOnboarding();
+        return;
+      }
+      // CANCELLED / ERROR — stay on screen, user can retry.
     } catch (e: any) {
       console.warn(TAG, 'Paywall present failed:', e?.message);
       Alert.alert(
         'Subscription unavailable',
-        'We couldn’t load plans right now. Your free trial still works — start it below.',
+        'We couldn\u2019t load plans right now. Please check your connection and try again.',
       );
     } finally {
       setBusy(false);
@@ -175,8 +178,6 @@ export default function OnboardingPaywall() {
       primaryLabel="Start 7-day free trial"
       primaryOnPress={handleStartTrial}
       primaryDisabled={busy}
-      secondaryLabel="View subscription options"
-      secondaryOnPress={handleViewPlans}
       showProgress
       totalSteps={onboardingFlow.length}
       currentStep={onboardingFlowIndex}
@@ -200,7 +201,7 @@ export default function OnboardingPaywall() {
           description="Product and ingredient guidance grounded in dermatology research, tuned to what your data shows."
         />
       </View>
-      <PaywallDisclosure summary={summary} />
+      <PaywallDisclosure summary={summary} freeTrialDays={7} />
     </OnboardingTransition>
   );
 }

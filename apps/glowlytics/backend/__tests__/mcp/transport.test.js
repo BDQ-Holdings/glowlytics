@@ -27,6 +27,9 @@ afterAll(() => {
 function buildApp() {
   jest.resetModules();
   process.env.MCP_ENABLED = 'true';
+  // MCP-06: GA mode so empty-allowlist requests are permitted; the explicit
+  // allowlist test below still overrides this (size>0 enforces membership).
+  process.env.MCP_BETA_OPEN = 'true';
   process.env.MCP_BASE_URL = 'https://api.glowlytics.ai';
   process.env.CLERK_ISSUER_URL = 'https://clerk.glowlytics.ai';
   process.env.CLERK_JWKS_URL = jwksUrl;

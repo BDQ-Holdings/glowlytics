@@ -1,8 +1,20 @@
-const { Pool } = require('pg');
+const { Pool, types } = require('pg');
+const { poolSsl } = require('./db-ssl');
+
+// FI-015: Postgres DATE columns (OID 1082) otherwise parse into JS Date
+// objects, which JSON-serialize to ISO midnight timestamps (e.g.
+// '2026-06-20T00:00:00.000Z' — and TZ-shifted, often the *previous* day). The
+// mobile client keys daily records by plain 'YYYY-MM-DD' strings
+// (localDateStr), so those values never match — breaking streaks, "scanned
+// today", and day-story record attachment. Return the raw 'YYYY-MM-DD' string.
+// setTypeParser mutates the process-wide pg-types registry, so this applies to
+// every Pool in the backend regardless of which module created it. TIMESTAMP /
+// TIMESTAMPTZ (OIDs 1114/1184) are intentionally left untouched.
+types.setTypeParser(1082, (v) => v);
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL || 'postgresql://localhost:5432/glowlytics',
-  ...(process.env.DATABASE_URL ? { ssl: { rejectUnauthorized: false } } : {}),
+  ssl: poolSsl(),
 });
 
 const schema = `

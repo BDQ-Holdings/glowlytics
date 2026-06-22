@@ -9,14 +9,17 @@
 // the same token provider hook. It's fine to call it back-to-back with httpJson
 // because Clerk's getToken is itself cached for ~50s by the SDK.
 
-let getAuthToken: (() => Promise<string | null>) | null = null;
+type AuthTokenProvider = (opts?: { skipCache?: boolean }) => Promise<string | null>;
+
+let getAuthToken: AuthTokenProvider | null = null;
 
 /** Mirror of httpClient.setAuthTokenProvider — both are wired at the same time. */
-export const _setProvider = (provider: () => Promise<string | null>) => {
+export const _setProvider = (provider: AuthTokenProvider) => {
   getAuthToken = provider;
 };
 
-/** Returns the current Bearer token (Clerk JWT), or null when signed out. */
+/** Returns the current Bearer token (Clerk JWT), or null when signed out.
+ *  Peeks via the provider's default (cached) path — no forced refresh here. */
 export const _peekAuthToken = async (): Promise<string | null> => {
   if (!getAuthToken) return null;
   return getAuthToken();

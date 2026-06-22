@@ -11,17 +11,15 @@ import type {
   AppearancePreferences,
 } from '../types';
 import { DEFAULT_APPEARANCE, applyAppIcon } from '../services/appearance';
-import { defaultSubscription, canScan as canScanPure, startTrial as computeTrial } from '../services/subscription';
+import { defaultSubscription, canScan as canScanPure, startTrial as computeTrial, logOutRevenueCat } from '../services/subscription';
 import * as api from '../services/api';
-import { enqueueSync } from '../services/syncOutbox';
+import { enqueueSync, resetSyncOutbox } from '../services/syncOutbox';
 import { buildOnboardingFlow } from '../services/onboardingFlow';
 import { localDateStr } from '../utils/localDate';
 import { detectPatterns } from '../services/patternEngine';
-import { trackEvent } from '../services/analytics';
-// healthSync imports the native @kingstinct/react-native-healthkit module at the top level,
-// which throws when loaded under Jest (no TurboModule registry). Defer to a dynamic require
-// inside syncHealthData so the test environment never triggers the native binding.
-import type { pullLastNDays as PullLastNDays } from '../services/healthSync';
+import { trackEvent, resetAnalytics } from '../services/analytics';
+import { encryptJson, decryptJson } from '../services/secureStorage';
+import { pullLastNDays } from '../services/healthSync';
 import {
   getLevelForXP,
   getXPForScan,
@@ -43,6 +41,10 @@ interface AppState {
   // unclaimed onboarding data. Used to detect a switch to a *different* account
   // so we never adopt the previous account's data — see reconcileAuthUserId.
   authedUserId: string | null;
+
+  // Runtime-only flag: true while hydrateForUser awaits the backend. Lets the UI
+  // hold gating decisions until the signed-in user's data lands. NOT persisted.
+  authHydrating: boolean;
 
   // Onboarding state
   onboardingStep: number;
@@ -265,6 +267,7 @@ const debouncedPersist = (persistFn: () => Promise<void>) => {
 export const useStore = create<AppState>((set, get) => ({
   user: null,
   authedUserId: null,
+  authHydrating: false,
   protocol: null,
   products: [],
   dailyRecords: [],
@@ -318,6 +321,20 @@ export const useStore = create<AppState>((set, get) => ({
     // authedUserId is null → local data (if any) is an anonymous onboarding
     // session not yet tied to a real account.
     if (user) {
+      // Pre-upgrade migration hole: builds <=#120 persisted `authedUserId` as
+      // null even for a real signed-in account. If the local `user_id` is already
+      // a Clerk id (`user_…`) that differs from the identity now signing in, this
+      // is a DIFFERENT account on a shared/upgraded device — treat it as a switch
+      // (wipe + hydrate), never claim, so we never stamp or sync the previous
+      // user's profile/products/records onto this account. Anonymous onboarding
+      // ids come from generateId() (uuid) and never carry the `user_` prefix, so
+      // a genuine first sign-in still falls through to the claim path below.
+      if (user.user_id?.startsWith('user_') && user.user_id !== authUserId) {
+        await get().resetAll();
+        set({ authedUserId: authUserId });
+        await get().hydrateForUser(authUserId);
+        return;
+      }
       // Claim it for this identity. A brand-new user's just-entered onboarding
       // data is the source of truth here, so do NOT hydrate-replace it.
       const migratedUser = normalizeUser({ ...user, user_id: authUserId });
@@ -348,25 +365,49 @@ export const useStore = create<AppState>((set, get) => ({
 
   hydrateForUser: async (authUserId) => {
     if (!authUserId) return;
+    set({ authHydrating: true });
     try {
+      // `undefined` is the per-call FAILURE sentinel (a successful fetch returns
+      // the value or an empty array). This lets the merge below distinguish
+      // "fetch failed → keep what we have" from "fetch succeeded but empty →
+      // overwrite", so a transient network blip during hydrate never wipes a
+      // signed-in user's protocol / products / records / scans out of the store.
       const [profile, protocol, products, dailyRecords, modelOutputs] = await Promise.all([
         api.getUser(authUserId).catch(() => null),
-        api.getProtocol(authUserId).catch(() => null),
-        api.getProducts(authUserId).catch(() => [] as ProductEntry[]),
-        api.getDailyRecords(authUserId, 365).catch(() => [] as DailyRecord[]),
-        api.getModelOutputs(authUserId, 365).catch(() => [] as ModelOutput[]),
+        api.getProtocol(authUserId).catch(() => undefined),
+        api.getProducts(authUserId).catch(() => undefined),
+        api.getDailyRecords(authUserId, 365).catch(() => undefined),
+        api.getModelOutputs(authUserId, 365).catch(() => undefined),
       ]);
+      // Identity race guard: a newer sign-in to a DIFFERENT account may have won
+      // while we awaited the backend. If the store has since bound to another
+      // (non-null) account, this result is stale — abort so we never clobber the
+      // new account's data with the previous user's.
+      if (get().authedUserId !== authUserId && get().authedUserId !== null) return;
       set({
         authedUserId: authUserId,
         user: profile ? normalizeUser(profile) : get().user,
-        protocol: protocol ?? null,
-        products: Array.isArray(products) ? products : [],
-        dailyRecords: Array.isArray(dailyRecords) ? dailyRecords : [],
-        modelOutputs: Array.isArray(modelOutputs) ? modelOutputs : [],
+        protocol: protocol !== undefined ? protocol : get().protocol,
+        products: Array.isArray(products) ? products : get().products,
+        dailyRecords: Array.isArray(dailyRecords) ? dailyRecords : get().dailyRecords,
+        // #14: GET /api/model-outputs returns newest-FIRST (ORDER BY date DESC),
+        // but the store + UI treat modelOutputs[last] as the latest scan (matching
+        // addModelOutput's append). Order newest-LAST by the joined `date` so a
+        // post-reinstall hydrate doesn't surface the OLDEST scan as current
+        // (inverting Today/Profile/Harmony + the profile "glow gained" sign).
+        modelOutputs: Array.isArray(modelOutputs)
+          ? [...modelOutputs].sort((a, b) => {
+              const da = (a as ModelOutput & { date?: string }).date ?? '';
+              const db = (b as ModelOutput & { date?: string }).date ?? '';
+              return da < db ? -1 : da > db ? 1 : 0;
+            })
+          : get().modelOutputs,
       });
       debouncedPersist(() => get().persistData());
     } catch (e) {
       if (__DEV__) console.warn('[Store] hydrateForUser failed', e);
+    } finally {
+      set({ authHydrating: false });
     }
   },
 
@@ -587,8 +628,30 @@ export const useStore = create<AppState>((set, get) => ({
     set((s) => {
       const existing = s.healthDailyRecords.findIndex((r) => r.date === date);
       if (existing >= 0) {
+        const prev = s.healthDailyRecords[existing];
+        // Field-level merge (#13): a transient HealthKit failure returns an
+        // all-null record for the day; wholesale-replacing would permanently
+        // destroy that day's good data. Keep the prior value wherever the
+        // incoming metric is null/undefined (0 and '' are valid and kept).
+        const merged: HealthDailyRecord = {
+          ...prev,
+          sleep_total_minutes: record.sleep_total_minutes ?? prev.sleep_total_minutes,
+          sleep_deep_minutes: record.sleep_deep_minutes ?? prev.sleep_deep_minutes,
+          sleep_rem_minutes: record.sleep_rem_minutes ?? prev.sleep_rem_minutes,
+          hrv_sdnn_ms: record.hrv_sdnn_ms ?? prev.hrv_sdnn_ms,
+          resting_hr_bpm: record.resting_hr_bpm ?? prev.resting_hr_bpm,
+          steps: record.steps ?? prev.steps,
+          mindful_minutes: record.mindful_minutes ?? prev.mindful_minutes,
+          menstrual_flow: record.menstrual_flow ?? prev.menstrual_flow,
+          cycle_day_estimated: record.cycle_day_estimated ?? prev.cycle_day_estimated,
+          synced_at: record.synced_at,
+        };
+        merged.partial =
+          merged.sleep_total_minutes === null &&
+          merged.hrv_sdnn_ms === null &&
+          merged.resting_hr_bpm === null;
         const next = [...s.healthDailyRecords];
-        next[existing] = record;
+        next[existing] = merged;
         return { healthDailyRecords: next };
       }
       return { healthDailyRecords: [...s.healthDailyRecords, record] };
@@ -606,8 +669,6 @@ export const useStore = create<AppState>((set, get) => ({
     }
     set((s) => ({ healthSyncStatus: { ...s.healthSyncStatus, in_progress: true } }));
     try {
-      // Dynamic require keeps the native HealthKit binding out of the Jest module graph.
-      const pullLastNDays: typeof PullLastNDays = require('../services/healthSync').pullLastNDays;
       const { records, errors } = await pullLastNDays(2, user.user_id);
       for (const r of records) {
         get().upsertHealthDailyRecord(r.date, r);
@@ -643,7 +704,6 @@ export const useStore = create<AppState>((set, get) => ({
     if (!user) return { added: 0, errors: ['no_user'] };
     set((s) => ({ healthSyncStatus: { ...s.healthSyncStatus, in_progress: true } }));
     try {
-      const pullLastNDays: typeof PullLastNDays = require('../services/healthSync').pullLastNDays;
       const { records, errors } = await pullLastNDays(14, user.user_id);
       for (const r of records) {
         get().upsertHealthDailyRecord(r.date, r);
@@ -808,17 +868,20 @@ export const useStore = create<AppState>((set, get) => ({
     const records = get().dailyRecords;
     if (records.length === 0) return 0;
     const dateSet = new Set(records.map((r) => r.date));
-    let streak = 0;
     const today = new Date();
-    for (let i = 0; i < records.length; i++) {
+    // Grace for "not scanned yet today": a streak earned through yesterday is
+    // still alive in the morning before today's scan. Start the walk at today,
+    // but if today isn't logged yet, start at yesterday — so the flame only
+    // breaks on a real gap (no today AND no yesterday), not every morning.
+    const startOffset = dateSet.has(localDateStr(today)) ? 0 : 1;
+    let streak = 0;
+    let i = startOffset;
+    while (true) {
       const expected = new Date(today);
       expected.setDate(expected.getDate() - i);
-      const expectedStr = localDateStr(expected);
-      if (dateSet.has(expectedStr)) {
-        streak++;
-      } else {
-        break;
-      }
+      if (!dateSet.has(localDateStr(expected))) break;
+      streak++;
+      i++;
     }
     return streak;
   },
@@ -985,8 +1048,24 @@ export const useStore = create<AppState>((set, get) => ({
 
   loadPersistedData: async () => {
     try {
-      const data = await AsyncStorage.getItem('glowlytics_data');
-      const parsed = data ? JSON.parse(data) : null;
+      const raw = await AsyncStorage.getItem('glowlytics_data');
+      let parsed: any = null;
+      let needsReencrypt = false;
+      if (raw) {
+        try {
+          // MOB-01: the persisted blob is AES-encrypted at rest.
+          parsed = await decryptJson(raw);
+        } catch {
+          // Legacy plaintext blob written before encryption: parse it and flag
+          // for one-time transparent re-encryption once state is restored.
+          try {
+            parsed = JSON.parse(raw);
+            needsReencrypt = true;
+          } catch {
+            parsed = null;
+          }
+        }
+      }
       const hasPersistedSession = Boolean(
         parsed?.user ||
         parsed?.protocol ||
@@ -995,9 +1074,14 @@ export const useStore = create<AppState>((set, get) => ({
       );
 
       if (hasPersistedSession) {
-        // Restore onboarding flow: use persisted flow, or rebuild from profile if stale/missing
+        // Restore the persisted onboarding flow as-is when it's valid: it already
+        // encodes the healthSyncedCycleDetected decision (manual menstrual screens
+        // skipped when HealthKit supplied cycle data). Rebuilding here dropped that
+        // 3rd arg and re-inserted those screens, lengthening the flow and desyncing
+        // the persisted index so resume landed on the wrong screen (#34). Only
+        // rebuild when the persisted flow is missing/empty.
         let restoredFlow: OnboardingScreenName[] = parsed.onboardingFlow;
-        if (!Array.isArray(restoredFlow) || (parsed.user?.sex && !restoredFlow.includes('products'))) {
+        if (!Array.isArray(restoredFlow) || restoredFlow.length === 0) {
           restoredFlow = buildOnboardingFlow(parsed.user?.sex, parsed.user?.menstrual_status);
         }
         const restoredIndex = typeof parsed.onboardingFlowIndex === 'number' ? parsed.onboardingFlowIndex : 0;
@@ -1020,12 +1104,17 @@ export const useStore = create<AppState>((set, get) => ({
           onboardingFlow: restoredFlow,
           onboardingFlowIndex: restoredIndex,
           healthDailyRecords: parsed.healthDailyRecords || [],
-          healthSyncStatus: parsed.healthSyncStatus || {
-            last_sync_at: null,
-            last_success_at: null,
-            last_error: null,
-            in_progress: false,
-          },
+          // Force in_progress false on restore: a sync killed mid-flight persists
+          // in_progress:true, and the syncHealthData mutex would then short-circuit
+          // every future sync forever (#11). Cold start is always "not syncing".
+          healthSyncStatus: parsed.healthSyncStatus
+            ? { ...parsed.healthSyncStatus, in_progress: false }
+            : {
+                last_sync_at: null,
+                last_success_at: null,
+                last_error: null,
+                in_progress: false,
+              },
           patterns: parsed.patterns || [],
           firstLookInsight: parsed.firstLookInsight || null,
           patternNotifications: parsed.patternNotifications || { first_pattern_unlock_sent: false },
@@ -1049,6 +1138,10 @@ export const useStore = create<AppState>((set, get) => ({
           restoredSub.trial_end_date === null
         ) {
           get().startTrial();
+        }
+        // MOB-01: upgrade a migrated legacy plaintext blob to the encrypted format.
+        if (needsReencrypt) {
+          try { await get().persistData(); } catch { /* best-effort migration */ }
         }
         return;
       }
@@ -1078,7 +1171,8 @@ export const useStore = create<AppState>((set, get) => ({
       const cappedRitualCompletions = Object.fromEntries(
         Object.entries(ritualCompletions).filter(([date]) => date >= cutoffStr),
       );
-      await AsyncStorage.setItem('glowlytics_data', JSON.stringify({
+      // MOB-01: encrypt the blob at rest before writing to AsyncStorage.
+      const snapshot = {
         user, authedUserId, protocol, products,
         dailyRecords: cappedDailyRecords,
         modelOutputs: cappedModelOutputs,
@@ -1088,7 +1182,8 @@ export const useStore = create<AppState>((set, get) => ({
         healthSyncStatus, patterns, firstLookInsight, patternNotifications,
         ritualCompletions: cappedRitualCompletions,
         appearance, dailyQuoteSeenDate,
-      }));
+      };
+      await AsyncStorage.setItem('glowlytics_data', await encryptJson(snapshot));
     } catch (e) {
       console.log('Failed to persist data', e);
     }
@@ -1100,6 +1195,7 @@ export const useStore = create<AppState>((set, get) => ({
     set({
       user: null,
       authedUserId: null,
+      authHydrating: false,
       protocol: null,
       products: [],
       dailyRecords: [],
@@ -1127,8 +1223,22 @@ export const useStore = create<AppState>((set, get) => ({
       appearance: { ...DEFAULT_APPEARANCE },
       dailyQuoteSeenDate: null,
     });
+    // Cross-account bleed guard: sign-out is the single cleanup chokepoint, so it
+    // must also drop the previous user's cached JWT, queued mutations, analytics
+    // identity, and RevenueCat entitlement. Each is isolated so one failure can't
+    // block the others — the next account on a shared device starts clean.
+    try { api.clearAuthTokenCache(); } catch { /* best-effort */ }
+    try { resetSyncOutbox(); } catch { /* best-effort */ }
+    try { resetAnalytics(); } catch { /* best-effort */ }
+    try { await logOutRevenueCat(); } catch { /* best-effort */ }
     try {
       await AsyncStorage.removeItem('glowlytics_data');
+      // MOB-02: account/data deletion must also wipe captured face photos at rest.
+      const FileSystemLegacy = require('expo-file-system/legacy');
+      await FileSystemLegacy.deleteAsync(
+        `${FileSystemLegacy.documentDirectory}scan_photos/`,
+        { idempotent: true },
+      );
     } catch {
       // Best-effort cleanup
     }

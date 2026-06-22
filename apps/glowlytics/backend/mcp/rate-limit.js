@@ -13,7 +13,10 @@ function mcpRateLimit(req, res, next) {
   if (!req.userId) {
     return res.status(401).json({ error: 'missing_user' });
   }
-  if (process.env.MCP_DISABLE_RATE_LIMIT === '1') {
+  // MCP-05: the kill-switch is honored only in non-production. In production
+  // (NODE_ENV==='production') it is ignored so abuse/cost protection can't be
+  // silently disabled via an env var.
+  if (process.env.MCP_DISABLE_RATE_LIMIT === '1' && process.env.NODE_ENV !== 'production') {
     return next();
   }
 

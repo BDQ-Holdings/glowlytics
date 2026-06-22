@@ -1,5 +1,6 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   BorderRadius,
@@ -67,6 +68,20 @@ export const ActionCard: React.FC<Props> = ({
           Consider sharing a report with a clinician for context.
         </Text>
       ) : null}
+      <TouchableOpacity
+        activeOpacity={0.7}
+        onPress={() =>
+          Linking.openURL('https://www.aad.org/public/diseases/acne/derm-treat/treat').catch(
+            () => {},
+          )
+        }
+        accessibilityRole="link"
+        accessibilityLabel="Open American Academy of Dermatology guidance"
+        style={[styles.sourcesChip, hero && styles.sourcesChipHero]}
+      >
+        <Feather name="book-open" size={12} color={Colors.textDim} />
+        <Text style={styles.sourcesChipText}>Sources: AAD · ACOG · WHO</Text>
+      </TouchableOpacity>
     </LinearGradient>
   );
 };
@@ -125,5 +140,22 @@ const styles = StyleSheet.create({
     fontSize: FontSize.sm,
     lineHeight: 21,
     maxWidth: '92%',
+  },
+  sourcesChip: {
+    marginTop: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: Spacing.xs,
+    paddingVertical: Spacing.xs,
+  },
+  sourcesChipHero: {
+    marginTop: Spacing.lg,
+  },
+  sourcesChipText: {
+    color: Colors.textDim,
+    fontFamily: FontFamily.sansMedium,
+    fontSize: FontSize.xs,
+    letterSpacing: 0.3,
   },
 });

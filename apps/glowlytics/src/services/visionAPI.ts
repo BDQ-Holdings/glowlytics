@@ -186,6 +186,13 @@ export async function streamInsights(
   return new Promise((resolve) => {
     let fullText = '';
     let processedLength = 0;
+    // Carry-over buffer for the trailing partial SSE line between onprogress
+    // fires (a `data:` line can be split mid-JSON across network chunks).
+    let buffer = '';
+    const onText = (text: string) => {
+      fullText += text;
+      onChunk(text);
+    };
     const timeoutId = setTimeout(() => {
       xhr.abort();
       resolve(parseInsightsFromText(fullText));
@@ -202,26 +209,12 @@ export async function streamInsights(
     }
 
     xhr.onprogress = () => {
-      // Process new data since last onprogress
+      // Only consume bytes we haven't seen yet (responseText is cumulative).
       const newData = xhr.responseText.slice(processedLength);
       processedLength = xhr.responseText.length;
-
-      const lines = newData.split('\n');
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue;
-        const data = line.slice(6).trim();
-        if (data === '[DONE]') continue;
-
-        try {
-          const parsed = JSON.parse(data);
-          if (parsed.text) {
-            fullText += parsed.text;
-            onChunk(parsed.text);
-          }
-        } catch {
-          // Skip malformed SSE chunks
-        }
-      }
+      // Reassemble `data:` lines split across chunk boundaries instead of
+      // parsing them half-formed and dropping them (bug #28).
+      buffer = processSseChunk(buffer, newData, onText);
     };
 
     xhr.onload = () => {
@@ -237,6 +230,11 @@ export async function streamInsights(
         resolve(null);
         return;
       }
+      // Flush a complete trailing line that arrived without a final newline.
+      if (buffer) {
+        parseSseLine(buffer, onText);
+        buffer = '';
+      }
       resolve(parseInsightsFromText(fullText));
     };
 
@@ -248,11 +246,52 @@ export async function streamInsights(
 
     xhr.onabort = () => {
       clearTimeout(timeoutId);
+      if (buffer) {
+        parseSseLine(buffer, onText);
+        buffer = '';
+      }
       resolve(parseInsightsFromText(fullText));
     };
 
     xhr.send(JSON.stringify(params));
   });
+}
+
+/**
+ * Parse one COMPLETE SSE line, preserving the `data:` / `[DONE]` / JSON
+ * semantics exactly: lines without the `data: ` prefix, the `[DONE]` sentinel,
+ * and malformed JSON are ignored; a parsed object with a `text` field emits.
+ */
+export function parseSseLine(line: string, onText: (text: string) => void): void {
+  if (!line.startsWith('data: ')) return;
+  const data = line.slice(6).trim();
+  if (data === '[DONE]') return;
+  try {
+    const parsed = JSON.parse(data);
+    if (parsed.text) onText(parsed.text);
+  } catch {
+    // Skip malformed SSE chunks
+  }
+}
+
+/**
+ * Frame an SSE byte chunk against a carry-over buffer. Appends `chunk` to
+ * `buffer`, emits every COMPLETE (newline-terminated) line via parseSseLine,
+ * and returns the trailing partial line so the next chunk can finish it. This
+ * prevents a `data:` line split across two network chunks from being parsed
+ * half-formed and silently dropped (bug #28 — real GPT-4o insights downgrading
+ * to local templates). Flush the returned buffer with parseSseLine at stream end.
+ */
+export function processSseChunk(
+  buffer: string,
+  chunk: string,
+  onText: (text: string) => void,
+): string {
+  const lines = (buffer + chunk).split('\n');
+  // The last element is the (possibly empty) trailing partial line — keep it.
+  const carry = lines.pop() ?? '';
+  for (const line of lines) parseSseLine(line, onText);
+  return carry;
 }
 
 /** Extract and parse the GeneratedInsights JSON from accumulated GPT text. */

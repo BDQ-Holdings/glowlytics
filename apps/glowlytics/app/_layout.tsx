@@ -1,6 +1,6 @@
 import 'react-native-get-random-values';
 import React, { useEffect, useRef, useState } from 'react';
-import { Stack, Redirect, useSegments } from 'expo-router';
+import { Stack, Redirect, useSegments, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { AppState, Image, StyleSheet, Text, View } from 'react-native';
 import { useFonts } from 'expo-font';
@@ -13,8 +13,12 @@ import Animated, {
   withTiming,
   withDelay,
 } from 'react-native-reanimated';
-import { tokenCache } from '../src/config/tokenCache';
+import { tokenCache } from '@clerk/clerk-expo/token-cache';
+import { resourceCache } from '@clerk/clerk-expo/resource-cache';
 import { env } from '../src/config/env';
+import { localDateStr } from '../src/utils/localDate';
+import { resolveAuthRoute } from '../src/utils/authRoute';
+import { shouldRouteToDailyQuote } from '../src/utils/dailyQuoteRoute';
 import { Colors, FontFamily, FontSize, Glow, Spacing } from '../src/constants/theme';
 import { useStore } from '../src/store/useStore';
 import { setAuthTokenProvider } from '../src/services/api';
@@ -32,44 +36,32 @@ const initLesionDetection = () =>
 const initSignalModels = () =>
   import('../src/services/onDeviceSignalModels').then((m) => m.initSignalModels());
 
-const SPLASH_MIN_MS = 800;
+// Brief floor on the splash so iOS's launch image cross-fade into our React
+// view doesn't flicker. Anything longer than this is theatrical, so we keep
+// the floor short and let real init finish ahead of the user.
+const SPLASH_MIN_MS = 350;
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 // ─── Splash Screen ───────────────────────────────────────────────
-// Logo fade-in, then "Find your glow" in cursive revealed left-to-right
-// with a teal ink glow.
-const TAGLINE_WIDTH = 280;
-
+// Distilled: black background, logo emblem fading in. Removed the cursive
+// tagline reveal + glow — the daily-quote screen below now owns the
+// "first thing the user sees" moment, so the splash only needs to bridge
+// the system launch image until the JS runtime + persisted store are ready.
 function SplashScreen() {
   const logoOpacity = useSharedValue(0);
-  const revealWidth = useSharedValue(0);
-  const glowOpacity = useSharedValue(0);
 
   useEffect(() => {
-    const ease = Easing.out(Easing.cubic);
-    logoOpacity.value = withTiming(1, { duration: 600, easing: ease });
-    revealWidth.value = withDelay(500, withTiming(TAGLINE_WIDTH, {
-      duration: 900,
-      easing: Easing.out(Easing.quad),
-    }));
-    glowOpacity.value = withDelay(800, withTiming(1, { duration: 500, easing: ease }));
+    logoOpacity.value = withTiming(1, {
+      duration: 320,
+      easing: Easing.out(Easing.cubic),
+    });
   }, []);
 
-  const logoStyle = useAnimatedStyle(() => ({
-    opacity: logoOpacity.value,
-  }));
-
-  const revealStyle = useAnimatedStyle(() => ({
-    width: revealWidth.value,
-  }));
-
-  const glowStyle = useAnimatedStyle(() => ({
-    opacity: glowOpacity.value,
-  }));
+  const logoStyle = useAnimatedStyle(() => ({ opacity: logoOpacity.value }));
 
   return (
     <View style={splash.container}>
-      <StatusBar style="dark" />
+      <StatusBar style="light" />
       <Animated.View style={logoStyle}>
         <Image
           source={require('../assets/logo-emblem.png')}
@@ -77,13 +69,6 @@ function SplashScreen() {
           resizeMode="contain"
         />
       </Animated.View>
-      <View style={splash.taglineWrapper}>
-        <Animated.View style={[splash.taglineReveal, revealStyle]}>
-          <Animated.Text style={[splash.tagline, glowStyle]}>
-            Find your glow
-          </Animated.Text>
-        </Animated.View>
-      </View>
     </View>
   );
 }
@@ -91,40 +76,21 @@ function SplashScreen() {
 const splash = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: '#000000',
     alignItems: 'center',
     justifyContent: 'center',
   },
   logo: {
-    width: 120,
-    height: 120,
-  },
-  taglineWrapper: {
-    marginTop: Spacing.xl,
-    height: 44,
-    width: TAGLINE_WIDTH,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  taglineReveal: {
-    overflow: 'hidden',
-    height: 44,
-    justifyContent: 'center',
-  },
-  tagline: {
-    width: TAGLINE_WIDTH,
-    fontFamily: 'DancingScript',
-    fontSize: 32,
-    color: Colors.primary,
-    textAlign: 'center',
-    textShadowColor: 'rgba(58, 158, 143, 0.35)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 8,
+    width: 96,
+    height: 96,
   },
 });
 
 // ─── Demo Seeder — loads demo data for the test@test.com reviewer account ───
 const DEMO_EMAIL = 'test@test.com';
+// MOB-05: the demo seeder only runs in dev builds, or in App Review builds that
+// explicitly opt in via EXPO_PUBLIC_DEMO_SEEDER=true. Never in normal production.
+const DEMO_SEEDER_ENABLED = __DEV__ || process.env.EXPO_PUBLIC_DEMO_SEEDER === 'true';
 
 function DemoSeeder() {
   let clerkEmail: string | undefined;
@@ -138,6 +104,7 @@ function DemoSeeder() {
   const seeded = useRef(false);
 
   useEffect(() => {
+    if (!DEMO_SEEDER_ENABLED) return;
     if (seeded.current) return;
     if (clerkEmail !== DEMO_EMAIL) return;
     if (dailyRecords.length > 0) return; // Already has data
@@ -166,66 +133,71 @@ function DemoSeeder() {
 function AuthRedirector() {
   const { isSignedIn, isLoaded } = useAuth();
   const onboardingComplete = useStore((s) => s.user?.onboarding_complete ?? false);
+  // Store hydration is in flight (offline / slow disk). Onboarding state lives in
+  // the persisted store, so we must not redirect based on a not-yet-restored user.
+  const authHydrating = useStore((s) => s.authHydrating ?? false);
   const segments = useSegments();
   const root = segments[0];
-  const inAuthRoute = root === 'auth' || root === 'oauth-native-callback';
-  const inOnboarding = root === 'onboarding';
-  // Routes a fully-authenticated, fully-onboarded user is allowed to be in.
-  // Without this gate, the trailing fall-through redirect kicks the user back
-  // to /(tabs)/today every time they push any other route — which silently
-  // unmounted /scan/camera before its session could activate (vision-camera #2143
-  // wasn't the cause; this redirect loop was).
-  const inLoggedInRoute = root === '(tabs)'
-    || root === 'scan'
-    || root === 'product'
-    || root === 'signal'
-    || root === 'pattern'
-    || root === 'report'
-    || root === 'skin-metric'
-    || root === 'skin-metrics'
-    || root === 'paywall'
-    || root === 'privacy-policy'
-    || root === 'home'
-    || root === 'settings'
-    || root === 'architecture'
-    || root === 'account'
-    || root === 'routine'
-    || root === 'ritual'
-    || root === 'story'
-    || root === 'today';
-
-  // Clerk is still booting. Do NOT redirect — return null and let the next
-  // render (with `isLoaded === true`) make the call. The ClerkGatedApp splash
-  // already gates the visible UI on `appReady && clerkLoaded` so this branch
-  // only runs in vanishingly narrow racy windows; redirecting here was the
-  // root cause of "app logs me out for a flash on cold start / resume".
-  if (!isLoaded) {
-    if (__DEV__) console.log('[AuthRedirector] Clerk not loaded yet — holding');
-    return null;
+  const decision = resolveAuthRoute({
+    isLoaded,
+    isSignedIn: !!isSignedIn,
+    onboardingComplete,
+    authHydrating,
+    root,
+  });
+  if (__DEV__ && decision !== 'hold') {
+    console.log(`[AuthRedirector] ${root ?? '\u2205'} → ${decision}`);
   }
 
-  if (!isSignedIn) {
-    if (inAuthRoute) return null;
-    if (__DEV__) console.log('[AuthRedirector] Not signed in → sign-in');
-    return <Redirect href="/auth/sign-in" />;
-  }
-
-  if (!onboardingComplete) {
-    if (inOnboarding) return null;
+  if (decision === 'hold') return null;
+  if (decision === 'sign-in') return <Redirect href="/auth/sign-in" />;
+  if (decision === 'onboarding') {
+    // onboarding_complete is false here; resume at the persisted flow position.
     const { onboardingFlow, onboardingFlowIndex } = useStore.getState();
     const resumeScreen = (onboardingFlowIndex > 0 && onboardingFlow.length > 0)
       ? onboardingFlow[onboardingFlowIndex] || 'welcome'
       : 'welcome';
-    if (__DEV__) console.log(`[AuthRedirector] Onboarding incomplete → ${resumeScreen}`);
     return <Redirect href={`/onboarding/${resumeScreen}`} />;
   }
+  return <Redirect href="/(tabs)/today" />; // decision === 'tabs'
+}
 
-  // Authenticated + onboarded. If the user is already on a valid logged-in
-  // route (tabs, scan, product, …), do nothing — let them stay there.
-  if (inLoggedInRoute) return null;
+// ─── Daily Quote Router ──────────────────────────────────────────
+// Routes the user to /quote on the first cold-open of each local day,
+// AFTER auth + onboarding are settled. Uses a session ref so re-renders
+// during the same launch don't re-route. Does nothing while the user is
+// already inside the quote screen or any non-logged-in route — that's
+// AuthRedirector's job.
 
-  if (__DEV__) console.log('[AuthRedirector] Stale auth/onboarding route → tabs');
-  return <Redirect href="/(tabs)/today" />;
+function DailyQuoteRouter() {
+  const { isSignedIn, isLoaded } = useAuth();
+  const onboardingComplete = useStore((s) => s.user?.onboarding_complete ?? false);
+  const dailyQuoteSeenDate = useStore((s) => s.dailyQuoteSeenDate);
+  const segments = useSegments();
+  const router = useRouter();
+  const routedRef = useRef(false);
+
+  useEffect(() => {
+    const root = segments[0];
+    if (
+      !shouldRouteToDailyQuote({
+        isLoaded,
+        isSignedIn: !!isSignedIn,
+        onboardingComplete,
+        alreadyRouted: routedRef.current,
+        root,
+        dailyQuoteSeenDate,
+        today: localDateStr(new Date()),
+      })
+    ) {
+      return;
+    }
+    routedRef.current = true;
+    if (__DEV__) console.log('[DailyQuoteRouter] First open — showing /quote');
+    router.replace('/quote' as any);
+  }, [isLoaded, isSignedIn, onboardingComplete, dailyQuoteSeenDate, segments, router]);
+
+  return null;
 }
 
 // ─── Clerk-Gated App ─────────────────────────────────────────────
@@ -308,7 +280,7 @@ function ClerkGatedApp() {
   useEffect(() => {
     if (!clerkLoaded || servicesInitStarted.current) return;
     servicesInitStarted.current = true;
-    setAuthTokenProvider(() => getToken());
+    setAuthTokenProvider((opts) => getToken(opts?.skipCache ? { skipCache: true } : undefined));
 
     const initDeferred = async () => {
       try {
@@ -351,9 +323,12 @@ function ClerkGatedApp() {
   }, []);
 
   useEffect(() => {
-    if (!userId) return;
+    // Gate on appReady so reconciliation never runs before loadPersistedData()
+    // has restored the persisted account — reconciling against an empty store on
+    // cold start would wipe the just-restored user.
+    if (!appReady || !userId) return;
     reconcileAuthUserId(userId);
-  }, [userId, reconcileAuthUserId]);
+  }, [appReady, userId, reconcileAuthUserId]);
 
   // Health sync on app foreground:
   // Re-sync at most once every 6 hours, only during waking hours (7am-midnight local) —
@@ -414,9 +389,11 @@ function ClerkGatedApp() {
               <Stack.Screen name="pattern" options={{ animation: 'slide_from_right' }} />
               <Stack.Screen name="settings" options={{ animation: 'slide_from_right' }} />
               <Stack.Screen name="ritual" options={{ animation: 'slide_from_right' }} />
+              <Stack.Screen name="quote" options={{ animation: 'fade' }} />
             </Stack>
             <AuthRedirector />
             <DemoSeeder />
+            <DailyQuoteRouter />
           </View>
         </AppErrorBoundary>
       </AppearanceHost>
@@ -441,6 +418,7 @@ export default function RootLayout() {
     <ClerkProvider
       publishableKey={env.CLERK_PUBLISHABLE_KEY}
       tokenCache={tokenCache}
+      __experimental_resourceCache={resourceCache}
     >
         <ClerkGatedApp />
     </ClerkProvider>

@@ -1,8 +1,9 @@
 const { Pool } = require('pg');
+const { poolSsl } = require('../db-ssl');
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL || 'postgresql://localhost:5432/glowlytics',
-  ...(process.env.DATABASE_URL ? { ssl: { rejectUnauthorized: false } } : {}),
+  ssl: poolSsl(),
 });
 
 function parseMaybeJson(v) {

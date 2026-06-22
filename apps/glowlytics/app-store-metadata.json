@@ -28,8 +28,9 @@
   "reviewNotes": {
     "demoAccount": {
       "email": "test@test.com",
-      "password": "AppleTest123!"
+      "password": "<provided-in-App-Store-Connect-review-notes>",
+      "_note": "Live demo-account password is NOT committed to the repo; enter it directly in the App Store Connect review-notes field. Rotate periodically and keep the demo account rate/spend-capped so it cannot incur unbounded paid API spend."
     },
-    "notes": "Sign in with the demo account above (email + password). The app auto-loads 21 days of skin scan history, 4 products, and gamification data for this account so all features are immediately visible. Key flows to review: (1) Home screen with score tiles and trend sparklines, (2) Camera tab for guided skin scan, (3) Signal detail pages with animated gauges and source citations, (4) Products tab with ingredient analysis, (5) Profile with streak and badges, (6) Profile > Account & Plan > Delete account for full account deletion. The app requires camera access for skin scanning. HealthKit integration is optional and can be skipped during onboarding. Subscription disclosures and legal links appear on the paywall screen."
+    "notes": "Sign in with the demo account email above; the password is supplied in the App Store Connect review notes (not committed to source control). The app auto-loads 21 days of skin scan history, 4 products, and gamification data for this account so all features are immediately visible. Key flows to review: (1) Home screen with score tiles and trend sparklines, (2) Camera tab for guided skin scan, (3) Signal detail pages with animated gauges and source citations, (4) Products tab with ingredient analysis, (5) Profile with streak and badges, (6) Profile > Account & Plan > Delete account for full account deletion. The app requires camera access for skin scanning. HealthKit integration is optional and can be skipped during onboarding. Subscription disclosures and legal links appear on the paywall screen."
   }
 }

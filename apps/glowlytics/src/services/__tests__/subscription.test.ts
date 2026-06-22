@@ -212,16 +212,17 @@ describe('subscription', () => {
     });
   });
 
-  describe('gateWithPaywall trial fallback (fix layer 3 of 3)', () => {
-    // These tests verify that gateWithPaywall auto-grants a trial when the user
-    // has never had one. This is the defensive layer — even if layers 1 and 2
-    // failed for some reason, no user can be locked out of scanning.
-    it('grants a trial and returns true when user has no trial and no entitlement', async () => {
+  describe('gateWithPaywall presents paywall when no entitlement (Apple 3.1.2 compliance)', () => {
+    // Pre-build-11, gateWithPaywall auto-granted a local trial flag for any user
+    // with no entitlement and no prior trial. That bypassed Apple's StoreKit
+    // purchase sheet — Apple 3.1.2(a)/(b) violation. The new behavior is to
+    // present the RevenueCat-managed paywall (which renders the Apple-required
+    // trial+price disclosure) and only return true if Apple confirms purchase.
+    it('does not auto-grant a trial; presents the paywall instead', async () => {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { useStore } = require('../../store/useStore');
       const { gateWithPaywall } = require('../subscription');
 
-      // Simulate the stuck legacy state: no trial, no entitlement
       useStore.setState({
         user: { user_id: 'test-user', age_range: '25-34', onboarding_complete: true } as any,
         subscription: {
@@ -235,12 +236,15 @@ describe('subscription', () => {
         },
       });
 
+      // `presentPaywall` is a no-op when REVENUECAT_API_KEY is empty (test env),
+      // so `gateWithPaywall` returns false — the user is correctly blocked from
+      // scanning until they purchase. Critically, the local trial flag is NOT set.
       const allowed = await gateWithPaywall();
 
-      expect(allowed).toBe(true);
+      expect(allowed).toBe(false);
       const sub = useStore.getState().subscription;
-      expect(sub.trial_start_date).not.toBeNull();
-      expect(sub.trial_end_date).not.toBeNull();
+      expect(sub.trial_start_date).toBeNull();
+      expect(sub.trial_end_date).toBeNull();
     });
   });
 });

@@ -55,4 +55,31 @@ describe('HarmonyTrendCard', () => {
     expect(getByText('80')).toBeTruthy();
     expect(getByText('+10 since first scan')).toBeTruthy();
   });
+
+  // Rules-of-hooks regression: the `projected` useMemo used to sit AFTER the
+  // `if (points.length < 2) return null` early return. When an async
+  // attachBoneStructure took the card from 1 → 2 points while mounted, the
+  // second render reached an extra hook and React threw "Rendered more hooks
+  // than during the previous render", tripping the AppErrorBoundary. Every
+  // hook is now hoisted above the early return, so the count is constant.
+  it('survives a 1 → 2 point transition in the same mounted instance', () => {
+    mockStoreOutputs([78]); // single bone-structure point → below threshold → null
+    const { rerender, toJSON, getByText } = render(<HarmonyTrendCard />);
+    expect(toJSON()).toBeNull();
+
+    // Async attach adds a second point to the SAME mounted card.
+    mockStoreOutputs([78, 82]);
+    expect(() => rerender(<HarmonyTrendCard />)).not.toThrow();
+    expect(getByText('82')).toBeTruthy();
+  });
+
+  it('survives an empty → populated transition in the same mounted instance', () => {
+    mockStoreOutputs([]); // no points → null
+    const { rerender, toJSON, getByText } = render(<HarmonyTrendCard />);
+    expect(toJSON()).toBeNull();
+
+    mockStoreOutputs([70, 80]);
+    expect(() => rerender(<HarmonyTrendCard />)).not.toThrow();
+    expect(getByText('80')).toBeTruthy();
+  });
 });

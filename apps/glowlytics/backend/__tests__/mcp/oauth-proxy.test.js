@@ -123,7 +123,7 @@ describe('OAuth proxy — /oauth/authorize', () => {
       .query({
         response_type: 'code',
         client_id: PROXY_CLIENT_ID,
-        redirect_uri: 'https://claude.ai/api/mcp/cb',
+        redirect_uri: 'https://claude.ai/api/mcp/auth_callback',
         state: 'caller-state-123',
         scope: 'openid profile email offline_access',
         code_challenge: 'abc123',
@@ -177,8 +177,10 @@ describe('OAuth proxy — /oauth/callback round-trip with /authorize', () => {
     const auth = await request(app).get('/oauth/authorize').query({
       response_type: 'code',
       client_id: PROXY_CLIENT_ID,
-      redirect_uri: 'https://claude.ai/api/mcp/cb',
+      redirect_uri: 'https://claude.ai/api/mcp/auth_callback',
       state: 'caller-state-xyz',
+      code_challenge: 'abc123',
+      code_challenge_method: 'S256',
     });
     const upstreamLoc = new URL(auth.headers.location);
     const proxyState = upstreamLoc.searchParams.get('state');
@@ -189,7 +191,7 @@ describe('OAuth proxy — /oauth/callback round-trip with /authorize', () => {
     });
     expect(cb.status).toBe(302);
     const back = new URL(cb.headers.location);
-    expect(back.origin + back.pathname).toBe('https://claude.ai/api/mcp/cb');
+    expect(back.origin + back.pathname).toBe('https://claude.ai/api/mcp/auth_callback');
     expect(back.searchParams.get('code')).toBe('auth-code-from-clerk');
     expect(back.searchParams.get('state')).toBe('caller-state-xyz');
   });
@@ -204,8 +206,10 @@ describe('OAuth proxy — /oauth/callback round-trip with /authorize', () => {
     const { app, request } = loadApp();
     const auth = await request(app).get('/oauth/authorize').query({
       response_type: 'code',
-      redirect_uri: 'https://claude.ai/api/mcp/cb',
+      redirect_uri: 'https://claude.ai/api/mcp/auth_callback',
       state: 's',
+      code_challenge: 'abc123',
+      code_challenge_method: 'S256',
     });
     const proxyState = new URL(auth.headers.location).searchParams.get('state');
     const cb = await request(app).get('/oauth/callback').query({
@@ -358,5 +362,118 @@ describe('Auth allowlist — proxy client_id auto-included', () => {
     expect(cfg.allowedClientIds.has('app_legacy_one')).toBe(true);
     expect(cfg.allowedClientIds.has('app_legacy_two')).toBe(true);
     delete process.env.MCP_ALLOWED_CLIENT_IDS;
+  });
+});
+
+describe('isAllowedRedirectUri (MCP-01)', () => {
+  function load({ redirectUris } = {}) {
+    jest.resetModules();
+    process.env.MCP_ENABLED = 'true';
+    process.env.MCP_BASE_URL = BASE_URL;
+    process.env.CLERK_ISSUER_URL = CLERK_ISSUER;
+    if (redirectUris === undefined) delete process.env.MCP_OAUTH_PROXY_REDIRECT_URIS;
+    else process.env.MCP_OAUTH_PROXY_REDIRECT_URIS = redirectUris;
+    return require('../../mcp/oauth-proxy').isAllowedRedirectUri;
+  }
+  afterEach(() => { delete process.env.MCP_OAUTH_PROXY_REDIRECT_URIS; });
+
+  it('accepts the exact default connector callbacks', () => {
+    const isAllowed = load();
+    expect(isAllowed('https://claude.ai/api/mcp/auth_callback')).toBe(true);
+    expect(isAllowed('https://claude.com/api/mcp/auth_callback')).toBe(true);
+  });
+
+  it('rejects a foreign host (and look-alike subdomain)', () => {
+    const isAllowed = load();
+    expect(isAllowed('https://attacker.example/cb')).toBe(false);
+    expect(isAllowed('https://claude.ai.attacker.example/api/mcp/auth_callback')).toBe(false);
+  });
+
+  it('accepts loopback on any port/path (MCP Inspector, RFC 8252)', () => {
+    const isAllowed = load();
+    expect(isAllowed('http://localhost:6274/oauth/callback')).toBe(true);
+    expect(isAllowed('http://127.0.0.1:51000/cb')).toBe(true);
+  });
+
+  it('rejects near-miss variants of an allowed URI', () => {
+    const isAllowed = load();
+    expect(isAllowed('https://claude.ai/api/mcp/auth_callback/')).toBe(false); // trailing slash
+    expect(isAllowed('http://claude.ai/api/mcp/auth_callback')).toBe(false); // wrong scheme
+    expect(isAllowed('https://claude.ai/api/mcp/auth_callback?x=1')).toBe(false); // extra query
+    expect(isAllowed('https://claude.ai:8443/api/mcp/auth_callback')).toBe(false); // extra port
+  });
+
+  it('honors a custom allowlist and drops the built-in defaults (loopback still allowed)', () => {
+    const isAllowed = load({ redirectUris: 'https://my.app/cb , https://my.app/cb2' });
+    expect(isAllowed('https://my.app/cb')).toBe(true);
+    expect(isAllowed('https://my.app/cb2')).toBe(true);
+    expect(isAllowed('https://claude.ai/api/mcp/auth_callback')).toBe(false);
+    expect(isAllowed('http://localhost:9999/cb')).toBe(true);
+  });
+
+  it('rejects malformed / empty / non-string input', () => {
+    const isAllowed = load();
+    expect(isAllowed('')).toBe(false);
+    expect(isAllowed('not a url')).toBe(false);
+    expect(isAllowed(null)).toBe(false);
+    expect(isAllowed(undefined)).toBe(false);
+  });
+});
+
+describe('OAuth proxy — MCP-01/MCP-02/MCP-04 enforcement at /oauth/authorize', () => {
+  beforeEach(() => setEnv({ proxyEnabled: true }));
+  afterEach(() => {
+    try { require('../../mcp/oauth-proxy')._resetForTest(); } catch (_e) {}
+  });
+
+  it('rejects a foreign redirect_uri before storing state (MCP-01)', async () => {
+    const { app, request } = loadApp();
+    const res = await request(app).get('/oauth/authorize').query({
+      response_type: 'code',
+      client_id: PROXY_CLIENT_ID,
+      redirect_uri: 'https://attacker.example/cb',
+      code_challenge: 'abc123',
+      code_challenge_method: 'S256',
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error_description).toBe('redirect_uri not allowed');
+  });
+
+  it('rejects when PKCE S256 is missing (MCP-02)', async () => {
+    const { app, request } = loadApp();
+    const res = await request(app).get('/oauth/authorize').query({
+      response_type: 'code',
+      client_id: PROXY_CLIENT_ID,
+      redirect_uri: 'https://claude.ai/api/mcp/auth_callback',
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error_description).toBe('PKCE (S256) required');
+  });
+
+  it('rejects a non-S256 PKCE method (MCP-02)', async () => {
+    const { app, request } = loadApp();
+    const res = await request(app).get('/oauth/authorize').query({
+      response_type: 'code',
+      client_id: PROXY_CLIENT_ID,
+      redirect_uri: 'https://claude.ai/api/mcp/auth_callback',
+      code_challenge: 'abc123',
+      code_challenge_method: 'plain',
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error_description).toBe('PKCE (S256) required');
+  });
+
+  it('forwards the RFC 8707 resource param to Clerk (MCP-04)', async () => {
+    const { app, request } = loadApp();
+    const res = await request(app).get('/oauth/authorize').query({
+      response_type: 'code',
+      client_id: PROXY_CLIENT_ID,
+      redirect_uri: 'https://claude.ai/api/mcp/auth_callback',
+      code_challenge: 'abc123',
+      code_challenge_method: 'S256',
+    });
+    expect(res.status).toBe(302);
+    const loc = new URL(res.headers.location);
+    expect(loc.searchParams.get('resource')).toBe(`${BASE_URL}/mcp`);
   });
 });

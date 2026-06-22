@@ -2,12 +2,13 @@ import React from 'react';
 import { Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { APPLE_STANDARD_EULA_URL, PRIVACY_POLICY_URL } from '../constants/externalLinks';
-import { BorderRadius, Colors, FontFamily, FontSize, Spacing } from '../constants/theme';
+import { BorderRadius, Colors, FontFamily, FontSize, Glow, Spacing } from '../constants/theme';
 import type { PaywallPackageSummary } from '../services/subscription';
 
 interface PaywallDisclosureProps {
   summary: PaywallPackageSummary | null;
   title?: string;
+  freeTrialDays?: number;
 }
 
 const formatPeriodLabel = (period?: string | null): string => {
@@ -32,6 +33,7 @@ const formatPeriodLabel = (period?: string | null): string => {
 export const PaywallDisclosure: React.FC<PaywallDisclosureProps> = ({
   summary,
   title = 'Glow Pro',
+  freeTrialDays = 7,
 }) => {
   const periodLabel = formatPeriodLabel(summary?.subscriptionPeriod);
   const pricingLine = summary
@@ -42,12 +44,17 @@ export const PaywallDisclosure: React.FC<PaywallDisclosureProps> = ({
       ? `${summary.pricePerMonthString} per month equivalent.`
       : null;
 
+  const headline = summary
+    ? `${freeTrialDays}-day free trial, then ${summary.priceString} per ${periodLabel}. Cancel anytime in the App Store.`
+    : `${freeTrialDays}-day free trial. Pricing loads below.`;
+
   return (
     <View style={styles.card}>
       <View style={styles.header}>
         <Feather name="shield" size={16} color={Colors.primary} />
         <Text style={styles.eyebrow}>Subscription</Text>
       </View>
+      <Text style={styles.headline}>{headline}</Text>
       <Text style={styles.title}>{summary?.title || title}</Text>
       <Text style={styles.copy}>{pricingLine}</Text>
       {monthlyEquivalent ? <Text style={styles.copy}>{monthlyEquivalent}</Text> : null}
@@ -105,6 +112,12 @@ const styles = StyleSheet.create({
     color: Colors.text,
     fontFamily: FontFamily.sansBold,
     fontSize: FontSize.xl,
+  },
+  headline: {
+    color: Glow.palette.ink,
+    fontFamily: FontFamily.sansSemiBold,
+    fontSize: FontSize.md,
+    marginBottom: Spacing.xs,
   },
   copy: {
     color: Colors.text,

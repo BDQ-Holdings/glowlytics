@@ -111,6 +111,21 @@ export async function identifyUser(userId: string): Promise<CustomerInfo | null>
   return customerInfo;
 }
 
+/**
+ * Drop the RevenueCat identity on sign-out so the next account on a shared
+ * device does not inherit the previous user's entitlements. No-op when the API
+ * key is unset. Mirrors the guard pattern used by identifyUser/initRevenueCat.
+ */
+export async function logOutRevenueCat(): Promise<void> {
+  if (!env.REVENUECAT_API_KEY) return;
+  try {
+    log(TAG, 'Logging out RevenueCat user');
+    await Purchases.logOut();
+  } catch (e) {
+    warn(TAG, 'logOut failed', e);
+  }
+}
+
 export function subscriptionFromCustomerInfo(
   info: CustomerInfo,
   current: SubscriptionState,
@@ -213,25 +228,19 @@ export function canScan(subscription: SubscriptionState): boolean {
 }
 
 /**
- * Gate an action behind paywall. Presents paywall if needed, refreshes subscription,
- * returns true if the user can proceed (subscribed or trial active).
+ * Gate an action behind paywall. Presents the StoreKit-managed paywall if
+ * the user does not currently have an active entitlement or trial; returns
+ * true if the user can proceed (subscribed or trial active).
  *
- * Defensive: if the user has no entitlement AND no trial dates at all, auto-start the
- * trial before showing the paywall. Fix layer 3 of 3 for the paywall gap — guarantees
- * no path can lock a user out without having ever offered them the trial.
+ * Apple Guideline 3.1.2(a)/(b) — the trial must be initiated by the user
+ * through Apple's StoreKit purchase sheet. We do NOT auto-grant a local
+ * trial flag here; the only path to a trial is `Purchases.purchasePackage`
+ * (via `RevenueCatUI.presentPaywallIfNeeded`).
  */
 export async function gateWithPaywall(): Promise<boolean> {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { useStore } = require('../store/useStore');
   if (useStore.getState().canPerformScan()) return true;
-
-  // Defensive: grant trial if the user has never had one
-  const sub = useStore.getState().subscription;
-  if (!sub.is_active && sub.trial_start_date === null && sub.trial_end_date === null) {
-    useStore.getState().startTrial();
-    if (useStore.getState().canPerformScan()) return true;
-  }
-
   try {
     const purchased = await presentPaywall();
     if (purchased) {

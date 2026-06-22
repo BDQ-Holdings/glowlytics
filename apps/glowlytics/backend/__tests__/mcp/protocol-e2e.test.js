@@ -84,6 +84,8 @@ beforeAll(async () => {
   process.env.CLERK_JWKS_URL = jwksUrl;
   process.env.MCP_DISABLE_RATE_LIMIT = '1';
   delete process.env.MCP_BETA_USER_IDS;
+  // MCP-06: empty allowlist now denies unless GA is explicitly opted in.
+  process.env.MCP_BETA_OPEN = 'true';
 
   jest.resetModules();
   const app = require('../../app');

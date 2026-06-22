@@ -12,6 +12,18 @@ function getJwks() {
   return jwks;
 }
 
+// MCP-06: warn at most once per process when MCP is reachable but the beta
+// allowlist is empty and MCP_BETA_OPEN is not set — i.e. no user can pass.
+let betaLockedWarned = false;
+function warnBetaLocked() {
+  if (betaLockedWarned) return;
+  betaLockedWarned = true;
+  console.warn(
+    '[mcp] MCP is enabled but MCP_BETA_USER_IDS is empty and MCP_BETA_OPEN is not set — ' +
+      'all requests are denied (beta_only). Set MCP_BETA_OPEN=true for GA or populate MCP_BETA_USER_IDS.',
+  );
+}
+
 // RFC 9728 / MCP spec: a 401 from a protected MCP resource MUST include a
 // WWW-Authenticate header pointing at the resource metadata so OAuth clients
 // (Claude.ai's connector, Inspector, etc.) can rediscover the auth server
@@ -45,6 +57,8 @@ async function requireMcpAuth(req, res, next) {
 
     const { payload } = await jwtVerify(token, getJwks(), {
       issuer: cfg.clerkIssuer,
+      algorithms: ['RS256'], // MCP-03: pin the signature alg (alg-confusion / "none" hardening)
+      clockTolerance: 30, // tolerate ~30s clock skew (60s session JWTs) — avoid spurious 401s
     });
     if (!payload.sub) {
       return send401(res, cfg.baseUrl, 'invalid_token', 'Token has no subject');
@@ -82,7 +96,15 @@ async function requireMcpAuth(req, res, next) {
 
     req.mcpClientId = payload.client_id;
     const beta = cfg.betaUserIds;
-    if (beta.size > 0 && !beta.has(payload.sub)) {
+    if (beta.size === 0) {
+      // MCP-06: an empty/unset allowlist no longer implicitly means GA. Allow
+      // all ONLY when the operator opts in with MCP_BETA_OPEN=true; otherwise
+      // fail closed (no users permitted) and warn once that MCP is locked.
+      if (process.env.MCP_BETA_OPEN !== 'true') {
+        warnBetaLocked();
+        return res.status(403).json({ error: 'beta_only' });
+      }
+    } else if (!beta.has(payload.sub)) {
       return res.status(403).json({ error: 'beta_only' });
     }
 

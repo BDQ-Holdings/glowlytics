@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Platform, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Linking, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Svg, { Defs, RadialGradient, Stop, Circle, Path, Line } from 'react-native-svg';
 import Animated, {
   Easing,
@@ -15,6 +15,7 @@ import { useOnboardingNavigation } from '../../src/hooks/useOnboardingNavigation
 import { Colors, Glow, FontFamily, FontSize, Spacing, BorderRadius } from '../../src/constants/theme';
 import { trackEvent } from '../../src/services/analytics';
 import { localDateStr } from '../../src/utils/localDate';
+import { PRIVACY_POLICY_URL } from '../../src/constants/externalLinks';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -318,8 +319,12 @@ export default function HealthPermission() {
       }
 
       // Count populated metrics on the most recent record.
+      // `pullLastNDays` returns today at index 0 and the oldest day at index n-1.
+      // We need today's record (the densest) to decide success-full vs success-partial.
       const records = useStore.getState().healthDailyRecords;
-      const latest = records.length > 0 ? records[records.length - 1] : null;
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const latest =
+        records.find((r) => r.date === todayStr) ?? records[0] ?? null;
       const metricsPopulated = latest
         ? [
             latest.sleep_total_minutes,
@@ -447,10 +452,17 @@ export default function HealthPermission() {
             <View style={styles.privacyStrip}>
               <Feather name="lock" size={14} color={Colors.primary} />
               <Text style={styles.privacyText}>
-                Reads sleep, heart rate, steps, cycle, mindful minutes. Stays on your device
-                {' \u2014 '}never sent to our servers.
+                Reads sleep, heart rate, steps, cycle, and mindful minutes. We send 7-day averages to our skin AI to personalize your insights — never shared with third parties.
               </Text>
             </View>
+            <TouchableOpacity
+              style={styles.privacyLinkRow}
+              onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}
+              accessibilityRole="link"
+              accessibilityLabel="Open privacy policy"
+            >
+              <Text style={styles.privacyLinkText}>See Privacy Policy</Text>
+            </TouchableOpacity>
           </>
         );
 
@@ -558,6 +570,17 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.sans,
     fontSize: FontSize.xs,
     lineHeight: 18,
+  },
+  privacyLinkRow: {
+    marginTop: Spacing.xs,
+    paddingHorizontal: Spacing.xs,
+  },
+  privacyLinkText: {
+    color: Glow.palette.accent,
+    fontFamily: FontFamily.sansMedium,
+    fontSize: FontSize.xs,
+    lineHeight: 18,
+    textDecorationLine: 'underline',
   },
   progressCard: {
     backgroundColor: Glow.palette.surface,

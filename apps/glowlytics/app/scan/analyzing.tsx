@@ -27,7 +27,7 @@ import { useStore } from '../../src/store/useStore';
 import { analyzeWithFallback } from '../../src/services/skinAnalysis';
 import { streamInsights } from '../../src/services/visionAPI';
 import { buildInsightsFromDeterministic } from '../../src/services/onDeviceInsightsFallback';
-import type { GeneratedInsights } from '../../src/types';
+import type { GeneratedInsights, DailyRecord, ZoneSeverity } from '../../src/types';
 import { buildHealthkitRollup } from '../../src/services/healthSync';
 import { captureFaceMesh } from '../../src/services/faceMeshCapture';
 import { analyzeBoneStructure } from '../../src/services/boneStructure';
@@ -36,6 +36,16 @@ import { ApiError } from '../../src/services/httpClient';
 import { getEstimatedCycleDay } from '../../src/utils/cycleDay';
 import { trackEvent } from '../../src/services/analytics';
 import { env } from '../../src/config/env';
+import { isAnalyzingPipelineStale, shouldArmHydrationBail } from '../../src/utils/analyzingGuard';
+
+/** Narrow an unknown thrown value to a human-readable message string. */
+const errMsg = (err: unknown): string => (err instanceof Error ? err.message : String(err));
+
+// analyzeWithFallback's declared return shape, widened with the optional L3
+// zone-severity that downstream callers read off the result.
+type AnalysisResult = Awaited<ReturnType<typeof analyzeWithFallback>> & {
+  zone_severity?: ZoneSeverity;
+};
 
 // ---------------------------------------------------------------------------
 // Animated SVG path for Reanimated
@@ -186,6 +196,12 @@ const messageForStage = (stage: number): string =>
 
 const CALM_EASING = Easing.out(Easing.cubic);
 const API_STAGE = 6;
+// Upper bound on how long the analyzing screen waits for the async enrichments
+// (streamed L3 insights + ARKit bone-structure capture) to attach before it
+// navigates to results. Keeps results from rendering with pages that pop in
+// later, while never trapping the user (the 45s hard-timeout still governs the
+// whole pipeline; this only gates the final hand-off).
+const ENRICH_TIMEOUT_MS = 20000;
 
 // Map the 9-stage internal pipeline to the design's 4 story beats.
 // Stages 0-1 → Captured, 2-3 → Mapped, 4-6 → Compared, 7-8 → Composed.
@@ -237,18 +253,25 @@ export default function AnalyzingScreen() {
   const [retryCount, setRetryCount] = useState(0);
   const [streamedText, setStreamedText] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
-  const insightsRef = useRef<any>(null);
+  const insightsRef = useRef<GeneratedInsights | null>(null);
 
   const apiDone = useRef(false);
-  const apiResult = useRef<any>(null);
+  const apiResult = useRef<AnalysisResult | null>(null);
   const holdingOnApiStage = useRef(false);
   const postApiStarted = useRef(false);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const hasStarted = useRef(false);
   const scannerDataRef = useRef({ inflammation_index: 0, pigmentation_index: 0, texture_index: 0 });
   const cycleDayRef = useRef<number | undefined>(undefined);
-  const lastRecordRef = useRef<any>(null);
+  const lastRecordRef = useRef<DailyRecord | null>(null);
   const analysisStartTime = useRef(0);
+  // Liveness/abort guards for async continuations (see analyzingGuard.ts).
+  // mountedRef flips false on unmount; abortedRef flips true when the 45s hard
+  // timeout fires. Every post-await navigation / setState / timer checks both so
+  // a late API resolution can never teleport the user back into results.
+  const mountedRef = useRef(true);
+  const abortedRef = useRef(false);
+  const pipelineStale = () => isAnalyzingPipelineStale(mountedRef.current, abortedRef.current);
 
   // ---------------------------------------------------------------------------
   // Animations
@@ -280,6 +303,13 @@ export default function AnalyzingScreen() {
     try {
       const photosDir = `${FileSystemLegacy.documentDirectory}scan_photos/`;
       await FileSystemLegacy.makeDirectoryAsync(photosDir, { intermediates: true });
+      // MOB-02: scans intentionally live under documentDirectory (NOT cacheDirectory)
+      // because the report PDF + 90-day history depend on this path surviving relaunches.
+      // expo-file-system v19 exposes no backup-exclusion / "skip iCloud backup" flag, so we
+      // cannot opt this directory out of device backups at write time. At-rest protection
+      // relies on: (1) wipe-on-delete of scan_photos when the user deletes their data
+      // (see useStore), and (2) the OS app sandbox. The face metadata blob is separately
+      // AES-encrypted (MOB-01); the raw JPEGs are not.
       // If the capture was already persisted by the camera screen, reuse it directly.
       if (tempUri.startsWith(photosDir)) {
         return tempUri;
@@ -314,7 +344,7 @@ export default function AnalyzingScreen() {
   // Post-API stage runner (unchanged guard logic)
   // ---------------------------------------------------------------------------
   const runPostApiStages = () => {
-    if (postApiStarted.current) return;
+    if (postApiStarted.current || pipelineStale()) return;
     postApiStarted.current = true;
 
     const t1 = setTimeout(() => {
@@ -335,6 +365,7 @@ export default function AnalyzingScreen() {
   // Persist results + navigate (unchanged)
   // ---------------------------------------------------------------------------
   const persistAndNavigate = async () => {
+    if (pipelineStale()) return;
     const analysis = apiResult.current;
     if (!analysis) {
       // No results — don't navigate to an empty results screen
@@ -389,11 +420,37 @@ export default function AnalyzingScreen() {
         scanned_at: new Date().toISOString(),
       });
 
-      // Stage 2: Stream personalized insights in background (non-blocking).
-      // The L3 GPT-4o path is best-effort — when it's not reachable (offline,
-      // backend disabled, transient failure) we synthesise the same shape via
-      // `buildInsightsFromDeterministic` on-device so the scan always lands
-      // with a populated `generated_insights` field.
+      // Persist the model output up-front so the async enrichments below mutate
+      // an output that already exists in the store. (The no-backend fallback
+      // attaches insights synchronously and would otherwise race the add.)
+      addModelOutput({
+        daily_id: dailyRecord.daily_id,
+        acne_score: analysis.acne_score,
+        sun_damage_score: analysis.sun_damage_score,
+        skin_age_score: analysis.skin_age_score,
+        confidence: analysis.confidence,
+        primary_driver: analysis.primary_driver,
+        recommended_action: analysis.recommended_action,
+        escalation_flag: analysis.escalation_flag,
+        conditions: analysis.conditions,
+        rag_recommendations: analysis.rag_recommendations,
+        personalized_feedback: analysis.personalized_feedback,
+        signal_scores: analysis.signal_scores,
+        signal_features: analysis.signal_features,
+        lesions: finalLesions,
+        signal_confidence: analysis.signal_confidence,
+        zone_severity: analysis.zone_severity,
+      });
+
+      // Enrichments run concurrently and ATTACH onto the output above; we await
+      // them (bounded by ENRICH_TIMEOUT_MS) before navigating so results renders
+      // every page on first paint instead of the architecture/insights pages
+      // popping in — and so the ARKit capture finishes + releases the camera
+      // before results mounts. Stage 2: streamed personalized insights. The L3
+      // path is best-effort; on failure we synth the same shape on-device so the
+      // scan always lands with populated `generated_insights`.
+      let insightsPromise: Promise<unknown> = Promise.resolve();
+      let bonePromise: Promise<unknown> = Promise.resolve();
       if (analysis.signal_scores) {
         const attachInsights = (insights: GeneratedInsights, source: 'remote' | 'local') => {
           insightsRef.current = insights;
@@ -421,7 +478,7 @@ export default function AnalyzingScreen() {
         if (env.API_BASE_URL) {
           setIsStreaming(true);
           setDisplayedMessage('Generating insights...');
-          streamInsights(
+          insightsPromise = streamInsights(
             {
               signal_scores: analysis.signal_scores,
               signal_features: analysis.signal_features,
@@ -438,10 +495,11 @@ export default function AnalyzingScreen() {
               healthkit_context: buildHealthkitRollup(state.healthDailyRecords, 7),
             },
             (chunk) => {
+              if (!mountedRef.current) return;
               setStreamedText((prev) => prev + chunk);
             },
           ).then((insights) => {
-            setIsStreaming(false);
+            if (mountedRef.current) setIsStreaming(false);
             if (insights) {
               attachInsights(insights, 'remote');
             } else {
@@ -450,9 +508,9 @@ export default function AnalyzingScreen() {
               trackEvent('scan_insights_stream_failed', { reason: 'no_insights' });
               attachInsights(fallbackInsights(), 'local');
             }
-          }).catch((err: any) => {
-            setIsStreaming(false);
-            trackEvent('scan_insights_stream_failed', { error: String(err?.message || err) });
+          }).catch((err: unknown) => {
+            if (mountedRef.current) setIsStreaming(false);
+            trackEvent('scan_insights_stream_failed', { error: errMsg(err) });
             attachInsights(fallbackInsights(), 'local');
           });
         } else {
@@ -461,30 +519,11 @@ export default function AnalyzingScreen() {
         }
       }
 
-      addModelOutput({
-        daily_id: dailyRecord.daily_id,
-        acne_score: analysis.acne_score,
-        sun_damage_score: analysis.sun_damage_score,
-        skin_age_score: analysis.skin_age_score,
-        confidence: analysis.confidence,
-        primary_driver: analysis.primary_driver,
-        recommended_action: analysis.recommended_action,
-        escalation_flag: analysis.escalation_flag,
-        conditions: analysis.conditions,
-        rag_recommendations: analysis.rag_recommendations,
-        personalized_feedback: analysis.personalized_feedback,
-        signal_scores: analysis.signal_scores,
-        signal_features: analysis.signal_features,
-        lesions: finalLesions,
-        signal_confidence: analysis.signal_confidence,
-        zone_severity: analysis.zone_severity,
-      });
-
       // Bone-structure analysis runs in parallel with the skin pipeline.
       // The local attach happens immediately so the UI has data; if the
       // server couldn't persist (model_outputs row hadn't synced yet), we
       // queue a retry through syncOutbox so MCP queries eventually see it.
-      (async () => {
+      bonePromise = (async () => {
         const dailyId = dailyRecord.daily_id;
         const sex = useStore.getState().user?.sex;
         const sexOverride = sex === 'male' || sex === 'female' ? sex : undefined;
@@ -494,13 +533,13 @@ export default function AnalyzingScreen() {
           captured = await captureFaceMesh();
           firstResult = await analyzeBoneStructure({ mesh: captured.mesh, dailyId, sexOverride });
           useStore.getState().attachBoneStructure(dailyId, firstResult);
-        } catch (err: any) {
+        } catch (err: unknown) {
           if (__DEV__) console.warn('[Glowlytics] Bone-structure analysis skipped:', err);
           // Track outside __DEV__ so PostHog sees production failures instead
           // of the scan looking "complete" without bone metrics. The user-
           // facing scan still proceeds — bone-structure is a side analysis.
           trackEvent('scan_bone_structure_failed', {
-            error: String(err?.message || err),
+            error: errMsg(err),
             status: err instanceof ApiError ? err.status : null,
           });
           return;
@@ -531,36 +570,50 @@ export default function AnalyzingScreen() {
       useStore.getState().syncHealthData().catch(() => {});
       useStore.getState().runPatternDetection();
 
+      // Hand off to results only once the enrichments have attached (or the
+      // bound elapses), so the results screen is complete on first render.
+      await Promise.race([
+        Promise.allSettled([insightsPromise, bonePromise]),
+        new Promise<void>((resolve) => {
+          const t = setTimeout(resolve, ENRICH_TIMEOUT_MS);
+          timers.current.push(t);
+        }),
+      ]);
+      if (pipelineStale()) return;
+
       const currentState = useStore.getState();
       const xpGained = currentState.gamification.xp - xpBefore;
       const newBadges = currentState.gamification.badges.slice(badgesBefore);
       const latestBadgeName = newBadges.length > 0 ? newBadges[newBadges.length - 1].name : undefined;
 
       if (xpGained > 0 || latestBadgeName) {
-        setXpFeedback({ xp: xpGained, badge: latestBadgeName });
+        if (!pipelineStale()) setXpFeedback({ xp: xpGained, badge: latestBadgeName });
         const t = setTimeout(() => {
+          if (pipelineStale()) return;
           router.replace('/scan/results');
         }, 1500);
         timers.current.push(t);
         return;
       }
-    } catch (err: any) {
-      if (__DEV__) console.error('[Glowlytics] Persist failed:', err?.message || err);
-      setError('We couldn\u2019t save your results. Please try again.');
+    } catch (err: unknown) {
+      if (__DEV__) console.error('[Glowlytics] Persist failed:', errMsg(err));
+      if (!pipelineStale()) setError('We couldn\u2019t save your results. Please try again.');
       return;
     }
 
-    router.replace('/scan/results');
+    if (!pipelineStale()) router.replace('/scan/results');
   };
 
   // ---------------------------------------------------------------------------
   // Start animations + cleanup
   // ---------------------------------------------------------------------------
   useEffect(() => {
+    mountedRef.current = true;
     // Fade infinity in
     logoOpacity.value = withTiming(1, { duration: 800, easing: CALM_EASING });
 
     return () => {
+      mountedRef.current = false;
       timers.current.forEach(clearTimeout);
     };
   }, []);
@@ -569,16 +622,23 @@ export default function AnalyzingScreen() {
   // Bail out if store never hydrates within 5s
   // ---------------------------------------------------------------------------
   useEffect(() => {
-    if (hasStarted.current || user) return;
+    // Arm a bail-out whenever the pipeline can't start yet — missing user OR a
+    // null protocol. Previously this only watched `user`, so a signed-in user
+    // with a null protocol armed nothing and the screen spun forever (#23/#24).
+    if (!shouldArmHydrationBail(hasStarted.current, !!user, !!protocol)) return;
     const bail = setTimeout(() => {
       if (!hasStarted.current) {
         clearPendingPhotoBase64();
-        setError('Unable to load your profile. Please restart the app and try again.');
+        setError(
+          user
+            ? 'We couldn\u2019t load your skincare setup. Please restart the app and try again.'
+            : 'Unable to load your profile. Please restart the app and try again.',
+        );
       }
     }, 5000);
     timers.current.push(bail);
     return () => clearTimeout(bail);
-  }, [user]);
+  }, [user, protocol]);
 
   // ---------------------------------------------------------------------------
   // Block Android back button during analysis to prevent broken state
@@ -604,6 +664,7 @@ export default function AnalyzingScreen() {
   useEffect(() => {
     if (hasStarted.current || !user || !protocol) return;
     hasStarted.current = true;
+    abortedRef.current = false;
 
     // --- Timer track: advance stages 0-5, then hold at 6 ---
     let delay = 0;
@@ -643,6 +704,7 @@ export default function AnalyzingScreen() {
     // Hard timeout at 45s -- show error instead of navigating with no data
     const tHardTimeout = setTimeout(() => {
       if (!apiDone.current) {
+        abortedRef.current = true;
         if (__DEV__) console.error('[Glowlytics] Analysis hard timeout at 45s');
         trackEvent('scan_analysis_timeout', { analysis_time_ms: 45000 });
         setError('Analysis is taking too long. Please check your connection and try again.');
@@ -708,8 +770,8 @@ export default function AnalyzingScreen() {
             if (!ok) return null;
           }
           return await mod.runSkinSignals(params.photoUri);
-        } catch (err: any) {
-          if (__DEV__) console.warn('[Glowlytics] On-device L2 skipped:', err?.message || err);
+        } catch (err: unknown) {
+          if (__DEV__) console.warn('[Glowlytics] On-device L2 skipped:', errMsg(err));
           return null;
         }
       })();
@@ -755,6 +817,7 @@ export default function AnalyzingScreen() {
 
     encodeAndAnalyze()
       .then((result) => {
+        if (pipelineStale()) return;
         apiResult.current = result;
         apiDone.current = true;
         setSlowWarning(false);
@@ -774,12 +837,12 @@ export default function AnalyzingScreen() {
           runPostApiStages();
         }
       })
-      .catch((err) => {
-        if (__DEV__) console.error('[Glowlytics] Analysis failed:', err?.message || err);
+      .catch((err: unknown) => {
+        if (__DEV__) console.error('[Glowlytics] Analysis failed:', errMsg(err));
         const rawPhotoParam = Array.isArray(params.photoUri) ? params.photoUri[0] : params.photoUri;
         const photoUriForLog = typeof rawPhotoParam === 'string' ? rawPhotoParam : '';
         trackEvent('scan_analysis_failed', {
-          error: String(err?.message || err),
+          error: errMsg(err),
           analysis_time_ms: Date.now() - analysisStartTime.current,
           has_photo_uri: !!photoUriForLog,
           photo_uri_prefix: photoUriForLog ? photoUriForLog.slice(0, 16) : 'none',
@@ -792,8 +855,9 @@ export default function AnalyzingScreen() {
             hasProtocol: !!protocol,
           });
         }
+        if (pipelineStale()) return;
         clearPendingPhotoBase64();
-        setError(err?.message || 'Something went wrong. Please try again.');
+        setError(err instanceof Error && err.message ? err.message : 'Something went wrong. Please try again.');
       });
 
   }, [user, protocol, retryCount]);
@@ -823,6 +887,7 @@ export default function AnalyzingScreen() {
     holdingOnApiStage.current = false;
     postApiStarted.current = false;
     hasStarted.current = false;
+    abortedRef.current = false;
     timers.current.forEach(clearTimeout);
     timers.current = [];
     ringProgress.value = 0;

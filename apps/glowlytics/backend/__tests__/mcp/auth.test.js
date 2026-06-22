@@ -61,6 +61,10 @@ beforeEach(() => {
   process.env.CLERK_JWKS_URL = jwksUrl;
   delete process.env.MCP_BETA_USER_IDS;
   delete process.env.MCP_ALLOWED_CLIENT_IDS;
+  // MCP-06: default GA-open so the audience/client-gate tests below aren't
+  // blocked by the new fail-closed closed-beta default. Beta-specific tests
+  // override MCP_BETA_USER_IDS / MCP_BETA_OPEN as needed.
+  process.env.MCP_BETA_OPEN = 'true';
 });
 
 test('rejects missing Authorization header', async () => {
@@ -83,12 +87,32 @@ test('rejects token with wrong issuer', async () => {
   expect(res.status).toBe(401);
 });
 
-test('rejects expired token', async () => {
-  const tok = await sign({ exp: Math.floor(Date.now() / 1000) - 10 });
+test('rejects token expired well beyond the clock-tolerance window', async () => {
+  const tok = await sign({ exp: Math.floor(Date.now() / 1000) - 120 });
   const res = await request(buildApp())
     .get('/protected')
     .set('Authorization', `Bearer ${tok}`);
   expect(res.status).toBe(401);
+});
+
+test('accepts a token expired within the 30s clock-tolerance window (skew)', async () => {
+  // 15s past expiry: a realistic minor clock-skew case that previously 401'd.
+  const tok = await sign({ exp: Math.floor(Date.now() / 1000) - 15 });
+  const res = await request(buildApp())
+    .get('/protected')
+    .set('Authorization', `Bearer ${tok}`);
+  expect(res.status).toBe(200);
+  expect(res.body.userId).toBe('user_abc');
+});
+
+test('accepts a token whose nbf is slightly in the future (within tolerance)', async () => {
+  const now = Math.floor(Date.now() / 1000);
+  const tok = await sign({ extraClaims: { nbf: now + 15 } });
+  const res = await request(buildApp())
+    .get('/protected')
+    .set('Authorization', `Bearer ${tok}`);
+  expect(res.status).toBe(200);
+  expect(res.body.userId).toBe('user_abc');
 });
 
 test('accepts valid token and attaches userId', async () => {
@@ -189,11 +213,23 @@ test('accepts OAuth grant via allowlist fallback when aud is absent', async () =
   expect(res.status).toBe(200);
 });
 
-test('allows any authenticated user when MCP_BETA_USER_IDS is empty (GA)', async () => {
+test('allows any authenticated user when MCP_BETA_USER_IDS empty and MCP_BETA_OPEN=true (GA)', async () => {
   delete process.env.MCP_BETA_USER_IDS;
+  process.env.MCP_BETA_OPEN = 'true';
   const tok = await sign({ sub: 'user_anyone' });
   const res = await request(buildApp())
     .get('/protected')
     .set('Authorization', `Bearer ${tok}`);
   expect(res.status).toBe(200);
+});
+
+test('fails closed when MCP_BETA_USER_IDS empty and MCP_BETA_OPEN unset (MCP-06)', async () => {
+  delete process.env.MCP_BETA_USER_IDS;
+  delete process.env.MCP_BETA_OPEN;
+  const tok = await sign({ sub: 'user_anyone' });
+  const res = await request(buildApp())
+    .get('/protected')
+    .set('Authorization', `Bearer ${tok}`);
+  expect(res.status).toBe(403);
+  expect(res.body.error).toBe('beta_only');
 });

@@ -127,17 +127,6 @@ export default function Welcome() {
     router.push(screenToRoute(flow[1]));
   };
 
-  const handleSkip = () => {
-    trackEvent('onboarding_skipped');
-    const existing = useStore.getState().user;
-    if (existing) {
-      useStore.getState().updateUser({ onboarding_complete: true });
-    } else {
-      createUser({ user_id: userId ?? undefined, onboarding_complete: true });
-    }
-    router.replace('/(tabs)/today' as any);
-  };
-
   return (
     <OnboardingTransition
       illustration={<WelcomeIllustration />}
@@ -145,8 +134,6 @@ export default function Welcome() {
       subtext="Glowlytics adapts to your skin, your lifestyle, and your goals. This takes under a minute."
       primaryLabel="Let's go"
       primaryOnPress={handleStart}
-      secondaryLabel="I'll set this up later"
-      secondaryOnPress={handleSkip}
       showProgress={false}
     />
   );

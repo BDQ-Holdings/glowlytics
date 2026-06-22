@@ -9,6 +9,11 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
   removeItem: jest.fn(() => Promise.resolve()),
 }));
 
+// MOB-01: persist/load now AES-encrypt the blob. Use the passthrough manual mock
+// so these store-logic tests still observe plaintext JSON in AsyncStorage; the
+// real AES layer is covered by services/__tests__/secureStorage.test.ts.
+jest.mock('../../services/secureStorage');
+
 // Mock uuid
 jest.mock('uuid', () => ({
   v4: () => `test-id-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -388,26 +393,28 @@ describe('useStore', () => {
     });
   });
 
-  describe('createUser auto-trial', () => {
-    it('starts a 7-day trial when createUser runs without an existing trial', () => {
+  describe('createUser does NOT auto-fire trial (Apple 3.1.2 compliance)', () => {
+    it('does not start a trial when createUser runs without an existing trial', () => {
       useStore.getState().createUser({ age_range: '25-34' });
       const sub = useStore.getState().subscription;
-      expect(sub.trial_start_date).not.toBeNull();
-      expect(sub.trial_end_date).not.toBeNull();
-      const start = new Date(sub.trial_start_date!).getTime();
-      const end = new Date(sub.trial_end_date!).getTime();
-      const days = Math.round((end - start) / (1000 * 60 * 60 * 24));
-      expect(days).toBe(7);
+      // Pre-build-11, createUser auto-fired startTrial(). That bypassed Apple's
+      // StoreKit purchase sheet and violated 3.1.2(a)/(b). The trial flag is
+      // now only set by the RevenueCat customer-info listener after a real
+      // purchase, or as a post-purchase fallback inside the onboarding paywall.
+      expect(sub.trial_start_date).toBeNull();
+      expect(sub.trial_end_date).toBeNull();
     });
 
-    it('canPerformScan returns true immediately after createUser', () => {
+    it('canPerformScan returns false immediately after createUser (paywall not yet completed)', () => {
       useStore.getState().createUser({ age_range: '25-34' });
-      expect(useStore.getState().canPerformScan()).toBe(true);
+      expect(useStore.getState().canPerformScan()).toBe(false);
     });
 
     it('does not overwrite an existing trial when createUser runs again', () => {
-      useStore.getState().createUser({ age_range: '25-34' });
+      // Simulate the post-paywall state: trial was set by RevenueCat customer-info listener.
+      useStore.getState().startTrial();
       const firstStart = useStore.getState().subscription.trial_start_date;
+      expect(firstStart).not.toBeNull();
       useStore.getState().createUser({ age_range: '25-34' });
       expect(useStore.getState().subscription.trial_start_date).toBe(firstStart);
     });

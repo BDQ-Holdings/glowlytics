@@ -236,44 +236,41 @@ export default function Results({ hideBottomAction: hideBottomActionProp }: { hi
 
   // Stable viewability config ref (React warns about inline objects)
   const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
+  const lastPageRef = useRef(0);
   const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: ViewToken[] }) => {
-    if (viewableItems.length > 0 && viewableItems[0].index != null) {
-      setActivePage(viewableItems[0].index);
+    const idx = viewableItems[0]?.index;
+    if (idx != null && idx !== lastPageRef.current) {
+      lastPageRef.current = idx;
+      setActivePage(idx);
+      // Subtle tick as each story page snaps into place — adds tactile polish to
+      // the swipe-through flow without being noisy (selection-level haptic).
+      Haptics.selectionAsync().catch(() => {});
     }
   }).current;
 
-  // Empty state
-  if (!latestOutput) {
-    return (
-      <StoryPage screenH={screenH} insets={stableInsets}>
-        <View style={styles.emptyCenter}>
-          <Text style={styles.emptyTitle}>Results appear after your first scan</Text>
-          <Text style={styles.emptyCopy}>Take a scan to see your full breakdown.</Text>
-          <Button title="Go back" onPress={() => router.back()} />
-        </View>
-      </StoryPage>
-    );
-  }
-
-  const generatedInsights = latestOutput.generated_insights;
-  const templateExplanation = getExplanation(latestOutput, {
-    sunscreen: latestDaily?.sunscreen_used ?? true,
-    cycleWindow: latestOutput.primary_driver === 'cycle window',
-    newProduct: latestDaily?.new_product_added ?? false,
-    sleepQuality: latestDaily?.sleep_quality,
-  });
-  const explanation = generatedInsights?.overall_summary
-    || latestOutput.personalized_feedback
-    || templateExplanation
-    || 'Your skin analysis is ready. See your signal breakdown below.';
-
-  const handleDone = () => router.replace('/(tabs)/today');
-  const scanCount = allOutputs.length;
-  const safeScore = Number.isFinite(overallInsight?.score) ? overallInsight!.score : 0;
-  const accentColor = scoreColor(safeScore);
-
-  // Build story pages (memoized)
+  // Build story pages (memoized). Hoisted above the empty-state early-return
+  // (below) so the hook order is identical whether or not latestOutput exists.
+  // An async store hydration can populate it while this screen is mounted; a
+  // hook after a conditional return would crash with "rendered more hooks".
   const pages = useMemo(() => {
+    if (!latestOutput) return [] as { key: string; render: () => React.ReactNode }[];
+
+    const generatedInsights = latestOutput.generated_insights;
+    const templateExplanation = getExplanation(latestOutput, {
+      sunscreen: latestDaily?.sunscreen_used ?? true,
+      cycleWindow: latestOutput.primary_driver === 'cycle window',
+      newProduct: latestDaily?.new_product_added ?? false,
+      sleepQuality: latestDaily?.sleep_quality,
+    });
+    const explanation = generatedInsights?.overall_summary
+      || latestOutput.personalized_feedback
+      || templateExplanation
+      || 'Your skin analysis is ready. See your signal breakdown below.';
+    const handleDone = () => router.replace('/(tabs)/today');
+    const scanCount = allOutputs.length;
+    const safeScore = Number.isFinite(overallInsight?.score) ? overallInsight!.score : 0;
+    const accentColor = scoreColor(safeScore);
+
     const p: { key: string; render: () => React.ReactNode }[] = [];
 
     // Page 1: Score reveal
@@ -404,11 +401,9 @@ export default function Results({ hideBottomAction: hideBottomActionProp }: { hi
               ))}
             </Animated.View>
           )}
-          {latestOutput.rag_recommendations?.length ? (
-            <Animated.View entering={FadeInDown.duration(400).delay(500)} style={styles.sourcesWrap}>
-              <ClinicalSourcesCard recommendations={latestOutput.rag_recommendations} />
-            </Animated.View>
-          ) : null}
+          <Animated.View entering={FadeInDown.duration(400).delay(500)} style={styles.sourcesWrap}>
+            <ClinicalSourcesCard recommendations={latestOutput.rag_recommendations} />
+          </Animated.View>
         </StoryPage>
       ),
     });
@@ -522,12 +517,25 @@ export default function Results({ hideBottomAction: hideBottomActionProp }: { hi
     });
 
     return p;
-  }, [latestOutput, overallInsight, generatedInsights, explanation, screenH, stableInsets, hideBottomAction, accentColor, scanCount]);
+  }, [latestOutput, overallInsight, latestDaily, allOutputs, screenH, stableInsets, hideBottomAction, router]);
 
   const getItemLayout = useCallback(
     (_: unknown, index: number) => ({ length: screenH, offset: screenH * index, index }),
     [screenH],
   );
+
+  // Empty state — rendered after every hook so the hook order never changes.
+  if (!latestOutput) {
+    return (
+      <StoryPage screenH={screenH} insets={stableInsets}>
+        <View style={styles.emptyCenter}>
+          <Text style={styles.emptyTitle}>Results appear after your first scan</Text>
+          <Text style={styles.emptyCopy}>Take a scan to see your full breakdown.</Text>
+          <Button title="Go back" onPress={() => router.back()} />
+        </View>
+      </StoryPage>
+    );
+  }
 
   return (
     <View style={styles.root}>
@@ -539,6 +547,8 @@ export default function Results({ hideBottomAction: hideBottomActionProp }: { hi
         pagingEnabled
         showsVerticalScrollIndicator={false}
         snapToInterval={screenH}
+        snapToAlignment="start"
+        disableIntervalMomentum
         decelerationRate="fast"
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}

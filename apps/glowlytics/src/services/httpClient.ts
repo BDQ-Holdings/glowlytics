@@ -13,10 +13,14 @@
 
 import { _setProvider as _setInternalProvider } from './httpClientInternal';
 
-let getAuthToken: (() => Promise<string | null>) | null = null;
+/** Token provider shape. `skipCache: true` bypasses Clerk's own ~50s getToken
+ *  cache so a 401-driven forced refresh actually mints a fresh JWT. */
+type AuthTokenProvider = (opts?: { skipCache?: boolean }) => Promise<string | null>;
+
+let getAuthToken: AuthTokenProvider | null = null;
 
 /** Wire Clerk's session.getToken() at app boot. */
-export const setAuthTokenProvider = (provider: () => Promise<string | null>) => {
+export const setAuthTokenProvider = (provider: AuthTokenProvider) => {
   getAuthToken = provider;
   // Mirror to the internal shim so api.ts/getAuthHeaders can read the same source.
   _setInternalProvider(provider);
@@ -34,6 +38,13 @@ export const setAuthTokenProvider = (provider: () => Promise<string | null>) => 
 // ---------------------------------------------------------------------------
 let cachedToken: string | null = null;
 let cachedTokenExpiresAt = 0;
+// In-flight token fetch, shared so a burst of concurrent authed requests (e.g.
+// the results screen firing insights + bone + health sync at once) collapses to
+// a single Clerk getToken() call instead of a thundering herd of FAPI mints.
+// `inflightForce` records whether the in-flight fetch bypassed Clerk's cache so
+// a 401-driven force-refresh never reuses a non-force (possibly stale) fetch.
+let inflightFetch: Promise<string | null> | null = null;
+let inflightForce = false;
 const TOKEN_TTL_FLOOR_MS = 30_000;
 const TOKEN_TTL_FALLBACK_MS = 50_000;
 const TOKEN_REFRESH_BUFFER_MS = 5_000;
@@ -62,20 +73,38 @@ const fetchToken = async (forceRefresh = false): Promise<string | null> => {
   if (!forceRefresh && cachedToken && now < cachedTokenExpiresAt) {
     return cachedToken;
   }
-  const token = await getAuthToken();
-  cachedToken = token;
-  if (token) {
-    const expMs = expiresAtFromJwt(token);
-    // Cache until exp − buffer, or fall back to 50s on undecodable tokens.
-    // Floor at 30s so a misconfigured short-lived token can't melt us down.
-    const ttl = expMs
-      ? Math.max(TOKEN_TTL_FLOOR_MS, expMs - TOKEN_REFRESH_BUFFER_MS - now)
-      : TOKEN_TTL_FALLBACK_MS;
-    cachedTokenExpiresAt = now + ttl;
-  } else {
-    cachedTokenExpiresAt = 0;
+  // Reuse an in-flight fetch when it satisfies our freshness need: a non-force
+  // caller accepts any in-flight fetch; a force caller only reuses another force
+  // fetch (otherwise it might get the stale token a non-force fetch resolves to).
+  if (inflightFetch && (!forceRefresh || inflightForce)) {
+    return inflightFetch;
   }
-  return token;
+  inflightForce = forceRefresh;
+  inflightFetch = (async (): Promise<string | null> => {
+    try {
+      // Forward the force flag so Clerk's getToken bypasses its own ~50s cache
+      // when we're retrying after a 401 — otherwise the "refreshed" token is the
+      // stale one.
+      const token = await getAuthToken!({ skipCache: forceRefresh });
+      cachedToken = token;
+      if (token) {
+        const expMs = expiresAtFromJwt(token);
+        // Cache until exp − buffer, or fall back to 50s on undecodable tokens.
+        // Floor at 30s so a misconfigured short-lived token can't melt us down.
+        const ttl = expMs
+          ? Math.max(TOKEN_TTL_FLOOR_MS, expMs - TOKEN_REFRESH_BUFFER_MS - now)
+          : TOKEN_TTL_FALLBACK_MS;
+        cachedTokenExpiresAt = now + ttl;
+      } else {
+        cachedTokenExpiresAt = 0;
+      }
+      return token;
+    } finally {
+      inflightFetch = null;
+      inflightForce = false;
+    }
+  })();
+  return inflightFetch;
 };
 
 /** Call after sign-out to drop the cached JWT immediately. */

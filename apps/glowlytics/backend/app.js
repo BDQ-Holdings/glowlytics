@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 const { Pool } = require('pg');
 const { randomUUID: uuidv4, timingSafeEqual } = require('crypto');
 const jwt = require('jsonwebtoken');
@@ -14,8 +15,18 @@ const { recommendInterventions } = require('./interventions');
 const noLlmFallback = require('./no-llm-fallback');
 const { searchCuratedProducts, lookupCuratedBarcode, enrichIngredients } = require('./curated-products');
 const scanQueries = require('./queries/scans');
+const { poolSsl } = require('./db-ssl');
 
 const app = express();
+
+// Behind Railway's single proxy hop: make req.ip the real client so the
+// per-IP rate limiters key on the actual caller, not the proxy (BC-006).
+app.set('trust proxy', 1);
+
+// Baseline HTTP hardening (BC-007). helmet defaults suit a JSON API; no custom
+// CSP (that would only matter for served HTML).
+app.disable('x-powered-by');
+app.use(helmet());
 
 // Production-safe logger — masks potentially sensitive error details
 const isProd = process.env.NODE_ENV === 'production';
@@ -27,8 +38,13 @@ const log = {
 
 // CORS — restrict origins in production
 const ALLOWED_ORIGINS = process.env.CORS_ORIGINS
-  ? process.env.CORS_ORIGINS.split(',')
+  ? process.env.CORS_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean)
   : undefined; // undefined = allow all (dev)
+// Fail closed in production: a deploy that forgets CORS_ORIGINS must not
+// silently reflect every origin (BC-003).
+if (process.env.NODE_ENV === 'production' && (!ALLOWED_ORIGINS || ALLOWED_ORIGINS.length === 0)) {
+  throw new Error('CORS_ORIGINS must be set in production');
+}
 app.use(cors(ALLOWED_ORIGINS ? { origin: ALLOWED_ORIGINS } : undefined));
 app.use(express.json({ limit: '20mb' }));
 
@@ -38,7 +54,7 @@ const openai = new OpenAI({ apiKey: openaiKey });
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL || 'postgresql://localhost:5432/glowlytics',
-  ...(process.env.DATABASE_URL ? { ssl: { rejectUnauthorized: false } } : {}),
+  ssl: poolSsl(),
 });
 
 if (!process.env.DATABASE_URL) {
@@ -129,7 +145,13 @@ const authMiddleware = (req, res, next) => {
     return next();
   }
 
-  jwt.verify(token, getKey, { issuer: CLERK_ISSUER_URL }, (err, decoded) => {
+  // clockTolerance absorbs minor device/server clock skew and the iat/nbf
+  // boundary so 60s Clerk session JWTs don't spuriously 401 mid-session.
+  const verifyOptions = { algorithms: ['RS256'], issuer: CLERK_ISSUER_URL, clockTolerance: 30 };
+  if (process.env.CLERK_AUDIENCE) {
+    verifyOptions.audience = process.env.CLERK_AUDIENCE;
+  }
+  jwt.verify(token, getKey, verifyOptions, (err, decoded) => {
     if (err) {
       return res.status(401).json({ error: 'Invalid token' });
     }
@@ -159,7 +181,11 @@ function safeErrorMessage(err) {
 // ==================== INPUT VALIDATION ====================
 
 /** Valid values for user profile fields */
-const VALID_AGE_RANGES = ['13-17', '18-24', '25-34', '35-44', '45-54', '55-64', '65+'];
+// Must accept exactly what onboarding/age-range.tsx sends ('Under 18'…'55+');
+// the prior list omitted 'Under 18' and '55+', so POST /api/users 400'd and those
+// users' profiles were never created server-side (#7). Legacy buckets kept for
+// backward-compat. (All fit age_range VARCHAR(10).)
+const VALID_AGE_RANGES = ['Under 18', '13-17', '18-24', '25-34', '35-44', '45-54', '55+', '55-64', '65+'];
 const VALID_PERIOD_APPLICABLE = ['yes', 'no', 'prefer_not'];
 const VALID_DRINK_FREQUENCIES = ['none', '1-2', '3-5', '6+'];
 
@@ -520,7 +546,7 @@ app.get('/api/products/search', detectRateLimit, async (req, res) => {
   }
 });
 
-// Photo-based product identification (public, rate-limited)
+// Per-IP rate limiter for photo identification (the route itself is auth-required; see protected routes).
 function photoRateLimit(req, res, next) {
   const ip = req.ip || req.socket.remoteAddress;
   const now = Date.now();
@@ -536,6 +562,67 @@ function photoRateLimit(req, res, next) {
   next();
 }
 
+// ==================== ADMIN ROUTES (admin-secret auth, no JWT) ==============
+
+// Seed guidelines into Pinecone (admin only — requires ADMIN_SECRET)
+app.post('/api/rag/seed', async (req, res) => {
+  try {
+    const adminSecret = process.env.ADMIN_SECRET;
+    const providedSecret = req.headers['x-admin-secret'];
+    if (!adminSecret || !providedSecret ||
+        adminSecret.length !== providedSecret.length ||
+        !timingSafeEqual(Buffer.from(providedSecret), Buffer.from(adminSecret))) {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    if (!process.env.PINECONE_API_KEY) {
+      return res.status(500).json({ error: 'PINECONE_API_KEY not configured' });
+    }
+
+    const result = await seedGuidelines();
+    res.json({
+      success: true,
+      message: `Seeded ${result.seeded} guideline chunks`,
+      categories: result.categories,
+    });
+  } catch (err) {
+    log.error('RAG seed error:', err.message);
+    res.status(500).json({ error: safeErrorMessage(err) });
+  }
+});
+
+// ==================== MCP DISCOVERY + SERVER (public discovery, JWT-auth'd /mcp) ====================
+// Mounted before authMiddleware so MCP discovery + transport use their own auth (Clerk JWT
+// verified against JWKS), independent of the legacy session cookie middleware.
+const { mcpConfig: _mcpCfg } = require('./mcp/config');
+if (_mcpCfg().enabled) {
+  // Order matters: oauth-proxy before well-known because well-known reads
+  // isProxyEnabled() to decide which auth_server to advertise.
+  require('./mcp/oauth-proxy').mountOAuthProxy(app);
+  require('./mcp/well-known').mountWellKnown(app);
+  require('./mcp/transport').mountMcp(app);
+}
+
+// ==================== PROTECTED ROUTES (auth required) ====================
+
+app.use(authMiddleware);
+
+/**
+ * Authorization helper — verifies the authenticated user matches the requested resource owner.
+ * In development mode (req.auth === null), access is allowed for dev convenience.
+ */
+function authorizeUser(req, res, userId) {
+  if (req.auth && req.auth.userId !== userId) {
+    res.status(403).json({ error: 'Access denied' });
+    return false;
+  }
+  return true;
+}
+
+// ==================== PHOTO PRODUCT IDENTIFICATION (auth required, rate-limited) ====================
+// Triggers paid GPT-4o vision; moved below authMiddleware so unauthenticated
+// callers can no longer drive OpenAI spend (BC-001). Mobile client sends a
+// Bearer token via httpClient, so this is non-breaking.
 app.post('/api/products/identify-photo', photoRateLimit, async (req, res) => {
   try {
     const { image_base64 } = req.body;
@@ -622,63 +709,6 @@ app.post('/api/products/identify-photo', photoRateLimit, async (req, res) => {
     res.json({ identified: false, error: 'Product identification failed' });
   }
 });
-
-// ==================== ADMIN ROUTES (admin-secret auth, no JWT) ==============
-
-// Seed guidelines into Pinecone (admin only — requires ADMIN_SECRET)
-app.post('/api/rag/seed', async (req, res) => {
-  try {
-    const adminSecret = process.env.ADMIN_SECRET;
-    const providedSecret = req.headers['x-admin-secret'];
-    if (!adminSecret || !providedSecret ||
-        adminSecret.length !== providedSecret.length ||
-        !timingSafeEqual(Buffer.from(providedSecret), Buffer.from(adminSecret))) {
-      return res.status(403).json({ error: 'Admin access required' });
-    }
-
-    if (!process.env.PINECONE_API_KEY) {
-      return res.status(500).json({ error: 'PINECONE_API_KEY not configured' });
-    }
-
-    const result = await seedGuidelines();
-    res.json({
-      success: true,
-      message: `Seeded ${result.seeded} guideline chunks`,
-      categories: result.categories,
-    });
-  } catch (err) {
-    log.error('RAG seed error:', err.message);
-    res.status(500).json({ error: safeErrorMessage(err) });
-  }
-});
-
-// ==================== MCP DISCOVERY + SERVER (public discovery, JWT-auth'd /mcp) ====================
-// Mounted before authMiddleware so MCP discovery + transport use their own auth (Clerk JWT
-// verified against JWKS), independent of the legacy session cookie middleware.
-const { mcpConfig: _mcpCfg } = require('./mcp/config');
-if (_mcpCfg().enabled) {
-  // Order matters: oauth-proxy before well-known because well-known reads
-  // isProxyEnabled() to decide which auth_server to advertise.
-  require('./mcp/oauth-proxy').mountOAuthProxy(app);
-  require('./mcp/well-known').mountWellKnown(app);
-  require('./mcp/transport').mountMcp(app);
-}
-
-// ==================== PROTECTED ROUTES (auth required) ====================
-
-app.use(authMiddleware);
-
-/**
- * Authorization helper — verifies the authenticated user matches the requested resource owner.
- * In development mode (req.auth === null), access is allowed for dev convenience.
- */
-function authorizeUser(req, res, userId) {
-  if (req.auth && req.auth.userId !== userId) {
-    res.status(403).json({ error: 'Access denied' });
-    return false;
-  }
-  return true;
-}
 
 // ==================== VISION API PROXY ====================
 
@@ -1163,7 +1193,7 @@ Return ONLY valid JSON matching this schema:
   return { system, user: 'Generate personalized insights based on the scan results above.' };
 }
 
-app.post('/api/vision/generate-insights', async (req, res) => {
+app.post('/api/vision/generate-insights', analyzeRateLimit, async (req, res) => {
   try {
     const {
       signal_scores, signal_features, signal_confidence,
@@ -1488,9 +1518,12 @@ app.delete('/api/users/:id', async (req, res) => {
     );
     await client.query('COMMIT');
 
-    if (result.rowCount === 0) {
-      return res.status(404).json({ error: 'User not found' });
-    }
+    // rowCount === 0 means no app-data row existed (e.g. the profile never synced
+    // server-side, P0 #7). We MUST still delete the Clerk auth identity below —
+    // Apple 5.1.1(v) requires the account be removable even with no server data,
+    // and the authenticated caller IS this user. The old 404-abort here left such
+    // users permanently unable to delete their account (#41).
+    const dataDeleted = result.rowCount > 0;
 
     // Phase 2: delete the Clerk user record so auth identity is gone too.
     // Best-effort — log and continue on failure rather than leaving partial state.
@@ -1517,6 +1550,7 @@ app.delete('/api/users/:id', async (req, res) => {
       success: true,
       message: 'Account and all associated data deleted',
       clerk_deleted: clerkDeleted,
+      data_deleted: dataDeleted,
     });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
@@ -1883,6 +1917,21 @@ app.delete('/api/mcp/clients/:clientId', async (req, res) => {
     log.error('[mcp/clients DELETE]', err.message);
     res.status(500).json({ error: 'failed_to_revoke_client' });
   }
+});
+
+// ==================== TERMINAL ERROR HANDLER ====================
+// Registered last. Always returns a generic message and never leaks error
+// internals or stack traces to clients, regardless of NODE_ENV (BC-008).
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  log.error('[error-handler]', err && err.message);
+  if (res.headersSent) {
+    return next(err);
+  }
+  const status = Number.isInteger(err && err.status)
+    ? err.status
+    : (Number.isInteger(err && err.statusCode) ? err.statusCode : 500);
+  res.status(status).json({ error: 'Internal server error' });
 });
 
 // Reset rate limiters — exposed for test cleanup

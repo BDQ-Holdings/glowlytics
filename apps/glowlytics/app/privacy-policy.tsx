@@ -359,7 +359,7 @@ export default function TermsAndPrivacyScreen() {
           </Paragraph>
           <BulletList
             items={[
-              'Local device storage: scan photos, analysis results, and user preferences are stored on your device using secure local storage (AsyncStorage).',
+              'Local device storage: scan photos are stored in the app sandbox on your device, while analysis results and preferences are saved in an AES-encrypted data store on-device.',
               'Ephemeral face alignment data: live face bounding boxes and landmark / mesh coordinates stay on-device during camera preview and are discarded after the session ends.',
               'Encrypted backend: account data and scan history are synced to our secure PostgreSQL database, encrypted in transit (TLS) and at rest.',
             ]}

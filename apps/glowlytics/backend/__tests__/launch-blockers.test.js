@@ -148,7 +148,7 @@ describe('Issue #2: DELETE /api/users/:id account deletion', () => {
     expect(mockClient.release).toHaveBeenCalled();
   });
 
-  test('DELETE /api/users/:id returns 404 if user not found', async () => {
+  test('DELETE /api/users/:id still removes the Clerk identity + returns 200 when no DB row exists (#41)', async () => {
     mockClientQuery
       .mockResolvedValueOnce({ rows: [] }) // BEGIN
       .mockResolvedValueOnce({ rows: [], rowCount: 0 })  // delete model_outputs
@@ -156,13 +156,18 @@ describe('Issue #2: DELETE /api/users/:id account deletion', () => {
       .mockResolvedValueOnce({ rows: [], rowCount: 0 })  // delete product_catalog
       .mockResolvedValueOnce({ rows: [], rowCount: 0 })  // delete scan_protocols
       .mockResolvedValueOnce({ rows: [], rowCount: 0 })  // delete report_artifacts
-      .mockResolvedValueOnce({ rows: [], rowCount: 0 })  // delete user_profiles — 0 rows = not found
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 })  // delete user_profiles — no row (profile never synced)
       .mockResolvedValueOnce({ rows: [] }); // COMMIT
 
-    await request(app)
+    // Apple 5.1.1(v): a user whose profile never synced server-side must STILL be
+    // able to delete their account. The old code returned 404 here and never
+    // reached the Clerk-identity deletion, stranding them permanently (#41).
+    const res = await request(app)
       .delete('/api/users/dev-user')
-      .expect(404);
+      .expect(200);
 
+    expect(res.body.success).toBe(true);
+    expect(res.body.data_deleted).toBe(false);
     expect(mockClient.release).toHaveBeenCalled();
   });
 });
@@ -225,6 +230,19 @@ describe('Issue #14: Input validation on POST /api/users', () => {
         location_coarse: 'New York',
       })
       .expect(201);
+  });
+
+  test('accepts the mobile age-range edge values "Under 18" and "55+" (#7)', async () => {
+    for (const age_range of ['Under 18', '55+']) {
+      mockQuery.mockResolvedValueOnce({
+        rows: [{ user_id: 'dev-user', age_range, location_coarse: 'NYC', period_applicable: 'prefer_not' }],
+      });
+      // Previously these onboarding values 400'd, silently losing the profile (#7).
+      await request(app)
+        .post('/api/users')
+        .send({ age_range, location_coarse: 'NYC' })
+        .expect(201);
+    }
   });
 });
 

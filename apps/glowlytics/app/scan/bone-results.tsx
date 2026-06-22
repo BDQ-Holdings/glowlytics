@@ -27,6 +27,7 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { Button } from '../../src/components/Button';
@@ -86,15 +87,40 @@ export default function BoneResults() {
   const [activePage, setActivePage] = useState(0);
   const listRef = useRef<FlatList>(null);
   const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
+  const lastPageRef = useRef(0);
   const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: ViewToken[] }) => {
-    if (viewableItems.length > 0 && viewableItems[0].index != null) {
-      setActivePage(viewableItems[0].index);
+    const idx = viewableItems[0]?.index;
+    if (idx != null && idx !== lastPageRef.current) {
+      lastPageRef.current = idx;
+      setActivePage(idx);
+      // Subtle tick as each story page snaps into place (parity with scan/results).
+      Haptics.selectionAsync().catch(() => {});
     }
   }).current;
 
   const getItemLayout = useCallback(
     (_: unknown, index: number) => ({ length: screenH, offset: screenH * index, index }),
     [screenH],
+  );
+
+  // Story pages are built unconditionally so the hook order is identical on
+  // every render. An async attachBoneStructure can populate `bone` while this
+  // screen is mounted; a useMemo placed after the empty-state early-return
+  // below would change the hook count between renders and crash the tree
+  // ("rendered more hooks than during the previous render"). The page
+  // renderers are hoisted function declarations so this memo can sit above the
+  // return; they are only invoked by the FlatList in the populated branch.
+  const pages = useMemo(
+    () => [
+      { key: 'hero',          render: renderHero },
+      { key: 'by-area',       render: renderByArea },
+      { key: 'measurements',  render: renderMeasurements },
+      { key: 'findings',      render: renderFindings },
+      { key: 'interventions', render: renderInterventions },
+    ],
+    // Re-create when bone or geometry change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [bone, previousBone, stableInsets, screenH, screenW],
   );
 
   // ── Empty state ─────────────────────────────────────────────
@@ -154,7 +180,9 @@ export default function BoneResults() {
   // Each page renders inside StoryPage which fills the viewport.
 
   // Page 1 — Hero: 3D mesh + Harmony score + delta vs previous
-  const renderHero = () => (
+  function renderHero() {
+    if (!bone) return null;
+    return (
     <StoryPage screenH={screenH} insets={stableInsets}>
       <Animated.View entering={FadeIn.duration(500)} style={styles.heroMeshWrap}>
         <Face3DViewer
@@ -175,10 +203,12 @@ export default function BoneResults() {
         <Text style={styles.swipeText}>Swipe up</Text>
       </Animated.View>
     </StoryPage>
-  );
+  ); }
 
   // Page 2 — By area: radial domain chart with optional ghost overlay
-  const renderByArea = () => (
+  function renderByArea() {
+    if (!bone) return null;
+    return (
     <StoryPage screenH={screenH} insets={stableInsets}>
       <Text style={styles.pageEyebrow}>By area</Text>
       <Animated.View entering={FadeInDown.duration(450)}>
@@ -211,10 +241,12 @@ export default function BoneResults() {
         <DomainHistoryStrip />
       </Animated.View>
     </StoryPage>
-  );
+  ); }
 
   // Page 3 — Measurements: 16-card metric grid
-  const renderMeasurements = () => (
+  function renderMeasurements() {
+    if (!bone) return null;
+    return (
     <StoryPage screenH={screenH} insets={stableInsets}>
       <Text style={styles.pageEyebrow}>Measurements</Text>
       <Text style={styles.pageTitle}>The actual numbers</Text>
@@ -255,10 +287,12 @@ export default function BoneResults() {
         })}
       </ScrollView>
     </StoryPage>
-  );
+  ); }
 
   // Page 4 — Findings: top 6 most-actionable items
-  const renderFindings = () => (
+  function renderFindings() {
+    if (!bone) return null;
+    return (
     <StoryPage screenH={screenH} insets={stableInsets}>
       <Text style={styles.pageEyebrow}>What stood out</Text>
       <Text style={styles.pageTitle}>
@@ -308,10 +342,12 @@ export default function BoneResults() {
         </Text>
       )}
     </StoryPage>
-  );
+  ); }
 
   // Page 5 — What you can do: three-tier intervention drawer + done
-  const renderInterventions = () => (
+  function renderInterventions() {
+    if (!bone) return null;
+    return (
     <StoryPage screenH={screenH} insets={stableInsets}>
       <Text style={styles.pageEyebrow}>What you can do</Text>
       <Text style={styles.pageTitle}>Three tiers, in order</Text>
@@ -325,20 +361,7 @@ export default function BoneResults() {
         <Button title="Done" onPress={() => router.replace('/(tabs)/today')} size="lg" />
       </View>
     </StoryPage>
-  );
-
-  const pages = useMemo(
-    () => [
-      { key: 'hero',          render: renderHero },
-      { key: 'by-area',       render: renderByArea },
-      { key: 'measurements',  render: renderMeasurements },
-      { key: 'findings',      render: renderFindings },
-      { key: 'interventions', render: renderInterventions },
-    ],
-    // Re-create when bone or geometry change
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [bone, previousBone, stableInsets, screenH, screenW],
-  );
+  ); }
 
   return (
     <View style={styles.root}>
@@ -350,6 +373,8 @@ export default function BoneResults() {
         pagingEnabled
         showsVerticalScrollIndicator={false}
         snapToInterval={screenH}
+        snapToAlignment="start"
+        disableIntervalMomentum
         decelerationRate="fast"
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}

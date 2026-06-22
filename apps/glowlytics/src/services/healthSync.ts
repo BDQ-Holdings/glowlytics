@@ -1,11 +1,19 @@
 import { Platform } from 'react-native';
-import {
-  queryCategorySamples,
-  queryQuantitySamples,
-  CategoryValueSleepAnalysis,
-} from '@kingstinct/react-native-healthkit';
+import type * as HealthKit from '@kingstinct/react-native-healthkit';
 import type { HealthDailyRecord } from '../types';
 import { localDateStr } from '../utils/localDate';
+
+// HealthKit is iOS-only; its native TurboModule throws when loaded without a
+// native runtime (Android, Jest). Load it lazily so this module stays
+// import-safe everywhere — every caller reaches healthkit() only after a
+// Platform.OS === 'ios' guard.
+let nativeHealthkit: typeof HealthKit | null = null;
+function healthkit(): typeof HealthKit {
+  if (!nativeHealthkit) {
+    nativeHealthkit = require('@kingstinct/react-native-healthkit') as typeof HealthKit;
+  }
+  return nativeHealthkit;
+}
 
 const generateId = () => `hdr_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 
@@ -139,6 +147,7 @@ async function syncOneDay(
   userId: string,
   menstrualSamples90d?: { startDate: Date; endDate: Date; value: number }[],
 ): Promise<SyncOneDayResult> {
+  const { queryCategorySamples, queryQuantitySamples, CategoryValueSleepAnalysis } = healthkit();
   const errors: string[] = [];
   const dateStr = localDateStr(date);
   const startOfDay = new Date(date);
@@ -294,6 +303,7 @@ export async function pullLastNDays(
   if (Platform.OS !== 'ios') {
     return { records: [], errors: ['platform_not_ios'] };
   }
+  const { queryCategorySamples } = healthkit();
 
   // Pre-fetch 90-day menstrual window once (for cycle day derivation).
   let menstrualSamples90d: { startDate: Date; endDate: Date; value: number }[] = [];
@@ -415,6 +425,7 @@ export async function detectCycleFromHealthKit(): Promise<{
   if (Platform.OS !== 'ios') {
     return { detected: false, lastPeriodStart: null, cycleLengthDays: null, menstrualStatus: null };
   }
+  const { queryCategorySamples } = healthkit();
   try {
     const now = new Date();
     const ninetyDaysAgo = new Date(now);

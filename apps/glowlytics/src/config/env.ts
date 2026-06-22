@@ -38,6 +38,15 @@ if (!__DEV__ && resolvedApiUrl.includes('localhost')) {
   console.error('[ENV] API_BASE_URL points to localhost in a production build — API calls will fail');
 }
 
+// MOB-04: production builds must reach the API over HTTPS. Fail fast on any non-https
+// base URL (also catches an http://localhost accidentally shipped in a release build).
+// __DEV__ keeps the local http://localhost dev workflow working.
+if (!__DEV__ && !resolvedApiUrl.startsWith('https://')) {
+  throw new Error(
+    `[ENV] API_BASE_URL must use https:// in production builds (got "${resolvedApiUrl}"). Refusing to send requests over an insecure connection.`,
+  );
+}
+
 if (!resolvedClerkKey) {
   console.error('[ENV] EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY is missing — auth will fail.');
 } else if (__DEV__ && resolvedClerkKey.startsWith('pk_live_')) {

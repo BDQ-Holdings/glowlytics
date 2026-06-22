@@ -135,6 +135,18 @@ describe('analyzeBoneStructure', () => {
     expect(result.harmony).toBeNull();
   });
 
+  test('full-length all-zero mesh is rejected, not scored as ok (#4)', () => {
+    // A full-length mesh of all zeros: every landmark index is in-bounds and
+    // dereferences to a coincident (0,0,0) point, so metrics degenerate to
+    // finite-but-meaningless numbers. The old code returned harmony ~78 /
+    // status 'ok' for this; it must now be rejected as 'no_face'.
+    const vertices = new Float32Array(478 * 3); // all zeros, in-bounds for every landmark
+    const result = analyzeBoneStructure({ vertices, source: 'mediapipe', sex: 'female' });
+    expect(result.status).toBe('no_face');
+    expect(result.harmony).toBeNull();
+    expect(result.findings).toEqual([]);
+  });
+
   test('unknown source throws', () => {
     expect(() => analyzeBoneStructure({ vertices: new Float32Array(100), source: 'bogus' })).toThrow();
   });
