@@ -221,6 +221,70 @@ describe('POST /api/uv/lead', () => {
     expect(res.body).toEqual({ error: 'unknown scan_id' });
     expect(uvQueries.upsertLead).not.toHaveBeenCalled();
   });
+
+  // B1 capability binding — claim_token closes the scan_id IDOR. A scan that
+  // carries a claim_token may only be claimed by a caller presenting it.
+  const CLAIM_TOKEN = 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6';
+
+  test('403 when scan carries a claim_token but a WRONG one is presented', async () => {
+    uvQueries.getScan.mockResolvedValue({
+      id: 'scan1',
+      claim_token: CLAIM_TOKEN,
+      claimed: false,
+      overall: { sunDamageScore: 55, severity: 'moderate' },
+      asymmetry: { score: 12 },
+    });
+
+    const res = await request(app)
+      .post('/api/uv/lead')
+      .send({ email: 'a@b.com', scan_id: 'scan1', claim_token: 'deadbeefdeadbeefdeadbeefdeadbeef' });
+
+    expect(res.status).toBe(403);
+    expect(res.body).toEqual({ error: 'invalid claim token' });
+    expect(uvQueries.upsertLead).not.toHaveBeenCalled();
+    expect(uvQueries.claimScan).not.toHaveBeenCalled();
+  });
+
+  test('403 when scan carries a claim_token but NONE is presented', async () => {
+    uvQueries.getScan.mockResolvedValue({
+      id: 'scan1',
+      claim_token: CLAIM_TOKEN,
+      claimed: false,
+      overall: { sunDamageScore: 55, severity: 'moderate' },
+      asymmetry: { score: 12 },
+    });
+
+    const res = await request(app)
+      .post('/api/uv/lead')
+      .send({ email: 'a@b.com', scan_id: 'scan1' });
+
+    expect(res.status).toBe(403);
+    expect(res.body).toEqual({ error: 'invalid claim token' });
+    expect(uvQueries.upsertLead).not.toHaveBeenCalled();
+    expect(uvQueries.claimScan).not.toHaveBeenCalled();
+  });
+
+  test('409 when an already-claimed scan is claimed by a DIFFERENT email', async () => {
+    // Correct token clears the B1 gate; the 409 guard then rejects the takeover.
+    uvQueries.getScan.mockResolvedValue({
+      id: 'scan1',
+      claim_token: CLAIM_TOKEN,
+      claimed: true,
+      overall: { sunDamageScore: 55, severity: 'moderate' },
+      asymmetry: { score: 12 },
+    });
+    // The new email has no existing lead, so it cannot be the original claimer.
+    uvQueries.getLeadByEmail.mockResolvedValue(null);
+
+    const res = await request(app)
+      .post('/api/uv/lead')
+      .send({ email: 'intruder@b.com', scan_id: 'scan1', claim_token: CLAIM_TOKEN });
+
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({ error: 'scan already claimed' });
+    expect(uvQueries.upsertLead).not.toHaveBeenCalled();
+    expect(uvQueries.claimScan).not.toHaveBeenCalled();
+  });
 });
 
 describe('GET /api/uv/report/:token', () => {

@@ -9,6 +9,7 @@
     "lint": "next lint",
     "seo:seeds": "node --import ./scripts/seo-engine/node_modules/tsx/dist/loader.mjs ./scripts/seo-engine/src/generate-seeds.ts",
     "seo:discover": "node --import ./scripts/seo-engine/node_modules/tsx/dist/loader.mjs ./scripts/seo-engine/src/discover.ts",
+    "seo:discover-fast": "node --import ./scripts/seo-engine/node_modules/tsx/dist/loader.mjs ./scripts/seo-engine/src/discover-fast.ts",
     "seo:research": "node --import ./scripts/seo-engine/node_modules/tsx/dist/loader.mjs ./scripts/seo-engine/src/research.ts",
     "seo:write": "node --import ./scripts/seo-engine/node_modules/tsx/dist/loader.mjs ./scripts/seo-engine/src/write.ts",
     "seo:review": "node --import ./scripts/seo-engine/node_modules/tsx/dist/loader.mjs ./scripts/seo-engine/src/review.ts",

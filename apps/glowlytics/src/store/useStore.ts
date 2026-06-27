@@ -7,7 +7,7 @@ import type {
   GamificationState, Badge, WeeklyChallenge, LevelName,
   OnboardingScreenName, SubscriptionState, NotificationSettings,
   DetectedLesion, HealthDailyRecord, HealthSyncStatus, Pattern, FirstLookInsight,
-  PatternNotificationsState,
+  PatternNotificationsState, ConsideringItem,
   AppearancePreferences,
 } from '../types';
 import { DEFAULT_APPEARANCE, applyAppIcon } from '../services/appearance';
@@ -79,6 +79,10 @@ interface AppState {
   // `services/ritual.ts`.
   ritualCompletions: Record<string, Record<string, boolean>>;
 
+  // Advise-only "considering" wishlist for the Shopping Advisor. Persisted like
+  // other slices. Items the user saved while scanning in-store — never a cart.
+  consideringList: ConsideringItem[];
+
   // Appearance preferences (Settings → Appearance). Stored verbatim;
   // side-effects (icon swap, font scale, motion gating) live in callers.
   appearance: AppearancePreferences;
@@ -139,6 +143,8 @@ interface AppState {
   runPatternDetection: () => void;
   setFirstUnlockNotifSent: (sent: boolean) => void;
   toggleRitualStep: (stepId: string, dateStr?: string) => void;
+  saveToConsidering: (item: ConsideringItem) => void;
+  removeFromConsidering: (id: string) => void;
   setAppearance: (patch: Partial<AppearancePreferences>) => Promise<void>;
   resetAppearance: () => Promise<void>;
   requestAddProduct: () => void;
@@ -292,6 +298,7 @@ export const useStore = create<AppState>((set, get) => ({
   firstLookInsight: null,
   patternNotifications: { first_pattern_unlock_sent: false },
   ritualCompletions: {},
+  consideringList: [],
 
   appearance: { ...DEFAULT_APPEARANCE },
   openAddProductTrigger: 0,
@@ -769,6 +776,24 @@ export const useStore = create<AppState>((set, get) => ({
     debouncedPersist(() => get().persistData());
   },
 
+  saveToConsidering: (item) => {
+    set((s) => {
+      const existing = s.consideringList.findIndex((c) => c.id === item.id);
+      if (existing >= 0) {
+        const next = [...s.consideringList];
+        next[existing] = item;
+        return { consideringList: next };
+      }
+      return { consideringList: [...s.consideringList, item] };
+    });
+    debouncedPersist(() => get().persistData());
+  },
+
+  removeFromConsidering: (id) => {
+    set((s) => ({ consideringList: s.consideringList.filter((c) => c.id !== id) }));
+    debouncedPersist(() => get().persistData());
+  },
+
   setAppearance: async (patch) => {
     const prev = get().appearance;
     const next = { ...prev, ...patch };
@@ -1119,6 +1144,7 @@ export const useStore = create<AppState>((set, get) => ({
           firstLookInsight: parsed.firstLookInsight || null,
           patternNotifications: parsed.patternNotifications || { first_pattern_unlock_sent: false },
           ritualCompletions: parsed.ritualCompletions || {},
+          consideringList: Array.isArray(parsed.consideringList) ? parsed.consideringList : [],
           appearance: {
             // Partial merge so a new field in DEFAULT_APPEARANCE picks up on
             // upgrade without wiping the user's existing choices.
@@ -1159,6 +1185,7 @@ export const useStore = create<AppState>((set, get) => ({
         subscription, notificationSettings, onboardingFlow, onboardingFlowIndex,
         healthDailyRecords, healthSyncStatus, patterns, firstLookInsight,
         patternNotifications, ritualCompletions, appearance, dailyQuoteSeenDate,
+        consideringList,
       } = get();
       // Cap stored records to last 365 days to prevent AsyncStorage bloat
       const cutoff = new Date();
@@ -1181,7 +1208,7 @@ export const useStore = create<AppState>((set, get) => ({
         healthDailyRecords: cappedHealthRecords,
         healthSyncStatus, patterns, firstLookInsight, patternNotifications,
         ritualCompletions: cappedRitualCompletions,
-        appearance, dailyQuoteSeenDate,
+        appearance, dailyQuoteSeenDate, consideringList,
       };
       await AsyncStorage.setItem('glowlytics_data', await encryptJson(snapshot));
     } catch (e) {
@@ -1222,6 +1249,7 @@ export const useStore = create<AppState>((set, get) => ({
       ritualCompletions: {},
       appearance: { ...DEFAULT_APPEARANCE },
       dailyQuoteSeenDate: null,
+      consideringList: [],
     });
     // Cross-account bleed guard: sign-out is the single cleanup chokepoint, so it
     // must also drop the previous user's cached JWT, queued mutations, analytics

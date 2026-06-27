@@ -18,7 +18,7 @@
       "supportsTablet": false,
       "requireFullScreen": true,
       "bundleIdentifier": "com.glowlytics.app",
-      "buildNumber": "14",
+      "buildNumber": "17",
       "usesAppleSignIn": true,
       "associatedDomains": [],
       "infoPlist": {

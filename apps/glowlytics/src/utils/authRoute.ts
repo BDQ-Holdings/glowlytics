@@ -38,6 +38,8 @@ export const LOGGED_IN_ROOTS: Record<string, true> = {
   story: true,
   today: true,
   quote: true,
+  'shop-advisor': true,
+  considering: true,
 };
 
 export interface AuthRouteParams {

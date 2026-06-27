@@ -21,3 +21,6 @@ apps/landing/tsconfig.tsbuildinfo
 apps/landing/data/.seo-daily.lock
 apps/landing/data/runs/*.json
 apps/landing/data/runs/cron.log
+# Internal working docs / design scratch — not for the (public) repo.
+.local/
+.omp/

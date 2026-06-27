@@ -4,11 +4,13 @@
  */
 const { Pool } = require('pg');
 const { poolSsl } = require('../db-ssl');
+const { attachPoolErrorHandler } = require('../pg-resilience');
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL || 'postgresql://localhost:5432/glowlytics',
   ssl: poolSsl(),
 });
+attachPoolErrorHandler(pool, 'bone-structure');
 
 const FLAT_BAND = 1;
 const PERIOD_DAYS = { '30d': 30, '90d': 90, '180d': 180, '365d': 365 };

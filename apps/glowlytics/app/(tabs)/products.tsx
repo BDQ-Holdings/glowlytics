@@ -5,7 +5,7 @@ import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlowIcon } from '../../src/components/glow/GlowIcons';
-import { FadeUp } from '../../src/components/glow/GlowPrimitives';
+import { FadeUp, BreathingGlow } from '../../src/components/glow/GlowPrimitives';
 import { AddProductSheet } from '../../src/components/AddProductSheet';
 import { FocusFade } from '../../src/components/FocusFade';
 import {
@@ -49,6 +49,7 @@ export default function ShelfTab() {
   const dailyRecords = useStore((s) => s.dailyRecords);
   const [showAddSheet, setShowAddSheet] = useState(false);
   const addProductTrigger = useStore((s) => s.openAddProductTrigger);
+  const consideringCount = useStore((s) => s.consideringList.length);
   const lastSeenTrigger = useRef(addProductTrigger);
 
   // Open the AddProductSheet whenever the cross-component trigger increments
@@ -93,6 +94,16 @@ export default function ShelfTab() {
     setShowAddSheet(true);
   };
 
+  const openAdvisor = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push('/shop-advisor');
+  };
+
+  const openConsidering = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push('/considering');
+  };
+
   return (
     <FocusFade>
       <ScrollView
@@ -117,6 +128,43 @@ export default function ShelfTab() {
           </Text>
         </View>
       </FadeUp>
+
+      <FadeUp index={1}>
+        <TouchableOpacity
+          activeOpacity={0.9}
+          onPress={openAdvisor}
+          style={[s.advisorCta, { backgroundColor: palette.ink }]}
+        >
+          <BreathingGlow color={palette.accent2} size={150} style={s.advisorGlow} />
+          <View style={[s.advisorIconTile, { backgroundColor: palette.surface + '1a' }]}>
+            <GlowIcon name="camera" size={22} color={palette.surface} stroke={1.7} />
+          </View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={[s.advisorEyebrow, { color: palette.accent2 }]}>SHOPPING TODAY?</Text>
+            <Text style={[s.advisorTitle, { color: palette.surface }]}>Scan before you buy</Text>
+            <Text style={[s.advisorSub, { color: palette.surface }]}>I'll check the fit against your skin.</Text>
+          </View>
+          <GlowIcon name="arrow" size={18} color={palette.surface} stroke={1.8} />
+        </TouchableOpacity>
+      </FadeUp>
+
+      {consideringCount > 0 && (
+        <FadeUp index={1}>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={openConsidering}
+            accessibilityRole="button"
+            accessibilityLabel={`Considering ${consideringCount} ${consideringCount === 1 ? 'product' : 'products'}`}
+            style={[s.consideringLink, { backgroundColor: palette.surface, borderColor: palette.glow }]}
+          >
+            <View style={[s.consideringDot, { backgroundColor: palette.accent2 }]} />
+            <Text style={[s.consideringText, { color: palette.ink }]}>
+              Considering ({consideringCount})
+            </Text>
+            <GlowIcon name="arrow" size={16} color={palette.accent} stroke={1.8} />
+          </TouchableOpacity>
+        </FadeUp>
+      )}
 
       <View style={s.list}>
         {scored.length === 0 ? (
@@ -252,6 +300,64 @@ const s = StyleSheet.create({
     fontSize: 13,
     lineHeight: 20,
     marginTop: 6,
+  },
+  advisorCta: {
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.lg,
+    borderRadius: 24,
+    padding: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    overflow: 'hidden',
+  },
+  advisorGlow: {
+    top: -60,
+    right: -44,
+  },
+  advisorIconTile: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  advisorEyebrow: {
+    fontFamily: FontFamily.sansMedium,
+    fontSize: 10.5,
+    letterSpacing: 1.2,
+  },
+  advisorTitle: {
+    fontFamily: FontFamily.sans,
+    fontSize: 19,
+    marginTop: 3,
+  },
+  advisorSub: {
+    fontFamily: FontFamily.sans,
+    fontSize: 12,
+    marginTop: 3,
+    opacity: 0.7,
+  },
+  consideringLink: {
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.sm,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  consideringDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  consideringText: {
+    flex: 1,
+    fontFamily: FontFamily.sansMedium,
+    fontSize: 14,
   },
   list: {
     paddingHorizontal: Spacing.lg,

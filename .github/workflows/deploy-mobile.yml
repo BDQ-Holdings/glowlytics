@@ -1,16 +1,9 @@
 name: Deploy Mobile App
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'apps/glowlytics/app/**'
-      - 'apps/glowlytics/src/**'
-      - 'apps/glowlytics/assets/**'
-      - 'apps/glowlytics/app.json'
-      - 'apps/glowlytics/eas.json'
-      - 'apps/glowlytics/package.json'
-      - '.github/workflows/deploy-mobile.yml'
+  # Manual-only. The push-to-main trigger was removed — it auto-built AND
+  # auto-SUBMITTED to TestFlight/Play Store with the test job skipped (no CI gate).
+  # Run via: GitHub Actions → "Deploy Mobile App" → Run workflow.
   workflow_dispatch:
     inputs:
       profile:
@@ -105,10 +98,10 @@ jobs:
   submit:
     name: Submit to Store (${{ matrix.platform }})
     needs: build
-    # Auto-submit on push to main (production builds) or when manually requested
+    # Submit only when explicitly requested via the workflow_dispatch input.
     if: >-
       always() && needs.build.result == 'success' &&
-      (github.event_name == 'push' || github.event.inputs.submit == 'true')
+      github.event.inputs.submit == 'true'
     runs-on: ubuntu-latest
     environment: production
     strategy:

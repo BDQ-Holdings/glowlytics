@@ -57,7 +57,8 @@ function concatBytes(a: Uint8Array, b: Uint8Array): Uint8Array {
 }
 
 async function sha256(bytes: Uint8Array): Promise<Uint8Array> {
-  const digest = await Crypto.digest(Crypto.CryptoDigestAlgorithm.SHA256, bytes);
+  // bytes is always ArrayBuffer-backed at runtime; narrow for TS5.7 Uint8Array<ArrayBufferLike>.
+  const digest = await Crypto.digest(Crypto.CryptoDigestAlgorithm.SHA256, bytes as Uint8Array<ArrayBuffer>);
   return new Uint8Array(digest);
 }
 

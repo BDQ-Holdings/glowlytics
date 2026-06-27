@@ -1,11 +1,9 @@
 name: Deploy Backend
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'apps/glowlytics/backend/**'
-      - '.github/workflows/deploy-backend.yml'
+  # Manual-only. The push-to-main trigger was removed — it ran `railway up` to
+  # production with the test job skipped on push (no CI gate). Deploy via:
+  # GitHub Actions → "Deploy Backend" → Run workflow (runs tests, then deploys).
   workflow_dispatch:
 
 concurrency:

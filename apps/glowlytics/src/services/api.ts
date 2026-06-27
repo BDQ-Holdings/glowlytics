@@ -6,6 +6,7 @@
 import type {
   UserProfile, ScanProtocol, ProductEntry, DailyRecord,
   ModelOutput, PrimaryGoal, ScanRegion,
+  ShoppingScanInput, ShoppingScanResult,
 } from '../types';
 
 import { env } from '../config/env';
@@ -149,4 +150,19 @@ export const identifyProductPhoto = (image_base64: string) =>
     // Photo identify is expensive (vision model). One retry at most so we
     // don't double-charge OpenAI on transient hiccups.
     retries: 1,
+  });
+
+// ---- Shopping Advisor (scan-while-shopping) ----
+//
+// Single authed verdict endpoint. The barcode path is fast; the photo path runs
+// a vision model, so we give it a 30s budget. retries:0 — a scan is user-driven
+// and re-triggerable, and we never want to double-bill the vision model. Returns
+// the identified verdict shape, or the `{ identified: false }` sentinel (callers
+// guard on `identified`).
+export const shoppingScan = (input: ShoppingScanInput) =>
+  request<ShoppingScanResult>('/api/products/shopping-scan', {
+    method: 'POST',
+    body: input,
+    timeoutMs: 30_000,
+    retries: 0,
   });

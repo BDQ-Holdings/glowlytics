@@ -3,6 +3,7 @@ const { Pool } = require('pg');
 const { initSchema } = require('./db-init');
 const signalModels = require('./signal-models');
 const { poolSsl } = require('./db-ssl');
+const { attachPoolErrorHandler } = require('./pg-resilience');
 
 const PORT = process.env.PORT || 3001;
 
@@ -16,6 +17,7 @@ async function initDB() {
     connectionString: process.env.DATABASE_URL,
     ssl: poolSsl(),
   });
+  attachPoolErrorHandler(pool, 'server-init');
   try {
     await initSchema(pool);
     console.log('  [DB] Schema initialized');
@@ -31,6 +33,13 @@ async function initDB() {
 // endpoint. Log loudly (Railway surfaces it) but keep the API serving.
 process.on('unhandledRejection', (reason) => {
   console.error('[server] Unhandled promise rejection (continuing):', reason?.message ?? reason);
+});
+
+// Same intent as the unhandledRejection guard above, for synchronous throws
+// escaping to the top level (a background timer callback, an event emitter).
+// Log loudly and keep serving rather than letting one stray throw 502 the API.
+process.on('uncaughtException', (e) => {
+  console.error('[server] uncaughtException (continuing):', e?.message ?? e);
 });
 
 app.listen(PORT, '0.0.0.0', async () => {

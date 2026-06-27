@@ -534,3 +534,97 @@ export interface FirstLookInsight {
   detail: string;                        // ≤200 chars
   driver: FirstLookInsightDriver;
 }
+
+// ---------------------------------------------------------------------------
+// Shopping Advisor (scan-while-shopping) — see .local/advisor-frontend-contract.md
+// Mirrors the LOCKED POST /api/products/shopping-scan response shape exactly.
+// ---------------------------------------------------------------------------
+
+/** API verdict. Design label map: buy='Fits you', maybe='Worth a look', skip='Not for you'. */
+export type ShoppingVerdict = 'buy' | 'maybe' | 'skip';
+
+export type ShoppingReasonKind = 'goal' | 'conflict' | 'redundancy' | 'flag' | 'neutral';
+export type ShoppingReasonTone = 'good' | 'warn' | 'bad';
+export type ShoppingSeverity = 'high' | 'med' | 'low';
+
+export interface ShoppingReason {
+  kind: ShoppingReasonKind;
+  tone: ShoppingReasonTone;
+  text: string;
+}
+
+export interface ShoppingConflict {
+  code: string;
+  severity: ShoppingSeverity;
+  message: string;
+  withProduct?: string;
+}
+
+export interface ShoppingRedundancy {
+  category: string;
+  withProduct: string;
+}
+
+export interface ShoppingFlag {
+  code: string;
+  severity: string;
+  message: string;
+}
+
+export interface ShoppingGoalFit {
+  /** 0..100 */
+  score: number;
+  beneficial: string[];
+  label: string;
+}
+
+export interface ShoppingProduct {
+  name: string;
+  brand: string;
+  ingredients: string[];
+  image_url: string | null;
+  source: string;
+}
+
+/**
+ * A successful, identified shopping-scan verdict. The endpoint also returns the
+ * unidentified sentinel `{ identified: false }` (no other fields populated), so
+ * callers MUST guard on `identified` before reading the rest. `shoppingScan`
+ * types its return as this shape; the orchestrator narrows on `identified`.
+ */
+export interface ShoppingScanResult {
+  identified: boolean;
+  product: ShoppingProduct;
+  verdict: ShoppingVerdict;
+  /** 0..100 int */
+  score: number;
+  headline: string;
+  reasons: ShoppingReason[];
+  goalFit: ShoppingGoalFit;
+  conflicts: ShoppingConflict[];
+  redundancy: ShoppingRedundancy | null;
+  flags: ShoppingFlag[];
+}
+
+/** Request body for POST /api/products/shopping-scan. */
+export interface ShoppingScanInput {
+  barcode?: string;
+  image_base64?: string;
+  name?: string;
+  ingredients?: string[];
+}
+
+/**
+ * A product scanned + kept this session. Doubles as the persisted "considering"
+ * wishlist row (advise-only — no cart). `id` is stable per product identity so
+ * re-scanning the same item dedupes across the session and the saved list.
+ */
+export interface ConsideringItem {
+  id: string;
+  name: string;
+  brand?: string;
+  verdict: ShoppingVerdict;
+  score: number;
+  result: ShoppingScanResult;
+  savedAt: number;
+}

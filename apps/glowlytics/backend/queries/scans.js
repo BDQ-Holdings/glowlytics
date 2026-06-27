@@ -1,10 +1,12 @@
 const { Pool } = require('pg');
 const { poolSsl } = require('../db-ssl');
+const { attachPoolErrorHandler } = require('../pg-resilience');
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL || 'postgresql://localhost:5432/glowlytics',
   ssl: poolSsl(),
 });
+attachPoolErrorHandler(pool, 'scans');
 
 const MAX_RANGE = 90;
 

@@ -112,7 +112,14 @@ async function decodeRaw(imageBase64, maxSide) {
     err.code = 'UV_BAD_IMAGE';
     throw err;
   }
-  const meta = await sharp(buffer).metadata();
+  let meta;
+  try {
+    meta = await sharp(buffer).metadata();
+  } catch (e) {
+    const err = new Error((e && e.message) || 'undecodable image');
+    err.code = 'UV_BAD_IMAGE';
+    throw err;
+  }
   if (!meta.width || !meta.height) {
     const err = new Error('undecodable image');
     err.code = 'UV_BAD_IMAGE';
@@ -122,11 +129,18 @@ async function decodeRaw(imageBase64, maxSide) {
   const scale = longest > maxSide ? maxSide / longest : 1;
   const width = Math.max(1, Math.round(meta.width * scale));
   const height = Math.max(1, Math.round(meta.height * scale));
-  const { data } = await sharp(buffer)
-    .resize(width, height, { fit: 'fill' })
-    .removeAlpha()
-    .raw()
-    .toBuffer({ resolveWithObject: true });
+  let data;
+  try {
+    ({ data } = await sharp(buffer)
+      .resize(width, height, { fit: 'fill' })
+      .removeAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true }));
+  } catch (e) {
+    const err = new Error((e && e.message) || 'undecodable image');
+    err.code = 'UV_BAD_IMAGE';
+    throw err;
+  }
   return { data, width, height, srcWidth: meta.width, srcHeight: meta.height };
 }
 

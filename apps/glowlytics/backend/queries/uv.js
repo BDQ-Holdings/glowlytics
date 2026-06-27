@@ -1,5 +1,6 @@
 const { Pool } = require('pg');
 const { poolSsl } = require('../db-ssl');
+const { attachPoolErrorHandler } = require('../pg-resilience');
 
 // Shared pool for callers that do not inject one (e.g. standalone use). The
 // query helpers below take the pool as their FIRST argument so app.js can pass
@@ -8,6 +9,7 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL || 'postgresql://localhost:5432/glowlytics',
   ssl: poolSsl(),
 });
+attachPoolErrorHandler(pool, 'uv');
 
 // Persist a completed UV scan. JSONB columns are JSON.stringify'd so the pg
 // driver sends valid jsonb text rather than '[object Object]'.

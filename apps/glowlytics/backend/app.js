@@ -3,7 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const { Pool } = require('pg');
-const { randomUUID: uuidv4, timingSafeEqual, createHash, randomBytes } = require('crypto');
+const { randomUUID: uuidv4, timingSafeEqual, createHmac, randomBytes } = require('crypto');
 const jwt = require('jsonwebtoken');
 const jwksClient = require('jwks-rsa');
 const OpenAI = require('openai');
@@ -14,12 +14,14 @@ const boneStructure = require('./bone-structure-3d');
 const { recommendInterventions } = require('./interventions');
 const noLlmFallback = require('./no-llm-fallback');
 const { searchCuratedProducts, lookupCuratedBarcode, enrichIngredients } = require('./curated-products');
+const shoppingScan = require('./shopping-scan');
 const scanQueries = require('./queries/scans');
 const { poolSsl } = require('./db-ssl');
 const uvScan = require('./uv-scan');
 const loops = require('./loops');
 const uvReport = require('./uv-report');
 const uvQueries = require('./queries/uv');
+const { attachPoolErrorHandler } = require('./pg-resilience');
 
 const app = express();
 
@@ -32,12 +34,14 @@ app.set('trust proxy', 1);
 app.disable('x-powered-by');
 app.use(helmet());
 
-// Production-safe logger — masks potentially sensitive error details
-const isProd = process.env.NODE_ENV === 'production';
+// Server-side logger. Full args are logged here (including an err.message passed
+// as the 2nd arg) so production diagnostics aren't silently dropped. Client
+// responses are sanitized separately via safeErrorMessage — this does NOT relax
+// client-facing redaction.
 const log = {
   info: (...args) => console.log(...args),
-  warn: (...args) => isProd ? console.warn(args[0]) : console.warn(...args),
-  error: (...args) => isProd ? console.error(args[0]) : console.error(...args),
+  warn: (...args) => console.warn(...args),
+  error: (...args) => console.error(...args),
 };
 
 // CORS — restrict origins in production
@@ -60,6 +64,7 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL || 'postgresql://localhost:5432/glowlytics',
   ssl: poolSsl(),
 });
+attachPoolErrorHandler(pool, 'app');
 
 if (!process.env.DATABASE_URL) {
   console.warn('[DB] DATABASE_URL not set — falling back to localhost:5432. Set DATABASE_URL to your Railway PostgreSQL URL.');
@@ -268,7 +273,7 @@ function detectRateLimit(req, res, next) {
 
 // Periodic cleanup of stale rate limiter entries (prevents memory leak under sustained traffic)
 const RATE_CLEANUP_INTERVAL = 60000; // sweep every 60s
-setInterval(() => {
+const _rateCleanupTimer = setInterval(() => {
   const now = Date.now();
   for (const [key, entry] of detectRateMap) {
     if (now - entry.start > DETECT_RATE_WINDOW) detectRateMap.delete(key);
@@ -280,6 +285,8 @@ setInterval(() => {
     if (now - entry.start > PHOTO_RATE_WINDOW) photoRateMap.delete(key);
   }
 }, RATE_CLEANUP_INTERVAL);
+// Don't let the sweep timer keep the event loop (and Jest) alive on its own.
+if (_rateCleanupTimer && typeof _rateCleanupTimer.unref === 'function') _rateCleanupTimer.unref();
 
 // Per-user rate limiter for expensive authenticated endpoints (vision/analyze)
 const analyzeRateMap = new Map();
@@ -397,25 +404,21 @@ async function lookupNIHDailyMed(barcode) {
   };
 }
 
-// Barcode product lookup (public, rate-limited)
-app.get('/api/products/lookup/:barcode', detectRateLimit, async (req, res) => {
-  const barcode = req.params.barcode;
-
-  // Validate barcode format (numeric, 6-14 digits)
-  if (!/^[0-9]{6,14}$/.test(barcode)) {
-    return res.status(400).json({ error: 'Invalid barcode format' });
-  }
-
+// Reusable barcode identification: curated DB first, then the external
+// waterfall, enriching missing ingredients from the curated DB. Returns a
+// normalized product or null. Shared by the public lookup route and the
+// authenticated shopping-scan endpoint.
+async function identifyByBarcode(barcode) {
   // Check curated DB first (instant, local)
   const curated = lookupCuratedBarcode(barcode);
   if (curated) {
-    return res.json({
+    return {
       name: curated.name,
-      brands: curated.brand,
-      ingredients: curated.ingredients.join(', '),
+      brand: curated.brand,
+      ingredients: curated.ingredients,
       image_url: null,
       source: 'curated',
-    });
+    };
   }
 
   // Waterfall through external sources
@@ -433,19 +436,44 @@ app.get('/api/products/lookup/:barcode', detectRateLimit, async (req, res) => {
     }
   }
 
-  if (bestResult) {
-    // Enrich missing ingredients from curated DB
-    const existingIngredients = bestResult.ingredients
-      ? bestResult.ingredients.split(',').map(s => s.trim()).filter(Boolean)
-      : [];
-    const enriched = enrichIngredients(bestResult.name, existingIngredients);
-    if (enriched.length > existingIngredients.length) {
-      bestResult.ingredients = enriched.join(', ');
-    }
-    return res.json(bestResult);
+  if (!bestResult) return null;
+
+  // Enrich missing ingredients from curated DB
+  const existingIngredients = bestResult.ingredients
+    ? bestResult.ingredients.split(',').map((s) => s.trim()).filter(Boolean)
+    : [];
+  const enriched = enrichIngredients(bestResult.name, existingIngredients);
+  const ingredients = enriched.length > existingIngredients.length ? enriched : existingIngredients;
+  return {
+    name: bestResult.name,
+    brand: bestResult.brands || '',
+    ingredients,
+    image_url: bestResult.image_url || null,
+    source: bestResult.source,
+  };
+}
+
+// Barcode product lookup (public, rate-limited)
+app.get('/api/products/lookup/:barcode', detectRateLimit, async (req, res) => {
+  const barcode = req.params.barcode;
+
+  // Validate barcode format (numeric, 6-14 digits)
+  if (!/^[0-9]{6,14}$/.test(barcode)) {
+    return res.status(400).json({ error: 'Invalid barcode format' });
   }
 
-  res.status(404).json({ error: 'Product not found in any database' });
+  const product = await identifyByBarcode(barcode);
+  if (!product) {
+    return res.status(404).json({ error: 'Product not found in any database' });
+  }
+
+  res.json({
+    name: product.name,
+    brands: product.brand,
+    ingredients: product.ingredients.join(', '),
+    image_url: product.image_url,
+    source: product.source,
+  });
 });
 
 // Product text search — multi-source (public, rate-limited).
@@ -613,6 +641,11 @@ if (_mcpCfg().enabled) {
 
 const UV_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
+// Module-level fallback so ip_hash stays keyed even when IP_HASH_SECRET is
+// unset (dev / unconfigured deploys). ip_hash is write-only and opaque, so a
+// static default is acceptable; set IP_HASH_SECRET in production for a real key.
+const IP_HASH_DEFAULT_SECRET = 'glowlytics-uv-ip-hash-v1';
+
 // jsonb columns come back as parsed objects from pg, but a value read as text
 // (or returned by a stubbed pool in tests) can arrive as a JSON string —
 // normalise before handing it to consumers.
@@ -655,7 +688,7 @@ app.post('/api/uv/analyze', analyzeRateLimit, async (req, res) => {
     const id = uuidv4();
     // B1: issued to the scanning client and required to claim the report later.
     const claim_token = randomBytes(16).toString('hex');
-    const ip_hash = createHash('sha256').update(String(req.ip || '')).digest('hex').slice(0, 32);
+    const ip_hash = createHmac('sha256', process.env.IP_HASH_SECRET || IP_HASH_DEFAULT_SECRET).update(String(req.ip || '')).digest('hex').slice(0, 32);
     const row = await uvQueries.insertScan(pool, {
       id,
       claim_token,
@@ -691,7 +724,8 @@ app.post('/api/uv/analyze', analyzeRateLimit, async (req, res) => {
 // Capture a lead's email in exchange for the PDF report; idempotent on email.
 app.post('/api/uv/lead', detectRateLimit, async (req, res) => {
   try {
-    const { email, scan_id, source, claim_token } = req.body || {};
+    const { email: rawEmail, scan_id, source, claim_token } = req.body || {};
+    const email = typeof rawEmail === 'string' ? rawEmail.toLowerCase().trim() : rawEmail;
     if (!email || typeof email !== 'string' || !UV_EMAIL_RE.test(email)) {
       return res.status(400).json({ error: 'invalid email' });
     }
@@ -802,6 +836,82 @@ function authorizeUser(req, res, userId) {
 // Triggers paid GPT-4o vision; moved below authMiddleware so unauthenticated
 // callers can no longer drive OpenAI spend (BC-001). Mobile client sends a
 // Bearer token via httpClient, so this is non-breaking.
+
+// Reusable photo identification: GPT-4o vision -> parse -> enrich from curated
+// DB. Returns { identified, name, brand, ingredients[], confidence, source } or
+// { identified:false, error }. Callers handle input validation, the openaiKey
+// guard, and the outer error response. Shared by the public identify-photo
+// route and the authenticated shopping-scan endpoint.
+async function identifyByPhoto(image_base64) {
+  const completion = await openai.chat.completions.create({
+    model: 'gpt-4o',
+    messages: [
+      {
+        role: 'system',
+        content: `You are a skincare product identification assistant. Identify the product in this photo and return its full name, brand, and complete ingredient list (INCI format). If you can read the ingredients from the packaging, list them exactly. If you can identify the product but cannot read ingredients, provide the known ingredients for that product. If you cannot identify the product with confidence, return identified: false. Return ONLY valid JSON matching this schema: { "identified": boolean, "name": string, "brand": string, "ingredients": string[], "confidence": "low" | "med" | "high" }`,
+      },
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'image_url',
+            image_url: { url: `data:image/jpeg;base64,${image_base64}`, detail: 'low' },
+          },
+          { type: 'text', text: 'Identify this skincare product. Return the product name, brand, and full ingredient list as JSON.' },
+        ],
+      },
+    ],
+    max_tokens: 800,
+    temperature: 0.1,
+  });
+
+  const raw = (completion.choices?.[0]?.message?.content || '').trim();
+
+  // Parse JSON: try direct parse first, then extract from code fences
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    // Try extracting from ```json ... ``` code fences
+    const fenceMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (fenceMatch) {
+      try { parsed = JSON.parse(fenceMatch[1].trim()); } catch { /* fall through */ }
+    }
+    // Last resort: find first { and matching closing }
+    if (!parsed) {
+      const start = raw.indexOf('{');
+      if (start >= 0) {
+        try { parsed = JSON.parse(raw.slice(start)); } catch { /* fall through */ }
+      }
+    }
+  }
+
+  if (!parsed) {
+    log.warn('[identify-photo] Could not parse GPT response:', raw.slice(0, 200));
+    return { identified: false, error: 'Could not parse response' };
+  }
+  if (!parsed.identified) {
+    log.warn('[identify-photo] GPT could not identify product');
+    return { identified: false, error: 'Could not identify product' };
+  }
+
+  // Enrich/verify ingredients from curated DB
+  const curatedMatch = searchCuratedProducts(parsed.name);
+  if (curatedMatch.length > 0 && curatedMatch[0].ingredients.length > (parsed.ingredients || []).length) {
+    parsed.ingredients = curatedMatch[0].ingredients;
+    parsed.brand = parsed.brand || curatedMatch[0].brand;
+  }
+
+  return {
+    identified: true,
+    name: parsed.name || '',
+    brand: parsed.brand || '',
+    ingredients: parsed.ingredients || [],
+    confidence: parsed.confidence || 'med',
+    source: 'gpt4o_vision',
+  };
+}
+
 app.post('/api/products/identify-photo', photoRateLimit, async (req, res) => {
   try {
     const { image_base64 } = req.body;
@@ -816,76 +926,139 @@ app.post('/api/products/identify-photo', photoRateLimit, async (req, res) => {
       return res.status(503).json({ error: 'Product identification unavailable' });
     }
 
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
-        {
-          role: 'system',
-          content: `You are a skincare product identification assistant. Identify the product in this photo and return its full name, brand, and complete ingredient list (INCI format). If you can read the ingredients from the packaging, list them exactly. If you can identify the product but cannot read ingredients, provide the known ingredients for that product. If you cannot identify the product with confidence, return identified: false. Return ONLY valid JSON matching this schema: { "identified": boolean, "name": string, "brand": string, "ingredients": string[], "confidence": "low" | "med" | "high" }`,
-        },
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'image_url',
-              image_url: { url: `data:image/jpeg;base64,${image_base64}`, detail: 'low' },
-            },
-            { type: 'text', text: 'Identify this skincare product. Return the product name, brand, and full ingredient list as JSON.' },
-          ],
-        },
-      ],
-      max_tokens: 800,
-      temperature: 0.1,
-    });
-
-    const raw = (completion.choices?.[0]?.message?.content || '').trim();
-
-    // Parse JSON: try direct parse first, then extract from code fences
-    let parsed;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      // Try extracting from ```json ... ``` code fences
-      const fenceMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
-      if (fenceMatch) {
-        try { parsed = JSON.parse(fenceMatch[1].trim()); } catch { /* fall through */ }
-      }
-      // Last resort: find first { and matching closing }
-      if (!parsed) {
-        const start = raw.indexOf('{');
-        if (start >= 0) {
-          try { parsed = JSON.parse(raw.slice(start)); } catch { /* fall through */ }
-        }
-      }
-    }
-
-    if (!parsed) {
-      log.warn('[identify-photo] Could not parse GPT response:', raw.slice(0, 200));
-      return res.json({ identified: false, error: 'Could not parse response' });
-    }
-    if (!parsed.identified) {
-      log.warn('[identify-photo] GPT could not identify product');
-      return res.json({ identified: false, error: 'Could not identify product' });
-    }
-
-    // Enrich/verify ingredients from curated DB
-    const curatedMatch = searchCuratedProducts(parsed.name);
-    if (curatedMatch.length > 0 && curatedMatch[0].ingredients.length > (parsed.ingredients || []).length) {
-      parsed.ingredients = curatedMatch[0].ingredients;
-      parsed.brand = parsed.brand || curatedMatch[0].brand;
-    }
-
-    res.json({
-      identified: true,
-      name: parsed.name || '',
-      brand: parsed.brand || '',
-      ingredients: parsed.ingredients || [],
-      confidence: parsed.confidence || 'med',
-      source: 'gpt4o_vision',
-    });
+    const result = await identifyByPhoto(image_base64);
+    res.json(result);
   } catch (err) {
     log.warn('[identify-photo] Error:', err.message);
     res.json({ identified: false, error: 'Product identification failed' });
+  }
+});
+
+// ==================== SHOPPING SCAN (auth required) ====================
+// Scan a product the user does NOT own and get a personalized Buy/Maybe/Skip
+// verdict vs their skin goal + the products already on their shelf. Reuses the
+// identification helpers above; adds the personalized verdict layer.
+// Rate-limited via photoRateLimit (consistent with the vision identify path it
+// can trigger). Never trusts body.user_id; parameterized queries only.
+app.post('/api/products/shopping-scan', photoRateLimit, async (req, res) => {
+  try {
+    const userId = req.auth?.userId;
+    if (!userId) return res.status(401).json({ error: 'Authentication required' });
+
+    const { barcode, image_base64, name, ingredients } = req.body || {};
+
+    // --- Identify the candidate product ---
+    let candidateRaw = null;
+    if (barcode !== undefined && barcode !== null && barcode !== '') {
+      if (typeof barcode !== 'string' || !/^[0-9]{6,14}$/.test(barcode)) {
+        return res.status(400).json({ error: 'Invalid barcode format' });
+      }
+      const product = await identifyByBarcode(barcode);
+      if (!product) return res.json({ identified: false });
+      candidateRaw = {
+        name: product.name,
+        brand: product.brand || '',
+        ingredients: product.ingredients || [],
+        image_url: product.image_url || null,
+        source: product.source,
+      };
+    } else if (image_base64 !== undefined && image_base64 !== null && image_base64 !== '') {
+      if (typeof image_base64 !== 'string') {
+        return res.status(400).json({ error: 'image_base64 must be a string' });
+      }
+      if (image_base64.length > 10 * 1024 * 1024) {
+        return res.status(413).json({ error: 'Image too large (max 10MB)' });
+      }
+      if (!openaiKey) {
+        return res.status(503).json({ error: 'Product identification unavailable' });
+      }
+      const product = await identifyByPhoto(image_base64);
+      if (!product || !product.identified) return res.json({ identified: false });
+      candidateRaw = {
+        name: product.name,
+        brand: product.brand || '',
+        ingredients: product.ingredients || [],
+        image_url: product.image_url || null,
+        source: product.source,
+      };
+    } else if (name && Array.isArray(ingredients)) {
+      // Bound the manual list: cap count and per-element length to prevent an
+      // event-loop DoS via a ~20MB body of millions of strings (matches the
+      // barcode/image guards: reject with 400 on exceed).
+      if (ingredients.length > 200) {
+        return res.status(400).json({ error: 'Too many ingredients (max 200)' });
+      }
+      if (ingredients.some((ing) => typeof ing !== 'string' || ing.length > 200)) {
+        return res.status(400).json({ error: 'Each ingredient must be a string of at most 200 characters' });
+      }
+      candidateRaw = {
+        name: String(name),
+        brand: '',
+        ingredients: ingredients.map(String),
+        image_url: null,
+        source: 'manual',
+      };
+    } else {
+      return res.status(400).json({ error: 'Provide a barcode, image_base64, or name + ingredients[]' });
+    }
+
+    const candidate = shoppingScan.analyzeProduct({ name: candidateRaw.name, ingredients: candidateRaw.ingredients });
+
+    // --- Load the user's goal(s): scan_protocols.primary_goal, fallback user_profiles ---
+    let goals = [];
+    let profile = {};
+    try {
+      const protoRes = await pool.query(
+        'SELECT primary_goal FROM scan_protocols WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
+        [userId]
+      );
+      if (protoRes.rows[0]?.primary_goal) goals = [protoRes.rows[0].primary_goal];
+    } catch (err) {
+      log.warn('[shopping-scan] goal lookup failed:', err.message);
+    }
+    try {
+      const profRes = await pool.query(
+        'SELECT skin_goal, menstrual_status FROM user_profiles WHERE user_id = $1',
+        [userId]
+      );
+      if (profRes.rows[0]) {
+        profile = profRes.rows[0];
+        if (goals.length === 0 && profRes.rows[0].skin_goal) goals = [profRes.rows[0].skin_goal];
+      }
+    } catch (err) {
+      log.warn('[shopping-scan] profile lookup failed:', err.message);
+    }
+
+    // --- Load the active routine (products with no end_date) ---
+    let routine = [];
+    try {
+      const routineRes = await pool.query(
+        'SELECT product_name, ingredients_list FROM product_catalog WHERE user_id = $1 AND end_date IS NULL',
+        [userId]
+      );
+      routine = (routineRes.rows || []).map((r) =>
+        shoppingScan.analyzeProduct({ name: r.product_name, ingredients: r.ingredients_list || [] })
+      );
+    } catch (err) {
+      log.warn('[shopping-scan] routine lookup failed:', err.message);
+    }
+
+    const result = shoppingScan.computeVerdict({ candidate, routine, goals, profile });
+
+    return res.json({
+      identified: true,
+      product: {
+        name: candidateRaw.name,
+        brand: candidateRaw.brand,
+        ingredients: candidateRaw.ingredients,
+        image_url: candidateRaw.image_url,
+        source: candidateRaw.source,
+      },
+      ...result,
+    });
+  } catch (err) {
+    log.warn('[shopping-scan] Error:', err.message);
+    return res.status(500).json({ error: safeErrorMessage(err) });
   }
 });
 
@@ -1642,14 +1815,16 @@ async function convertUvLeadToCustomer(userId) {
     const url = `${clerkApiBase}/v1/users/${encodeURIComponent(userId)}`;
     const clerkRes = await fetch(url, {
       headers: { Authorization: `Bearer ${process.env.CLERK_SECRET_KEY}` },
+      signal: AbortSignal.timeout(5000),
     });
     if (!clerkRes.ok) return;
     const data = await clerkRes.json();
-    const email =
+    const rawEmail =
       data.email_addresses?.find((e) => e.id === data.primary_email_address_id)?.email_address ||
       data.email_addresses?.[0]?.email_address ||
       null;
-    if (!email) return;
+    if (!rawEmail) return;
+    const email = rawEmail.toLowerCase().trim();
     const row = await uvQueries.markCustomer(pool, { email, clerk_user_id: userId });
     if (row) {
       await loops.sendEvent(email, 'became_customer', {
@@ -1750,6 +1925,7 @@ app.delete('/api/users/:id', async (req, res) => {
         const clerkRes = await fetch(url, {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${process.env.CLERK_SECRET_KEY}` },
+          signal: AbortSignal.timeout(5000),
         });
         // 200 = deleted, 404 = already gone (treat as success)
         clerkDeleted = clerkRes.ok || clerkRes.status === 404;
