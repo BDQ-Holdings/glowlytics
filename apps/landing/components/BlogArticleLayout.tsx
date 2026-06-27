@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import WaitlistForm from "@/components/WaitlistForm";
+import PageViewBeacon from "@/components/PageViewBeacon";
 import { useEffect, useRef, useState } from "react";
 import type { ContentMeta, MarkdownHeading } from "@/lib/types";
 
@@ -163,6 +164,7 @@ export default function BlogArticleLayout({
 
   return (
     <>
+      <PageViewBeacon slug={meta.slug} type={meta.type} />
       <div className="bp-progress" aria-hidden="true">
         <span ref={progressRef} className="bp-progress-bar" />
       </div>

@@ -15,6 +15,11 @@ interface Props {
 }
 
 export async function generateStaticParams() {
+  // Production disables preview (the page below calls notFound()), but
+  // `output: export` rejects a dynamic route whose generateStaticParams is
+  // empty. Emit one sentinel param so the build succeeds; it renders as a 404
+  // in prod and never exposes draft content.
+  if (!previewEnabled()) return [{ type: "_", slug: "_" }];
   return getAllContent().map((item) => ({
     type: getTypePath(item.meta.type),
     slug: item.meta.slug,
@@ -22,7 +27,7 @@ export async function generateStaticParams() {
 }
 
 function previewEnabled(): boolean {
-  return process.env.NODE_ENV !== "production" || process.env.ENABLE_CONTENT_PREVIEW === "1";
+  return process.env.NODE_ENV !== "production";
 }
 
 function statusLabel(status: string): string {

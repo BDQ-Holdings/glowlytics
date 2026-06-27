@@ -15,6 +15,9 @@ concurrency:
   group: preview-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Frontend · Pre-preview Test
@@ -38,6 +41,9 @@ jobs:
     name: EAS Preview Build
     needs: test
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -45,11 +51,11 @@ jobs:
           node-version: 20
           cache: npm
           cache-dependency-path: apps/glowlytics/package-lock.json
-      - run: npm ci --legacy-peer-deps
+      - run: npm ci --legacy-peer-deps --ignore-scripts
         working-directory: apps/glowlytics
 
       - name: Setup EAS
-        uses: expo/expo-github-action@v8
+        uses: expo/expo-github-action@c7b66a9c327a43a8fa7c0158e7f30d6040d2481e  # v8
         with:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
@@ -64,7 +70,7 @@ jobs:
             --no-wait
 
       - name: Find existing bot comment
-        uses: peter-evans/find-comment@v3
+        uses: peter-evans/find-comment@3eae4d37986fb5a8592848f6a574fdf654e61f9e  # v3
         id: find-comment
         with:
           issue-number: ${{ github.event.pull_request.number }}
@@ -72,7 +78,7 @@ jobs:
           body-includes: 'Preview build triggered on EAS'
 
       - name: Upsert PR comment
-        uses: peter-evans/create-or-update-comment@v4
+        uses: peter-evans/create-or-update-comment@71345be0265236311c031f5c7866368bd1eff043  # v4
         with:
           comment-id: ${{ steps.find-comment.outputs.comment-id }}
           issue-number: ${{ github.event.pull_request.number }}

@@ -208,7 +208,7 @@
       "How can I cure oily skin?",
       "What deficiency causes oily skin?"
     ],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "dark-spots-hyperpigmentation-treatment",
@@ -412,7 +412,7 @@
       "Which is best for dark spots?",
       "When to worry about dark spots on skin?"
     ],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "hyperpigmentation-with-addison-s-disease",
@@ -1106,7 +1106,7 @@
     "intent": "informational",
     "opportunityScore": 109,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "hyperpigmentation-treatment-for-black-skin-naturally",
@@ -1218,7 +1218,7 @@
     "intent": "informational",
     "opportunityScore": 102,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "skin-redness-around-nose-and-mouth",
@@ -1329,7 +1329,7 @@
     "intent": "informational",
     "opportunityScore": 101,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "salicylic-acid-jan-aushadhi-face-wash",
@@ -1534,7 +1534,7 @@
     "intent": "informational",
     "opportunityScore": 89,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "dark-circles-with-white-dots-under-eyes",
@@ -1629,7 +1629,7 @@
     "intent": "informational",
     "opportunityScore": 85,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "moisturizer-in-purple-jar",
@@ -1719,7 +1719,7 @@
     "intent": "informational",
     "opportunityScore": 80,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "niacinamida-que-vitamina-es",
@@ -1807,7 +1807,7 @@
     "intent": "informational",
     "opportunityScore": 78,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "hyaluronic-acid-rooster-comb",
@@ -1897,7 +1897,7 @@
       "Is hyaluronic acid ok to use every day?",
       "What does hyaluronic acid do for skin the ordinary?"
     ],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "sensitive-skin-best-quality-sunscreen-for-face",
@@ -1982,7 +1982,7 @@
     "intent": "transactional",
     "opportunityScore": 75,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "niacinamide-zinc-and-retinol-together",
@@ -2067,7 +2067,7 @@
     "intent": "informational",
     "opportunityScore": 75,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "salicylic-acid-amylopectin-dextrin-xanthan-gum",
@@ -2148,7 +2148,7 @@
     "intent": "informational",
     "opportunityScore": 71,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "salicylic-acid-or-benzoyl-peroxide-for-acne",
@@ -2228,7 +2228,7 @@
     "intent": "informational",
     "opportunityScore": 70,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "vitamin-c-skincare-tidak-boleh-dicampur-dengan",
@@ -2307,7 +2307,7 @@
     "intent": "informational",
     "opportunityScore": 69,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "anti-aging-korean-skin-care-products",
@@ -2386,7 +2386,7 @@
     "intent": "informational",
     "opportunityScore": 69,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "skin-barrier-repair-products-for-sensitive-skin",
@@ -2463,7 +2463,7 @@
     "intent": "informational",
     "opportunityScore": 67,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "hormonal-yeast-acne-around-mouth",
@@ -2539,7 +2539,7 @@
     "intent": "informational",
     "opportunityScore": 66,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "dove-sensitive-skin-yeast-infection",
@@ -2614,7 +2614,7 @@
     "intent": "informational",
     "opportunityScore": 65,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "hormonal-acne-natural-treatment-reddit",
@@ -2833,7 +2833,7 @@
     "intent": "informational",
     "opportunityScore": 62,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "dark-circles-go-away-when-pinched",
@@ -2905,7 +2905,7 @@
     "intent": "informational",
     "opportunityScore": 62,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "skin-elasticity-reduce-stretch-marks-pregnant",
@@ -2976,7 +2976,7 @@
     "intent": "informational",
     "opportunityScore": 61,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "collagen-for-gum-recession",
@@ -3047,7 +3047,7 @@
     "intent": "informational",
     "opportunityScore": 61,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "ceramides-niacinamide-and-hyaluronic-acid-moisturizer",
@@ -3117,7 +3117,7 @@
     "intent": "informational",
     "opportunityScore": 60,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "anti-aging-red-light-therapy-mask",
@@ -3187,7 +3187,7 @@
     "intent": "informational",
     "opportunityScore": 60,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "dark-circles-removal-cream-by-dermatologist",
@@ -3256,7 +3256,7 @@
     "intent": "informational",
     "opportunityScore": 59,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "sun-damage-freckles-or-age-spots",
@@ -3324,7 +3324,7 @@
     "intent": "informational",
     "opportunityScore": 58,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "skin-hydrating-booster-dermalogica",
@@ -3391,7 +3391,7 @@
     "intent": "informational",
     "opportunityScore": 57,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "anti-aging-moisturizer-with-spf",
@@ -3458,7 +3458,7 @@
     "intent": "informational",
     "opportunityScore": 57,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "sunscreen-vs-no-sunscreen-aging",
@@ -3524,7 +3524,7 @@
     "intent": "transactional",
     "opportunityScore": 56,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "sun-damage-wood-furniture",
@@ -3593,7 +3593,7 @@
       "How do I treat sun damage?",
       "What are the first signs of sun damage?"
     ],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "moisturizer-or-sunscreen-first-on-face",
@@ -3658,7 +3658,7 @@
     "intent": "informational",
     "opportunityScore": 55,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "niacinamide-toothpaste-does-it-work",
@@ -3723,7 +3723,7 @@
     "intent": "informational",
     "opportunityScore": 55,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "rosacea-and-gut-health",
@@ -3787,7 +3787,7 @@
     "intent": "informational",
     "opportunityScore": 54,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "fine-line-harry-styles",
@@ -3852,7 +3852,7 @@
       "How can I get rid of fine lines?",
       "Why do I have fine lines at 14?"
     ],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "sensitive-skin-colloidal-oatmeal-body-butter",
@@ -3913,7 +3913,7 @@
     "intent": "informational",
     "opportunityScore": 51,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "exfoliation-weathering-definition",
@@ -4092,7 +4092,7 @@
     "intent": "informational",
     "opportunityScore": 49,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "sunscreen-for-black-people",
@@ -4150,7 +4150,7 @@
     "intent": "informational",
     "opportunityScore": 48,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "sunscreen-without-white-cast",
@@ -4207,7 +4207,7 @@
     "intent": "informational",
     "opportunityScore": 47,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "zo-exfoliation-accelerator-before-and-after",
@@ -4263,7 +4263,7 @@
     "intent": "informational",
     "opportunityScore": 46,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "moisturizer-before-or-after-tretinoin",
@@ -4319,7 +4319,7 @@
     "intent": "informational",
     "opportunityScore": 46,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "dry-skin-yellow-crust-on-face",
@@ -4375,7 +4375,7 @@
     "intent": "informational",
     "opportunityScore": 46,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "fine-lines-vs-deep-wrinkles-forehead",
@@ -4430,7 +4430,7 @@
     "intent": "transactional",
     "opportunityScore": 45,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "skin-barrier-kharab-hone-ke-lakshan",
@@ -4485,7 +4485,7 @@
     "intent": "informational",
     "opportunityScore": 45,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "skin-barrier-que-significa-en-espa-ol",
@@ -4538,7 +4538,7 @@
     "intent": "informational",
     "opportunityScore": 43,
     "paaQuestions": [],
-    "status": "new"
+    "status": "researched"
   },
   {
     "slug": "fine-lines-yard-maintenance-reviews",
@@ -4644,7 +4644,7 @@
     "intent": "informational",
     "opportunityScore": 43,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "dry-skin-from-cold-weather",
@@ -4697,7 +4697,7 @@
     "intent": "informational",
     "opportunityScore": 43,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "ceramides-oral-supplement",
@@ -4750,7 +4750,7 @@
     "intent": "informational",
     "opportunityScore": 43,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "what-does-hyaluronic-acid-do-for-skin-the-ordinary",
@@ -4855,7 +4855,7 @@
       "How to tell if redness is rosacea?",
       "What does red skin indicate?"
     ],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "exfoliation-after-laser-hair-removal",
@@ -4905,7 +4905,7 @@
     "intent": "informational",
     "opportunityScore": 40,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "clinique-anti-aging-xerf",
@@ -4958,7 +4958,7 @@
       "How to look 10 years younger than your age naturally?",
       "Can you take rapamycin for anti-aging?"
     ],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "sun-damage-white-spots-on-skin-treatment",
@@ -5006,7 +5006,7 @@
     "intent": "informational",
     "opportunityScore": 38,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "fine-lines-on-cheeks-when-smiling",
@@ -5054,7 +5054,7 @@
     "intent": "informational",
     "opportunityScore": 38,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "sensitive-skin-laundry-detergent-that-smells-good",
@@ -5101,7 +5101,7 @@
     "intent": "informational",
     "opportunityScore": 37,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "skin-quench-hydrating-ceramide-moisturiser",
@@ -5147,7 +5147,7 @@
     "intent": "informational",
     "opportunityScore": 36,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "x50-skin-barrier-suspension",
@@ -5196,7 +5196,7 @@
       "What is the skin's barrier?",
       "What can destroy the skin barrier?"
     ],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "wrinkle-zo-skin-health",
@@ -5241,7 +5241,7 @@
     "intent": "informational",
     "opportunityScore": 35,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "skin-texture-procreate-brushes-free",
@@ -5285,7 +5285,7 @@
     "intent": "informational",
     "opportunityScore": 34,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "rosacea-japanese-skincare",
@@ -5329,7 +5329,7 @@
     "intent": "informational",
     "opportunityScore": 34,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "retinol-paula-s-choice",
@@ -5373,7 +5373,7 @@
     "intent": "informational",
     "opportunityScore": 34,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "glass-skin-hydration-facial-urban-company",
@@ -5415,7 +5415,7 @@
     "intent": "informational",
     "opportunityScore": 32,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "sunscreen-ingredients-to-avoid",
@@ -5457,7 +5457,7 @@
     "intent": "informational",
     "opportunityScore": 32,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "eczema-joette-calabrese",
@@ -5499,7 +5499,7 @@
     "intent": "informational",
     "opportunityScore": 32,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "skin-texture-looks-worse-with-makeup",
@@ -5539,7 +5539,7 @@
     "intent": "informational",
     "opportunityScore": 30,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "rosacea-unspecified-icd-10",
@@ -5619,7 +5619,7 @@
     "intent": "informational",
     "opportunityScore": 30,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "eczema-rash-in-spanish",
@@ -5698,7 +5698,7 @@
     "intent": "informational",
     "opportunityScore": 29,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "rosacea-go-away-on-its-own",
@@ -5737,7 +5737,7 @@
     "intent": "informational",
     "opportunityScore": 29,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "retinol-for-stretch-marks",
@@ -5776,7 +5776,7 @@
     "intent": "informational",
     "opportunityScore": 29,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "exfoliation-vs-pseudoexfoliation-syndrome",
@@ -5814,7 +5814,7 @@
     "intent": "transactional",
     "opportunityScore": 28,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "acne-breakout",
@@ -5855,7 +5855,7 @@
       "How do I identify my acne type?",
       "What's the difference between acne and breakouts?"
     ],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "wrinkles-look-worse-after-microneedling",
@@ -5892,7 +5892,7 @@
     "intent": "informational",
     "opportunityScore": 27,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "collagen-supplements-side-effects",
@@ -5929,7 +5929,7 @@
     "intent": "informational",
     "opportunityScore": 27,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "can-i-use-vitamin-c-serum-with-microcurrent",
@@ -5965,7 +5965,7 @@
     "intent": "informational",
     "opportunityScore": 26,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "what-is-sensitive-skin-a-symptom-of",
@@ -6037,7 +6037,7 @@
     "intent": "informational",
     "opportunityScore": 26,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "qv-ceramides-moisturising-cream",
@@ -6073,7 +6073,7 @@
     "intent": "informational",
     "opportunityScore": 26,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "skin-rash-granuloma-annulare",
@@ -6109,7 +6109,7 @@
     "intent": "informational",
     "opportunityScore": 26,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "collagen-overnight-mask",
@@ -6145,7 +6145,7 @@
     "intent": "informational",
     "opportunityScore": 26,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "oily-skin-vs-dry-skin-vs-combination-skin",
@@ -6180,7 +6180,7 @@
     "intent": "transactional",
     "opportunityScore": 25,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "how-do-i-get-rid-of-my-hyperpigmentation",
@@ -6215,7 +6215,7 @@
     "intent": "informational",
     "opportunityScore": 25,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "sunscreen-you-can-reapply-over-makeup",
@@ -6250,7 +6250,7 @@
     "intent": "informational",
     "opportunityScore": 25,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "exfoliation-of-primary-teeth-chart",
@@ -6285,7 +6285,7 @@
     "intent": "informational",
     "opportunityScore": 25,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "damaged-skin-barrier-zero-therapy",
@@ -6320,7 +6320,7 @@
     "intent": "informational",
     "opportunityScore": 25,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "does-sun-damage-leather-jacket",
@@ -6355,7 +6355,7 @@
     "intent": "informational",
     "opportunityScore": 25,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "dry-skin-with-little-bumps",
@@ -6390,7 +6390,7 @@
     "intent": "informational",
     "opportunityScore": 25,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "acne-on-forehead-meaning",
@@ -6425,7 +6425,7 @@
     "intent": "informational",
     "opportunityScore": 25,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "collagen-hydrolyzed",
@@ -6463,7 +6463,7 @@
       "Do you need collagen if you are on HRT?",
       "Is it good to take collagen every day?"
     ],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "sunscreen-healthy",
@@ -6501,7 +6501,7 @@
       "What sunscreen can I use in St. Thomas?",
       "What sunscreen is best for Accutane?"
     ],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "pores-whiteheads",
@@ -6539,7 +6539,7 @@
       "What is the main cause of pores?",
       "Do peptides minimize pores?"
     ],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "skin-functional-hydration-juice-ingredients",
@@ -6573,7 +6573,7 @@
     "intent": "informational",
     "opportunityScore": 24,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "moisturizer-dermatologist-recommended",
@@ -6607,7 +6607,7 @@
     "intent": "informational",
     "opportunityScore": 24,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "wrinkles-between-eyebrows-called",
@@ -6641,7 +6641,7 @@
     "intent": "informational",
     "opportunityScore": 24,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "rosacea-butterfly-rash",
@@ -6675,7 +6675,7 @@
     "intent": "informational",
     "opportunityScore": 24,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "dark-spots-suddenly-appearing-on-skin",
@@ -6708,7 +6708,7 @@
     "intent": "informational",
     "opportunityScore": 23,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "skin-hydration-elixir-two-islands",
@@ -6741,7 +6741,7 @@
     "intent": "informational",
     "opportunityScore": 23,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "eczema-treatment-for-toddlers",
@@ -6774,7 +6774,7 @@
     "intent": "informational",
     "opportunityScore": 23,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "fine-lines-1200-x-1200-dpi",
@@ -6807,7 +6807,7 @@
     "intent": "informational",
     "opportunityScore": 23,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "retinol-gold-bond-lotion",
@@ -6840,7 +6840,7 @@
     "intent": "informational",
     "opportunityScore": 23,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "anti-aging-lifting-xceptional-flawless-cream",
@@ -6872,7 +6872,7 @@
     "intent": "informational",
     "opportunityScore": 22,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "fine-lines-construction-freeport-maine",
@@ -6904,7 +6904,7 @@
     "intent": "informational",
     "opportunityScore": 22,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "skin-tone-quotes-for-instagram",
@@ -6968,7 +6968,7 @@
     "intent": "informational",
     "opportunityScore": 22,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "hormonal-acne-pictures",
@@ -7003,7 +7003,7 @@
       "How can I balance my hormones to reduce acne?",
       "What foods trigger hormonal acne?"
     ],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "eczema-coxsackium",
@@ -7038,7 +7038,7 @@
       "What is the 3 minute rule for eczema?",
       "What is the biggest trigger for eczema?"
     ],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "moisturizer-yang-mengandung-salicylic-acid",
@@ -7069,7 +7069,7 @@
     "intent": "informational",
     "opportunityScore": 21,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "wrinkles-under-my-eyes-when-i-smile",
@@ -7100,7 +7100,7 @@
     "intent": "informational",
     "opportunityScore": 21,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "skin-zombie-texture-minecraft",
@@ -7134,7 +7134,7 @@
       "What is a skin texture?",
       "Can salicylic acid fix textured skin?"
     ],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "ceramides-rich-foods",
@@ -7165,7 +7165,7 @@
     "intent": "informational",
     "opportunityScore": 21,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "acne-yoyogi-jeans",
@@ -7196,7 +7196,7 @@
     "intent": "informational",
     "opportunityScore": 21,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "collagen-egf-peptide-ampoule-serum",
@@ -7226,7 +7226,7 @@
     "intent": "informational",
     "opportunityScore": 20,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "exfoliating-rough-and-bumpy-cream",
@@ -7256,7 +7256,7 @@
     "intent": "informational",
     "opportunityScore": 20,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "rosacea-vs-seborrheic-dermatitis",
@@ -7286,7 +7286,7 @@
     "intent": "transactional",
     "opportunityScore": 20,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "eczema-yellow-blisters",
@@ -7316,7 +7316,7 @@
     "intent": "informational",
     "opportunityScore": 20,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "best-collagen-for-skin-elasticity-uk",
@@ -7345,7 +7345,7 @@
     "intent": "transactional",
     "opportunityScore": 19,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "wrinkles-john-williamson-lyrics",
@@ -7374,7 +7374,7 @@
     "intent": "informational",
     "opportunityScore": 19,
     "paaQuestions": [],
-    "status": "new"
+    "status": "researched"
   },
   {
     "slug": "exfoliating-jelly-cleanser",
@@ -7403,7 +7403,7 @@
     "intent": "informational",
     "opportunityScore": 19,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "retinol-neutrogena",
@@ -7435,7 +7435,7 @@
       "Can I apply retinol directly on skin?",
       "Is retinol a vitamin A or C?"
     ],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "best-vitamin-c-serum-for-glowing-skin",
@@ -7463,7 +7463,7 @@
     "intent": "transactional",
     "opportunityScore": 18,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "ceramides-cholesterol-and-fatty-acids",
@@ -7491,7 +7491,7 @@
     "intent": "informational",
     "opportunityScore": 18,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "maintain-skin-elasticity-as-you-age",
@@ -7519,7 +7519,7 @@
     "intent": "informational",
     "opportunityScore": 18,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "wrinkles-question-answer-class-8",
@@ -7547,7 +7547,7 @@
     "intent": "informational",
     "opportunityScore": 18,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "fine-line-queen-of-hearts-tattoo",
@@ -7575,7 +7575,7 @@
     "intent": "informational",
     "opportunityScore": 18,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "wrinkles-the-clown-documentary",
@@ -7603,7 +7603,7 @@
     "intent": "informational",
     "opportunityScore": 18,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "collagen-jelly-cream-medicube",
@@ -7631,7 +7631,7 @@
     "intent": "informational",
     "opportunityScore": 18,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "is-exfoliation-good-for-skin",
@@ -7659,7 +7659,7 @@
     "intent": "informational",
     "opportunityScore": 18,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "what-is-the-best-treatment-for-cheek-wrinkles",
@@ -7686,7 +7686,7 @@
     "intent": "transactional",
     "opportunityScore": 17,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "vitamin-c-cream-lagane-se-kya-hota-hai",
@@ -7740,7 +7740,7 @@
     "intent": "transactional",
     "opportunityScore": 17,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "pores-getting-bigger-with-tretinoin",
@@ -7767,7 +7767,7 @@
     "intent": "informational",
     "opportunityScore": 17,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "retinol-while-breastfeeding-reddit",
@@ -7821,7 +7821,7 @@
     "intent": "informational",
     "opportunityScore": 17,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "wrinkles-disappear-instantly",
@@ -7848,7 +7848,7 @@
     "intent": "informational",
     "opportunityScore": 17,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "retinol-making-me-break-out",
@@ -7875,7 +7875,7 @@
     "intent": "informational",
     "opportunityScore": 17,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "how-to-increase-skin-elasticity-during-weight-loss",
@@ -7901,7 +7901,7 @@
     "intent": "informational",
     "opportunityScore": 16,
     "paaQuestions": [],
-    "status": "new"
+    "status": "researched"
   },
   {
     "slug": "niacinamide-xylitol-whitening-peach-flavored",
@@ -7927,7 +7927,7 @@
     "intent": "informational",
     "opportunityScore": 16,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "ceramides-where-do-they-come-from",
@@ -7953,7 +7953,7 @@
     "intent": "informational",
     "opportunityScore": 16,
     "paaQuestions": [],
-    "status": "new"
+    "status": "researched"
   },
   {
     "slug": "retinol-shot-tightening-booster",
@@ -7979,7 +7979,7 @@
     "intent": "informational",
     "opportunityScore": 16,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "photos-of-sun-damage-on-face",
@@ -8005,7 +8005,7 @@
     "intent": "informational",
     "opportunityScore": 16,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "skin-red-undertones",
@@ -8031,7 +8031,7 @@
     "intent": "informational",
     "opportunityScore": 16,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "dry-skin-dandruff",
@@ -8060,7 +8060,7 @@
       "What vitamin deficiency causes dry skin?",
       "What to drink for dry skin?"
     ],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "what-causes-dark-circles-around-the-eyes-in-adults",
@@ -8110,7 +8110,7 @@
     "intent": "informational",
     "opportunityScore": 15,
     "paaQuestions": [],
-    "status": "new"
+    "status": "researched"
   },
   {
     "slug": "which-moisturizer-is-best-for-comedones",
@@ -8135,7 +8135,7 @@
     "intent": "transactional",
     "opportunityScore": 15,
     "paaQuestions": [],
-    "status": "new"
+    "status": "researched"
   },
   {
     "slug": "wrinkles-mean-you-laughed-quote",
@@ -8185,7 +8185,7 @@
     "intent": "informational",
     "opportunityScore": 15,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "acne-medication-prescription",
@@ -8210,7 +8210,7 @@
     "intent": "informational",
     "opportunityScore": 15,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "melanin-deposit-dark-circles",
@@ -8238,7 +8238,7 @@
       "Which deficiency causes dark circles?",
       "Can dark circles actually go away?"
     ],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "clogged-pores-vs-large-pores",
@@ -8263,7 +8263,7 @@
     "intent": "transactional",
     "opportunityScore": 15,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "eczema-jak-inhibitor-cream",
@@ -8288,7 +8288,7 @@
     "intent": "informational",
     "opportunityScore": 15,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "eczema-under-microscope",
@@ -8313,7 +8313,7 @@
     "intent": "informational",
     "opportunityScore": 15,
     "paaQuestions": [],
-    "status": "new"
+    "status": "researched"
   },
   {
     "slug": "eczema-que-es-y-tratamiento",
@@ -8337,7 +8337,7 @@
     "intent": "informational",
     "opportunityScore": 14,
     "paaQuestions": [],
-    "status": "new"
+    "status": "researched"
   },
   {
     "slug": "exfoliate-your-lips-meaning",
@@ -8361,7 +8361,7 @@
     "intent": "informational",
     "opportunityScore": 14,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "dry-skin-behind-baby-ears",
@@ -8385,7 +8385,7 @@
     "intent": "informational",
     "opportunityScore": 14,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "cure-skin-hydration-gel",
@@ -8412,7 +8412,7 @@
       "How to hydrate skin in 3 days?",
       "Is it possible to rehydrate your skin?"
     ],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "skin-with-water-inside",
@@ -8436,7 +8436,7 @@
     "intent": "informational",
     "opportunityScore": 14,
     "paaQuestions": [],
-    "status": "new"
+    "status": "researched"
   },
   {
     "slug": "pores-suction-machine",
@@ -8460,7 +8460,7 @@
     "intent": "informational",
     "opportunityScore": 14,
     "paaQuestions": [],
-    "status": "new"
+    "status": "researched"
   },
   {
     "slug": "rosacea-doxycycline",
@@ -8487,7 +8487,7 @@
       "What is the biggest trigger of rosacea?",
       "What are 5 symptoms of rosacea?"
     ],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "wrinkles-schminkles-forehead-wrinkle-patches",
@@ -8510,7 +8510,7 @@
     "intent": "informational",
     "opportunityScore": 13,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "ceramide-yeast-hydrating-toner-benefits",
@@ -8533,7 +8533,7 @@
     "intent": "informational",
     "opportunityScore": 13,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "moisturizer-just-sits-on-skin-reddit",
@@ -8579,7 +8579,7 @@
     "intent": "informational",
     "opportunityScore": 13,
     "paaQuestions": [],
-    "status": "new"
+    "status": "researched"
   },
   {
     "slug": "wrinkles-won-t-come-out-of-shirt",
@@ -8602,7 +8602,7 @@
     "intent": "informational",
     "opportunityScore": 13,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "skin-xl-moisturizing-cream-uses",
@@ -8625,7 +8625,7 @@
     "intent": "informational",
     "opportunityScore": 13,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "skin-tone-yarn-hobby-lobby",
@@ -8648,7 +8648,7 @@
     "intent": "informational",
     "opportunityScore": 13,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "skin-red-patches-not-itchy",
@@ -8671,7 +8671,7 @@
     "intent": "informational",
     "opportunityScore": 13,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "niacinamide-pronunciation",
@@ -8697,7 +8697,7 @@
       "What cannot mix with niacinamide?",
       "Is niacinamide anti-fungal?"
     ],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "wrinkles-from-smoking",
@@ -8720,7 +8720,7 @@
     "intent": "informational",
     "opportunityScore": 13,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "best-anti-aging-treatments-for-40s",
@@ -8742,7 +8742,7 @@
     "intent": "transactional",
     "opportunityScore": 12,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "can-i-use-a-salicylic-acid-daily",
@@ -8764,7 +8764,7 @@
     "intent": "informational",
     "opportunityScore": 12,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "oily-skin-early-pregnancy-sign",
@@ -8786,7 +8786,7 @@
     "intent": "informational",
     "opportunityScore": 12,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "collagen-quaternary-structure",
@@ -8808,7 +8808,7 @@
     "intent": "informational",
     "opportunityScore": 12,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "collagen-quantification-assay",
@@ -8830,7 +8830,7 @@
     "intent": "informational",
     "opportunityScore": 12,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "pores-have-gotten-bigger",
@@ -8921,7 +8921,7 @@
       "Which is better, hyaluronic acid or ceramide?",
       "What foods are high in ceramides?"
     ],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "only-skin-joanna-newsom-where-to-listen",
@@ -9005,7 +9005,7 @@
     "intent": "informational",
     "opportunityScore": 11,
     "paaQuestions": [],
-    "status": "new"
+    "status": "researched"
   },
   {
     "slug": "skin-rash-joint-pain-fever-fatigue",
@@ -9071,7 +9071,7 @@
       "What destroys skin elasticity?",
       "What causes lack of skin elasticity?"
     ],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "pores-glow-under-black-light",
@@ -9116,7 +9116,7 @@
       "Can I still exfoliate while using tretinoin?",
       "Is exfoliation good for skin?"
     ],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "how-to-remove-dark-circles-at-home-naturally-in-2-days",
@@ -9176,7 +9176,7 @@
     "intent": "informational",
     "opportunityScore": 10,
     "paaQuestions": [],
-    "status": "new"
+    "status": "researched"
   },
   {
     "slug": "retinol-correxion-deep-wrinkle-serum",
@@ -9837,7 +9837,7 @@
     "intent": "informational",
     "opportunityScore": 7,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "pores-do-not-open-and-close",
@@ -9942,7 +9942,7 @@
       "Why is my skin suddenly so sensitive to everything?",
       "What deficiency causes sensitive skin?"
     ],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "acne-zones-and-causes",
@@ -10172,7 +10172,7 @@
       "Does vitamin C help adrenals?",
       "Can I use vitamin C serum with microcurrent?"
     ],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "acne-extraction-tools",
@@ -10239,7 +10239,7 @@
       "Will wrinkles go away?",
       "What is the best treatment for cheek wrinkles?"
     ],
-    "status": "new"
+    "status": "researched"
   },
   {
     "slug": "sunscreen-with-zinc-oxide-and-titanium-dioxide",
@@ -10299,7 +10299,7 @@
     "intent": "informational",
     "opportunityScore": 5,
     "paaQuestions": [],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "ceramide-youth-restoring-capsules",
@@ -10462,7 +10462,7 @@
     "intent": "informational",
     "opportunityScore": 4,
     "paaQuestions": [],
-    "status": "new"
+    "status": "researched"
   },
   {
     "slug": "what-causes-oily-skin-in-females",
@@ -10633,7 +10633,7 @@
       "What does a moisturizer do?",
       "Which moisturizer is best for comedones?"
     ],
-    "status": "new"
+    "status": "researched"
   },
   {
     "slug": "skin-activator-hydrating-firming-cream-cetaphil",
@@ -10776,7 +10776,7 @@
     "intent": "informational",
     "opportunityScore": 3,
     "paaQuestions": [],
-    "status": "new"
+    "status": "researched"
   },
   {
     "slug": "garnier-vitamin-c-serum-x30",
@@ -10895,7 +10895,7 @@
       "What does hyperpigmentation look like?",
       "Does hyperpigmentation really go away?"
     ],
-    "status": "new"
+    "status": "written"
   },
   {
     "slug": "spoliation-letter",
@@ -10936,7 +10936,7 @@
       "Will salicylic acid remove calluses?",
       "Do dermatologists recommend salicylic acid?"
     ],
-    "status": "new"
+    "status": "researched"
   },
   {
     "slug": "alegria-shoes",
@@ -11081,7 +11081,7 @@
     "intent": "informational",
     "opportunityScore": 2,
     "paaQuestions": [],
-    "status": "new"
+    "status": "researched"
   },
   {
     "slug": "skin-turning-red-for-no-reason",

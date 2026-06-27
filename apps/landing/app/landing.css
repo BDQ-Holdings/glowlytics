@@ -929,3 +929,38 @@ html.dusk-landing > body > footer:last-of-type {
   .dusk-page .site-nav-cta,
   .dusk-page nav.top .btn-sm { padding: 9px 14px; font-size: 12.5px; }
 }
+
+/* ── scan flow embedded in the hero phone ──
+   The Driver's-Side Test (DriverFlowEmbed) is authored for a 414px-wide stage
+   (vw-based clamps), so we render it at native size and scale it into the 320px
+   hero phone — pixel-faithful to the standalone /uv-scan, just smaller. The
+   414×922 box matches the phone screen's aspect so it fills without letterboxing. */
+.dusk-page .phone--scan { background: var(--bg); }
+.dusk-page .phone--scan .phone-screen {
+  position: absolute; inset: 0;
+  overflow: hidden;
+  border-radius: 40px;
+  background: var(--bg);
+}
+.dusk-page .phone--scan .notch { width: 74px; height: 18px; top: 11px; }
+.dusk-page .phone--scan .phone-screen-scale {
+  position: absolute; top: 0; left: 0;
+  width: 414px; height: 924px;
+  transform-origin: top left;
+  transform: scale(0.7343);
+}
+.dusk-page .phone--scan .phone-screen-scale > .dst-page {
+  width: 414px; height: 924px;
+}
+
+/* secondary scan CTA under the hero waitlist */
+.dusk-page .hero-scan-link {
+  display: inline-flex; align-items: center; gap: 7px;
+  margin-top: 16px;
+  font-size: 14px; font-weight: 500;
+  color: var(--accent);
+  text-decoration: none;
+  transition: gap 200ms ease, opacity 200ms ease;
+}
+.dusk-page .hero-scan-link:hover { gap: 11px; opacity: 0.82; }
+.dusk-page .hero-scan-link .arrow { width: 15px; height: 15px; }

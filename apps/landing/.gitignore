@@ -1,0 +1,10 @@
+# Local environment / secrets — belt-and-suspenders over the repo-root rule so a
+# future apps/landing/.env (or .dev.vars) can never be committed from here.
+.env
+.env.*
+!.env.example
+*.log
+.dev.vars
+
+# Local wrangler / miniflare state (D1 emulation cache) — never commit.
+.wrangler/

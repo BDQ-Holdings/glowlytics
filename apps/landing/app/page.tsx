@@ -3,6 +3,8 @@
 import { useEffect } from "react";
 import "./landing.css";
 import WaitlistForm from "@/components/WaitlistForm";
+import DriverFlowEmbed from "./uv-scan/DriverFlowEmbed";
+import { safeJsonLd } from "@/lib/jsonld";
 
 /* ─── JSON-LD structured data ─── */
 const jsonLd = {
@@ -94,7 +96,7 @@ export default function LandingPage() {
     <div className="dusk-page">
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(jsonLd) }}
       />
 
       {/* ─── Nav ─── */}
@@ -133,6 +135,11 @@ export default function LandingPage() {
 
             <WaitlistForm id="hero-email" source="hero" />
 
+            <a href="/uv-scan" className="hero-scan-link">
+              Or take the free 60-second Driver&rsquo;s-Side Test
+              <ArrowIcon />
+            </a>
+
             <div className="hero-meta">
               <div className="avatar-stack">
                 <span
@@ -162,10 +169,10 @@ export default function LandingPage() {
           <div className="phone-stage">
             <div className="callout callout-1">
               <div className="ct">
-                Pattern · <em>Strong</em>
+                UV map · <em>Driver&rsquo;s side</em>
               </div>
               <div className="callout-tagline">
-                Your skin loves slow mornings.
+                One side ages faster than the other.
               </div>
             </div>
             <div className="callout callout-2">
@@ -181,106 +188,18 @@ export default function LandingPage() {
                   strokeLinejoin="round"
                   aria-hidden="true"
                 >
-                  <path d="M12 3 c0 4 -5 5 -5 10 a5 5 0 0 0 10 0 c0-3 -3-4 -3-7 -1 1 -2 1 -2-3 z" />
+                  <path d="M12 3 c-4 5 -6 8 -6 11 a6 6 0 0 0 12 0 c0-3 -2-6 -6-11 z" />
                 </svg>
-                <span>12 day streak</span>
+                <span>60-second scan</span>
               </div>
-              <div className="callout-tagline">No rush. The streak waits.</div>
+              <div className="callout-tagline">Photos never leave your phone.</div>
             </div>
 
-            <div className="phone">
+            <div className="phone phone--scan">
               <div className="notch" />
-              <div className="phone-inner">
-                <div className="phone-status">
-                  <span>9:41</span>
-                  <span>● ● ●</span>
-                </div>
-                <div className="phone-h">
-                  Good morning,
-                  <br />
-                  <em>Maya</em>
-                </div>
-
-                <div className="glow-card">
-                  <div className="glow-card-top">
-                    <div>
-                      <div className="glow-label">Today&rsquo;s glow</div>
-                      <div className="glow-score">78</div>
-                      <div className="glow-delta">+6 vs. start</div>
-                    </div>
-                    <svg
-                      className="glow-ring"
-                      width="64"
-                      height="64"
-                      viewBox="0 0 64 64"
-                      aria-hidden="true"
-                    >
-                      <circle
-                        cx="32"
-                        cy="32"
-                        r="28"
-                        stroke="var(--glow)"
-                        strokeWidth="5"
-                        fill="none"
-                      />
-                      <circle
-                        cx="32"
-                        cy="32"
-                        r="28"
-                        stroke="var(--accent)"
-                        strokeWidth="5"
-                        fill="none"
-                        strokeDasharray="137 200"
-                        strokeLinecap="round"
-                        transform="rotate(-90 32 32)"
-                      />
-                    </svg>
-                  </div>
-                  <div className="phone-cta">Take today&rsquo;s check-in →</div>
-                </div>
-
-                <div className="phone-facets">
-                  <div className="phone-facet">
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="var(--accent)"
-                      strokeWidth="1.7"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden="true"
-                    >
-                      <path d="M12 3 c-4 5 -6 8 -6 11 a6 6 0 0 0 12 0 c0-3 -2-6 -6-11 z" />
-                    </svg>
-                    <div className="val">82</div>
-                    <div className="nm">Hydrated</div>
-                    <div className="bar">
-                      <i style={{ width: "82%" }} />
-                    </div>
-                  </div>
-                  <div className="phone-facet">
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="var(--accent)"
-                      strokeWidth="1.7"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden="true"
-                    >
-                      <path d="M5 19 c0-9 7-14 14-14 0 8 -5 14 -14 14 z" />
-                      <path d="M5 19 c3-3 6-5 10-7" />
-                    </svg>
-                    <div className="val">71</div>
-                    <div className="nm">Calm</div>
-                    <div className="bar">
-                      <i style={{ width: "71%" }} />
-                    </div>
-                  </div>
+              <div className="phone-screen">
+                <div className="phone-screen-scale">
+                  <DriverFlowEmbed />
                 </div>
               </div>
             </div>

@@ -17,8 +17,20 @@
 let warned = false;
 
 function poolSsl() {
-  if (!process.env.DATABASE_URL) {
+  const url = process.env.DATABASE_URL;
+  if (!url) {
     return undefined;
+  }
+  // Local dev (loopback) Postgres typically has TLS off; honour the documented
+  // "local dev -> no TLS" intent for localhost connection strings too, otherwise
+  // the SSL handshake fails against a non-SSL local server.
+  try {
+    const host = new URL(url).hostname;
+    if (host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '') {
+      return undefined;
+    }
+  } catch {
+    /* non-URL connection string (e.g. key=value DSN) — fall through to TLS */
   }
   if (process.env.DATABASE_CA_CERT) {
     return { rejectUnauthorized: true, ca: process.env.DATABASE_CA_CERT };

@@ -16,6 +16,7 @@
     "seo:daily": "node --import ./scripts/seo-engine/node_modules/tsx/dist/loader.mjs ./scripts/seo-engine/src/daily-run.ts",
     "seo:health": "node --import ./scripts/seo-engine/node_modules/tsx/dist/loader.mjs ./scripts/seo-engine/src/health.ts",
     "seo:reseed": "node --import ./scripts/seo-engine/node_modules/tsx/dist/loader.mjs ./scripts/seo-engine/src/reseed.ts",
+    "seo:report": "node --import ./scripts/seo-engine/node_modules/tsx/dist/loader.mjs ./scripts/seo-engine/src/report.ts",
     "seo:test": "node --import ./scripts/seo-engine/node_modules/tsx/dist/loader.mjs --test ./scripts/seo-engine/src/lib/__tests__/*.test.ts"
   },
   "keywords": [],
@@ -37,6 +38,7 @@
     "react-dom": "^19.2.5",
     "reading-time": "^1.5.0",
     "rehype-autolink-headings": "^7.1.0",
+    "rehype-sanitize": "^6.0.0",
     "rehype-slug": "^6.0.0",
     "remark-gfm": "^4.0.1",
     "tailwindcss": "^4.2.2",

@@ -3,7 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const { Pool } = require('pg');
-const { randomUUID: uuidv4, timingSafeEqual } = require('crypto');
+const { randomUUID: uuidv4, timingSafeEqual, createHash, randomBytes } = require('crypto');
 const jwt = require('jsonwebtoken');
 const jwksClient = require('jwks-rsa');
 const OpenAI = require('openai');
@@ -16,6 +16,10 @@ const noLlmFallback = require('./no-llm-fallback');
 const { searchCuratedProducts, lookupCuratedBarcode, enrichIngredients } = require('./curated-products');
 const scanQueries = require('./queries/scans');
 const { poolSsl } = require('./db-ssl');
+const uvScan = require('./uv-scan');
+const loops = require('./loops');
+const uvReport = require('./uv-report');
+const uvQueries = require('./queries/uv');
 
 const app = express();
 
@@ -226,8 +230,6 @@ const ALLOWED_USER_FIELDS = [
   'camera_permission_status',
   'health_connection',
   'onboarding_complete',
-  'trial_start_date',
-  'trial_end_date',
   'skin_goal',
   'sex',
   'menstrual_status',
@@ -603,16 +605,193 @@ if (_mcpCfg().enabled) {
   require('./mcp/transport').mountMcp(app);
 }
 
+// ==================== UV MIRROR (public marketing scan tool) ====================
+// Registered before authMiddleware so the public landing scanner stays
+// unauthenticated, exactly like /api/vision/detect-lesions above. Persisted
+// scans + leads feed the Loops nurture sequence and the lead -> customer hook
+// in POST /api/users below.
+
+const UV_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+// jsonb columns come back as parsed objects from pg, but a value read as text
+// (or returned by a stubbed pool in tests) can arrive as a JSON string —
+// normalise before handing it to consumers.
+function uvParseJson(v) {
+  if (typeof v !== 'string') return v;
+  try { return JSON.parse(v); } catch { return v; }
+}
+
+// Cheap pre-scan quality gate for live camera feedback.
+app.post('/api/uv/screen', detectRateLimit, async (req, res) => {
+  try {
+    const { image_base64, landmarks } = req.body || {};
+    if (!image_base64 || typeof image_base64 !== 'string') {
+      return res.status(400).json({ error: 'image_base64 required' });
+    }
+    if (image_base64.length > 15 * 1024 * 1024) {
+      return res.status(413).json({ error: 'Image too large (max 15MB)' });
+    }
+    const result = await uvScan.screenImage(image_base64, landmarks);
+    res.json(result);
+  } catch (err) {
+    if (err && err.code === 'UV_BAD_IMAGE') {
+      return res.status(400).json({ error: err.message });
+    }
+    res.status(500).json({ error: safeErrorMessage(err) });
+  }
+});
+
+// Full UV/sun-damage + asymmetry analysis; persists the scan for later claim.
+app.post('/api/uv/analyze', analyzeRateLimit, async (req, res) => {
+  try {
+    const { image_base64, landmarks, source } = req.body || {};
+    if (!image_base64 || typeof image_base64 !== 'string') {
+      return res.status(400).json({ error: 'image_base64 required' });
+    }
+    if (image_base64.length > 15 * 1024 * 1024) {
+      return res.status(413).json({ error: 'Image too large (max 15MB)' });
+    }
+    const out = await uvScan.analyzeUv(image_base64, { landmarks, source });
+    const id = uuidv4();
+    // B1: issued to the scanning client and required to claim the report later.
+    const claim_token = randomBytes(16).toString('hex');
+    const ip_hash = createHash('sha256').update(String(req.ip || '')).digest('hex').slice(0, 32);
+    const row = await uvQueries.insertScan(pool, {
+      id,
+      claim_token,
+      overall: out.overall,
+      regions: out.regions,
+      asymmetry: out.asymmetry,
+      heatmap: out.heatmap,
+      screener: out.screener,
+      source: source || 'uv-scan-web',
+      ip_hash,
+    });
+    res.json({
+      scan_id: id,
+      claim_token,
+      created_at: (row && row.created_at) || new Date().toISOString(),
+      overall: out.overall,
+      heatmap: out.heatmap,
+      regions: out.regions,
+      asymmetry: out.asymmetry,
+      screener: out.screener,
+    });
+  } catch (err) {
+    if (err && err.code === 'UV_UNUSABLE') {
+      return res.status(422).json({ error: err.message, checks: err.checks });
+    }
+    if (err && err.code === 'UV_BAD_IMAGE') {
+      return res.status(400).json({ error: err.message });
+    }
+    res.status(500).json({ error: safeErrorMessage(err) });
+  }
+});
+
+// Capture a lead's email in exchange for the PDF report; idempotent on email.
+app.post('/api/uv/lead', detectRateLimit, async (req, res) => {
+  try {
+    const { email, scan_id, source, claim_token } = req.body || {};
+    if (!email || typeof email !== 'string' || !UV_EMAIL_RE.test(email)) {
+      return res.status(400).json({ error: 'invalid email' });
+    }
+    if (!scan_id) {
+      return res.status(400).json({ error: 'scan_id required' });
+    }
+    const scan = await uvQueries.getScan(pool, scan_id);
+    if (!scan) {
+      return res.status(400).json({ error: 'unknown scan_id' });
+    }
+    // B1: capability-token binding closes the scan_id IDOR. /api/uv/analyze
+    // hands claim_token to the scanning client; only a caller presenting the
+    // matching token may claim the report. Legacy scans created before the
+    // column existed (null claim_token) stay claimable for back-compat.
+    if (scan.claim_token && claim_token !== scan.claim_token) {
+      return res.status(403).json({ error: 'invalid claim token' });
+    }
+    if (scan.claim_token == null) {
+      log.warn('[uv/lead] legacy scan (no claim_token) claimed:', scan_id);
+    }
+    // One scan -> one lead. A re-claim by the SAME email is idempotent
+    // (upsertLead keeps the original report_token + scan_id); once a scan has
+    // been claimed, a DIFFERENT email cannot take it over.
+    const existingLead = await uvQueries.getLeadByEmail(pool, email);
+    if (scan.claimed && (!existingLead || existingLead.scan_id !== scan_id)) {
+      return res.status(409).json({ error: 'scan already claimed' });
+    }
+    const lead = await uvQueries.upsertLead(pool, {
+      id: uuidv4(),
+      email,
+      report_token: uuidv4().replace(/-/g, ''),
+      scan_id,
+      source: source || 'uv-scan-web',
+    });
+    await uvQueries.claimScan(pool, scan_id);
+
+    // Best-effort marketing side effect — loops.sendEvent already swallows its
+    // own errors, but guard anyway so nothing can fail the lead response.
+    try {
+      const overall = uvParseJson(scan.overall) || {};
+      const asymmetry = uvParseJson(scan.asymmetry) || {};
+      await loops.sendEvent(email, 'uv_report_requested', {
+        contactProperties: {
+          source: source || 'uv-scan-web',
+          uvSunDamageScore: overall.sunDamageScore,
+          uvSeverity: overall.severity,
+          uvAsymmetryScore: asymmetry.score,
+          reportToken: lead.report_token,
+        },
+      });
+    } catch (loopErr) {
+      log.warn('[uv/lead] Loops sendEvent failed:', loopErr?.message || loopErr);
+    }
+
+    res.json({ ok: true, report_token: lead.report_token });
+  } catch (err) {
+    res.status(500).json({ error: safeErrorMessage(err) });
+  }
+});
+
+// Serve the branded PDF report for a captured lead's token.
+app.get('/api/uv/report/:token', async (req, res) => {
+  try {
+    const lead = await uvQueries.getLeadByToken(pool, req.params.token);
+    if (!lead) {
+      return res.status(404).json({ error: 'report not found' });
+    }
+    let scan = lead.scan_id ? await uvQueries.getScan(pool, lead.scan_id) : null;
+    if (scan) {
+      scan = {
+        ...scan,
+        overall: uvParseJson(scan.overall),
+        regions: uvParseJson(scan.regions),
+        asymmetry: uvParseJson(scan.asymmetry),
+        heatmap: uvParseJson(scan.heatmap),
+        screener: uvParseJson(scan.screener),
+      };
+    }
+    const pdf = await uvReport.buildReportPdf(scan || {}, lead);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline; filename="glowlytics-uv-report.pdf"');
+    res.send(pdf);
+  } catch (err) {
+    res.status(500).json({ error: safeErrorMessage(err) });
+  }
+});
+
 // ==================== PROTECTED ROUTES (auth required) ====================
 
 app.use(authMiddleware);
 
 /**
- * Authorization helper — verifies the authenticated user matches the requested resource owner.
- * In development mode (req.auth === null), access is allowed for dev convenience.
+ * Authorization helper — verifies the authenticated user matches the requested
+ * resource owner. Fails CLOSED (B3): a request with no req.auth is denied, not
+ * allowed. authMiddleware always sets req.auth (a verified user, or a synthetic
+ * { userId: 'dev-user' } on the dev passthrough), so this only rejects callers
+ * that reached the handler without authentication.
  */
 function authorizeUser(req, res, userId) {
-  if (req.auth && req.auth.userId !== userId) {
+  if (!req.auth || req.auth.userId !== userId) {
     res.status(403).json({ error: 'Access denied' });
     return false;
   }
@@ -1273,7 +1452,7 @@ app.post('/api/vision/generate-insights', analyzeRateLimit, async (req, res) => 
     log.error('[generate-insights] Error:', err.message);
     // If headers already sent (streaming started), just end
     if (res.headersSent) {
-      res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+      res.write(`data: ${JSON.stringify({ error: safeErrorMessage(err) })}\n\n`);
       res.write('data: [DONE]\n\n');
       res.end();
     } else {
@@ -1448,6 +1627,40 @@ app.post('/api/vision/bone-structure', analyzeRateLimit, async (req, res) => {
 
 // ==================== USER PROFILES ====================
 
+// Best-effort lead -> customer promotion fired from POST /api/users. Resolves
+// the new user's email STRICTLY from the Clerk-verified primary email (B4): an
+// attacker-supplied req.body.email must never bind another person's uv_lead to
+// this account. When CLERK_SECRET_KEY is unset we cannot verify ownership, so we
+// skip the conversion entirely rather than trust the request body. Flips a
+// matching uv_leads row to 'customer' exactly once and fires the Loops
+// `became_customer` event on that first transition. NEVER throws — user creation
+// must never be blocked by this marketing side effect.
+async function convertUvLeadToCustomer(userId) {
+  try {
+    if (!process.env.CLERK_SECRET_KEY) return;
+    const clerkApiBase = process.env.CLERK_API_BASE || 'https://api.clerk.com';
+    const url = `${clerkApiBase}/v1/users/${encodeURIComponent(userId)}`;
+    const clerkRes = await fetch(url, {
+      headers: { Authorization: `Bearer ${process.env.CLERK_SECRET_KEY}` },
+    });
+    if (!clerkRes.ok) return;
+    const data = await clerkRes.json();
+    const email =
+      data.email_addresses?.find((e) => e.id === data.primary_email_address_id)?.email_address ||
+      data.email_addresses?.[0]?.email_address ||
+      null;
+    if (!email) return;
+    const row = await uvQueries.markCustomer(pool, { email, clerk_user_id: userId });
+    if (row) {
+      await loops.sendEvent(email, 'became_customer', {
+        contactProperties: { clerkUserId: userId },
+      });
+    }
+  } catch (err) {
+    log.warn('[uv] lead->customer conversion failed:', err?.message || err);
+  }
+}
+
 app.post('/api/users', async (req, res) => {
   try {
     // Issue #14: Validate input before touching the database
@@ -1478,10 +1691,12 @@ app.post('/api/users', async (req, res) => {
        period_last_start_date, cycle_length_days || 28,
        smoker_status, drink_baseline_frequency]
     );
+    await convertUvLeadToCustomer(userId).catch(() => {});
     res.status(201).json(result.rows[0]);
   } catch (err) {
     // Issue #4: Handle duplicate user_id (idempotent creation)
     if (err.code === '23505') {
+      await convertUvLeadToCustomer((req.auth && req.auth.userId) || null).catch(() => {});
       return res.status(409).json({ error: 'User profile already exists' });
     }
     res.status(500).json({ error: safeErrorMessage(err) });
@@ -1940,5 +2155,8 @@ app._resetRateLimiters = () => {
   analyzeRateMap.clear();
   photoRateMap.clear();
 };
+
+// Exposed for unit tests (B3 fail-closed regression). Not part of the HTTP API.
+app._authorizeUser = authorizeUser;
 
 module.exports = app;

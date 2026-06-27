@@ -70,11 +70,26 @@ async function requireMcpAuth(req, res, next) {
       return send401(res, cfg.baseUrl, 'not_an_oauth_grant', 'Token is not an OAuth access token');
     }
 
-    // Prove the token was minted FOR this MCP resource. Two acceptable signals:
-    //   1) RFC 9068 / RFC 8707: aud (or resource) claim matches the MCP URL.
-    //   2) Operator pre-registered the OAuth client_id in MCP_ALLOWED_CLIENT_IDS.
-    // At least one must hold; otherwise a Clerk OAuth token issued for any
-    // other API on the same tenant would bypass the gate.
+    // MCP-M1: prove the token was minted FOR this MCP resource.
+    //
+    // PRIMARY (strict, preferred) acceptance path — RFC 9068 / RFC 8707
+    //   audience binding: the aud (or resource) claim equals `${baseUrl}/mcp`.
+    //   This is the only signal that cryptographically ties the token to THIS
+    //   resource, so it is the path every normal MCP client (claude.ai
+    //   connector, Inspector) takes.
+    //
+    // NARROW ESCAPE HATCH — the operator-pre-registered client_id allowlist
+    //   (MCP_ALLOWED_CLIENT_IDS + the auto-added OAuth proxy client_id). It
+    //   exists only for OAuth clients that cannot set a resource/aud (the proxy
+    //   mints generic Clerk grants). It BYPASSES the audience check entirely:
+    //   any token from an allowlisted client_id is accepted regardless of aud.
+    //   ⇒ SECURITY INVARIANT: a client_id on this allowlist MUST be
+    //      MCP-EXCLUSIVE — used for nothing but this MCP resource. Allowlisting
+    //      a client that also fronts another API would let that API's tokens
+    //      reach MCP. NEVER add a shared / general-purpose client_id here.
+    //
+    // At least one signal must hold; a token with a wrong aud AND a
+    // non-allowlisted client_id is rejected below.
     const audValues = Array.isArray(payload.aud)
       ? payload.aud
       : payload.aud
@@ -88,6 +103,8 @@ async function requireMcpAuth(req, res, next) {
     const audMatches =
       audValues.includes(expectedResource) || resourceValues.includes(expectedResource);
 
+    // Escape hatch (see MCP-M1 invariant above): an allowlisted client_id is
+    // accepted even with a wrong/absent aud — so the list MUST stay MCP-only.
     const clientAllowlisted = cfg.allowedClientIds && cfg.allowedClientIds.has(payload.client_id);
 
     if (!audMatches && !clientAllowlisted) {

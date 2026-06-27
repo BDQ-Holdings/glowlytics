@@ -6,6 +6,7 @@
 // only reference variables prefixed with `mock` (jest's documented exception).
 // We reset modules per test so the module-level key cache starts fresh each time.
 import type * as SecureStorageModule from '../secureStorage';
+import aesjs from 'aes-js';
 
 const mockKeychain = new Map<string, string>();
 // Deterministic-but-varying byte source: distinct on each call so successive
@@ -21,6 +22,7 @@ jest.mock('expo-secure-store', () => ({
 }));
 
 jest.mock('expo-crypto', () => ({
+  CryptoDigestAlgorithm: { SHA256: 'SHA-256' },
   getRandomBytesAsync: (n: number) => {
     const out = new Uint8Array(n);
     for (let i = 0; i < n; i++) {
@@ -28,6 +30,14 @@ jest.mock('expo-crypto', () => ({
       out[i] = (mockSeed >> 8) & 0xff;
     }
     return Promise.resolve(out);
+  },
+  // Real SHA-256 so the module's HMAC-SHA256 integrity tag is genuinely verified.
+  digest: (_alg: string, data: Uint8Array) => {
+    const nodeCrypto = require('crypto');
+    const buf = nodeCrypto.createHash('sha256').update(Buffer.from(data)).digest();
+    return Promise.resolve(
+      buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength),
+    );
   },
 }));
 
@@ -49,7 +59,7 @@ describe('secureStorage AES layer', () => {
       flag: true,
     };
     const cipher = await encryptJson(value);
-    expect(cipher.startsWith('v1:')).toBe(true);
+    expect(cipher.startsWith('v2:')).toBe(true); // authenticated AES-256-CTR + HMAC
     expect(cipher).not.toContain('menstrual_status'); // not plaintext
     await expect(decryptJson(cipher)).resolves.toEqual(value);
   });
@@ -76,5 +86,41 @@ describe('secureStorage AES layer', () => {
     const { decryptJson } = load();
     await expect(decryptJson('{"user":{"sex":"male"}}')).rejects.toThrow();
     await expect(decryptJson('v1:deadbeef')).rejects.toThrow();
+  });
+
+  it('rejects a v2 payload with a tampered ciphertext (no silent garbage)', async () => {
+    const { encryptJson, decryptJson } = load();
+    const cipher = await encryptJson({ secret: 'xyz', n: 7 });
+    expect(cipher.startsWith('v2:')).toBe(true);
+    const [v, iv, tag, ct] = cipher.split(':');
+    const flippedCt = ct.slice(0, -1) + (ct.slice(-1) === '0' ? '1' : '0');
+    await expect(decryptJson(`${v}:${iv}:${tag}:${flippedCt}`)).rejects.toThrow();
+  });
+
+  it('rejects a v2 payload with a tampered auth tag', async () => {
+    const { encryptJson, decryptJson } = load();
+    const cipher = await encryptJson({ secret: 'abc' });
+    const [v, iv, tag, ct] = cipher.split(':');
+    const flippedTag = tag.slice(0, -1) + (tag.slice(-1) === '0' ? '1' : '0');
+    await expect(decryptJson(`${v}:${iv}:${flippedTag}:${ct}`)).rejects.toThrow();
+  });
+
+  it('rejects a well-formed legacy v1 blob (downgrade-proof)', async () => {
+    const { encryptJson, decryptJson } = load();
+    // Force key generation, then hand-craft a VALID v1 (CTR-only) blob with that key.
+    await encryptJson({ seed: true });
+    const keyHex = mockKeychain.get('glowlytics_enc_key')!;
+    const key = Uint8Array.from(aesjs.utils.hex.toBytes(keyHex));
+    const legacyValue = { user: { sex: 'female' }, legacy: true };
+    const iv = new Uint8Array(16).fill(7);
+    const ctr = new aesjs.ModeOfOperation.ctr(key, new aesjs.Counter(iv));
+    const ct = ctr.encrypt(aesjs.utils.utf8.toBytes(JSON.stringify(legacyValue)));
+    const v1 = `v1:${aesjs.utils.hex.fromBytes(iv)}:${aesjs.utils.hex.fromBytes(ct)}`;
+    // Even though the CTR ciphertext IS decryptable with the key, v1 is rejected on
+    // read so an attacker with at-rest write access cannot downgrade a v2 blob to
+    // unauthenticated v1 and bit-flip it past the HMAC.
+    await expect(decryptJson(v1)).rejects.toThrow(/v1|integrity|rejected|unrecognized/i);
+    // The same value stored as authenticated v2 still round-trips (migration path).
+    await expect(decryptJson(await encryptJson(legacyValue))).resolves.toEqual(legacyValue);
   });
 });

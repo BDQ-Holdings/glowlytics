@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getTypeLabel, getTypePath } from "@/lib/content";
+import { safeJsonLd } from "@/lib/jsonld";
 import type { ContentType } from "@/lib/types";
 
 interface BreadcrumbItem {
@@ -35,7 +36,7 @@ export default function Breadcrumbs({
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(schemaData) }}
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(schemaData) }}
       />
       <nav aria-label="Breadcrumb" className="breadcrumbs">
         {items.map((item, index) => (

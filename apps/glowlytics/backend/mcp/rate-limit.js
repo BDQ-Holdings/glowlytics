@@ -2,11 +2,39 @@ const BURST_WINDOW_MS = 1_000;
 const BURST_MAX = 10;
 const MINUTE_WINDOW_MS = 60_000;
 const MINUTE_MAX = 60;
+// How often the background sweep evicts stale (fully-expired) buckets.
+const SWEEP_INTERVAL_MS = 60_000;
 
 const buckets = new Map();
+let sweepTimer = null;
 
-function sweep(arr, cutoff) {
+function trim(arr, cutoff) {
   while (arr.length && arr[0] < cutoff) arr.shift();
+}
+
+// MCP-M2: evict empty buckets so the module-level `buckets` Map can't grow
+// unbounded — one entry per distinct userId is a slow memory-leak / DoS vector.
+// Trim every bucket's burst+minute arrays against the current windows, then
+// delete any bucket left with no live timestamps in EITHER window.
+function sweepBuckets(now = Date.now()) {
+  const burstCutoff = now - BURST_WINDOW_MS;
+  const minuteCutoff = now - MINUTE_WINDOW_MS;
+  for (const [userId, bucket] of buckets) {
+    trim(bucket.burst, burstCutoff);
+    trim(bucket.minute, minuteCutoff);
+    if (bucket.burst.length === 0 && bucket.minute.length === 0) {
+      buckets.delete(userId);
+    }
+  }
+}
+
+// Lazily start the periodic eviction sweep on first use (mirrors the OAuth
+// proxy's startStateCleanup). unref() so this timer never keeps the process
+// (or a jest run) alive on its own.
+function startSweep() {
+  if (sweepTimer) return;
+  sweepTimer = setInterval(sweepBuckets, SWEEP_INTERVAL_MS);
+  if (typeof sweepTimer.unref === 'function') sweepTimer.unref();
 }
 
 function mcpRateLimit(req, res, next) {
@@ -20,6 +48,8 @@ function mcpRateLimit(req, res, next) {
     return next();
   }
 
+  startSweep();
+
   const now = Date.now();
   let bucket = buckets.get(req.userId);
   if (!bucket) {
@@ -27,8 +57,8 @@ function mcpRateLimit(req, res, next) {
     buckets.set(req.userId, bucket);
   }
 
-  sweep(bucket.burst, now - BURST_WINDOW_MS);
-  sweep(bucket.minute, now - MINUTE_WINDOW_MS);
+  trim(bucket.burst, now - BURST_WINDOW_MS);
+  trim(bucket.minute, now - MINUTE_WINDOW_MS);
 
   if (bucket.burst.length >= BURST_MAX) {
     const retryAfter = Math.ceil((bucket.burst[0] + BURST_WINDOW_MS - now) / 1000) || 1;
@@ -45,7 +75,16 @@ function mcpRateLimit(req, res, next) {
 }
 
 function _resetRateLimitForTest() {
+  if (sweepTimer) {
+    clearInterval(sweepTimer);
+    sweepTimer = null;
+  }
   buckets.clear();
 }
 
-module.exports = { mcpRateLimit, _resetRateLimitForTest };
+module.exports = {
+  mcpRateLimit,
+  sweepBuckets,
+  _resetRateLimitForTest,
+  _bucketsForTest: buckets,
+};

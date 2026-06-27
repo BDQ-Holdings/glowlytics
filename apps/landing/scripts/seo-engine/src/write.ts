@@ -11,6 +11,7 @@ import { blogTemplate } from "./lib/templates/blog.js";
 import { faqTemplate } from "./lib/templates/faq.js";
 import { guideTemplate } from "./lib/templates/guide.js";
 import { glossaryTemplate } from "./lib/templates/glossary.js";
+import { sanitizeArticleBody } from "./lib/sanitize.js";
 import type { KeywordCluster, ResearchDossier, ContentFrontmatter, ContentType } from "./lib/types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -249,6 +250,10 @@ async function main() {
         console.log("  Saving because ALLOW_LOW_QUALITY=1 is set.");
       }
 
+      // Strip raw HTML and neutralize MDX expression syntax from the LLM body
+      // before it is persisted and later compiled by `next build`.
+      const safeBody = sanitizeArticleBody(articleContent);
+
       const mdxContent = `---
 title: "${frontmatter.title.replace(/"/g, '\\"')}"
 slug: ${frontmatter.slug}
@@ -266,7 +271,7 @@ relatedSlugs:
 ${frontmatter.relatedSlugs.map((s) => `  - ${s}`).join("\n")}
 ---
 
-${articleContent}
+${safeBody}
 `;
 
       fs.mkdirSync(contentDir, { recursive: true });

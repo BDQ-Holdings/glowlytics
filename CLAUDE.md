@@ -23,12 +23,15 @@ apps/
       store/         # Zustand (useStore.ts) — sync via outbox, not fire-and-forget; persists ritualCompletions keyed by local date
       constants/     # theme.ts (incl. Glow palettes), signals.ts, facets.ts, lesions.ts, ingredients.ts, boneStructure.ts
       utils/, hooks/, types/, config/
-    backend/         # Express + PostgreSQL + ONNX + RAG + MCP server (10 top-level modules)
+    backend/         # Express + PostgreSQL + ONNX + RAG + MCP server (13 top-level modules)
       mcp/           # MCP Streamable HTTP transport + tools + auth + rate limiter + OAuth DCR proxy (12 modules)
-      queries/       # reusable scan/routine/ingredient/bone-structure query helpers (5 modules)
+      queries/       # reusable scan/routine/ingredient/bone-structure/uv query helpers (6 modules)
       bone-structure-3d.js  # 16-metric Harmony scoring across 6 domains
       interventions.js      # finding → three-tier (Lifestyle/Pharma/Procedural) lookup
       no-llm-fallback.js    # OPENAI_DISABLED / empty key → deterministic L1+L2 + template insights
+      uv-scan.js     # UV Mirror: pre-scan screener + per-pixel/region/asymmetry sun-damage map (deterministic, sharp)
+      loops.js       # Loops.so lifecycle email client (LOOPS_API_KEY-gated, no-op fallback)
+      uv-report.js   # UV Mirror PDF report generator (pdfkit)
   landing/       # Marketing website (Next.js)
 research/
   ml/            # Training/data notebooks and model tooling
@@ -75,6 +78,8 @@ cd backend && npm test       # Backend tests only
 > **App Review constraint:** the `test@test.com` user in Clerk must have **Bypass Client Trust** enabled and **no MFA**. Re-enabling either breaks login for reviewers (Apple rejected v1.0.1 for exactly this — password verified but `status: needs_client_trust` blocked session creation).
 
 **Vision**: `/api/vision/analyze` — L1 deterministic (~100ms) + L2 ONNX (~200ms) + L3 GPT-4o+RAG (~3-5s). Score merge: L2 > L1+L3 blend. See `backend/signal-models.js`.
+
+**UV Mirror (marketing acquisition tool)**: public, unauthenticated `/api/uv/*` (registered before `app.use(authMiddleware)`). `POST /api/uv/screen` = pre-scan quality gate (brightness, highlight-clipping, lighting symmetry, face coverage, landmark-aware angle). `POST /api/uv/analyze` = per-pixel ITA sun-damage heatmap (`{cols,rows,bounds,cells}` normalized → resolution-independent overlay) + 7 facial regions + left/right asymmetry; persists to `uv_scans` (migration v5); throws `UV_UNUSABLE`→422 / `UV_BAD_IMAGE`→400. `POST /api/uv/lead` = email→`report_token`, upserts `uv_leads`, fires Loops `uv_report_requested`. `GET /api/uv/report/:token` = pdfkit PDF. Lead→customer: `POST /api/users` resolves the new Clerk user's email and fires Loops `became_customer` once (status-guarded). Loops sequences live in the Loops dashboard, keyed on those event names. **Web UI** (`apps/landing/app/uv-scan/`): the polished claude.ai/design "Driver's-Side Test" ported to Next.js — `driver/DriverFlow.tsx` (7-step machine: intro→framing→scanning→reveal→breakdown→email→appstore) over `engine.ts` (camera/lighting hooks + `compositeHeatmap` painting the REAL backend heatmap onto the photo, replacing the design's synthetic `makeDamageMap`), `atoms.tsx`, `CaptureScreens.tsx`, `ResultScreens.tsx`; `lib.ts` (typed contract + `postScreen/postAnalyze/postLead/reportUrl`), `dst.css` (palette tokens scoped to `.dst-page`). `page.tsx` = standalone `/uv-scan`; `DriverFlowEmbed.tsx` = drop-in for the landing "The test" section. Frontend base URL via `NEXT_PUBLIC_GLOWLYTICS_API`. Design source archived in `.local/design-assets/`.
 
 **MCP server**: `/mcp` exposes 11 user-scoped tools to authenticated MCP clients (Claude.ai). Auth via Clerk JWKS Bearer + beta allowlist + per-user rate limiter (60/min, 10/sec burst). Tools: `get_latest_scan`, `get_scan_history`, `get_signal_trend`, `compare_scans`, `get_scan_report`, `get_current_routine`, `lookup_ingredient`, `search_ingredients`, `summarize_month`, `get_bone_structure`, `get_harmony_trend`. Profile → Connected Apps (Beta) lists + revokes clients via `/api/mcp/clients`.
 

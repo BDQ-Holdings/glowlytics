@@ -30,7 +30,7 @@ async function initDB() {
 // a flaky outbound call) must NOT take the whole process down and 502 every
 // endpoint. Log loudly (Railway surfaces it) but keep the API serving.
 process.on('unhandledRejection', (reason) => {
-  console.error('[server] Unhandled promise rejection (continuing):', reason);
+  console.error('[server] Unhandled promise rejection (continuing):', reason?.message ?? reason);
 });
 
 app.listen(PORT, '0.0.0.0', async () => {

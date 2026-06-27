@@ -7,6 +7,7 @@
  */
 import * as cheerio from "cheerio";
 import { getFetchTimeoutMs } from "./pipeline.js";
+import { safeFetch } from "./safe-fetch.js";
 
 export interface ExtractedContent {
   title: string;
@@ -19,7 +20,7 @@ export interface ExtractedContent {
 export async function extractContent(url: string): Promise<ExtractedContent | null> {
   try {
     const timeoutMs = getFetchTimeoutMs();
-    const res = await fetch(url, {
+    const res = await safeFetch(url, {
       headers: {
         "User-Agent":
           "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",

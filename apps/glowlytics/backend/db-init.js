@@ -195,6 +195,45 @@ const migrationV4 = `
 ALTER TABLE model_outputs ADD COLUMN IF NOT EXISTS bone_structure JSONB DEFAULT NULL;
 `;
 
+// Migration v5: UV Mirror marketing scan tool — public scan results + lead capture
+const migrationV5 = `
+CREATE TABLE IF NOT EXISTS uv_scans (
+  id TEXT PRIMARY KEY,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  overall JSONB,
+  regions JSONB,
+  asymmetry JSONB,
+  heatmap JSONB,
+  screener JSONB,
+  source TEXT,
+  ip_hash TEXT,
+  claimed BOOLEAN DEFAULT FALSE
+);
+
+CREATE TABLE IF NOT EXISTS uv_leads (
+  id TEXT PRIMARY KEY,
+  email TEXT UNIQUE,
+  report_token TEXT UNIQUE,
+  scan_id TEXT REFERENCES uv_scans(id),
+  status TEXT DEFAULT 'lead',
+  clerk_user_id TEXT,
+  source TEXT,
+  loops_synced BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  converted_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_uv_leads_email ON uv_leads(email);
+CREATE INDEX IF NOT EXISTS idx_uv_leads_report_token ON uv_leads(report_token);
+`;
+
+// Migration v6: B1 capability-token binding for UV scans. claim_token is issued
+// to the scanning client by /api/uv/analyze and required to claim the report,
+// closing the scan_id IDOR. Idempotent ALTER so re-running startup is safe.
+const migrationV6 = `
+ALTER TABLE uv_scans ADD COLUMN IF NOT EXISTS claim_token TEXT;
+`;
+
 /**
  * Initialize schema using a provided pool (does NOT close it).
  * Runs CREATE TABLE IF NOT EXISTS + ALTER TABLE for migrations.
@@ -221,6 +260,16 @@ async function initSchema(externalPool) {
   } catch (err) {
     console.warn('[db-init] Migration v4 warning (may be harmless):', err.message);
   }
+  try {
+    await externalPool.query(migrationV5);
+  } catch (err) {
+    console.warn('[db-init] Migration v5 warning (may be harmless):', err.message);
+  }
+  try {
+    await externalPool.query(migrationV6);
+  } catch (err) {
+    console.warn('[db-init] Migration v6 warning (may be harmless):', err.message);
+  }
 }
 
 // Standalone execution: `node db-init.js`
@@ -237,4 +286,4 @@ if (require.main === module) {
   })();
 }
 
-module.exports = { schema, initSchema };
+module.exports = { schema, initSchema, migrationV5, migrationV6 };

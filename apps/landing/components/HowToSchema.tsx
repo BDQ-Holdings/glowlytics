@@ -1,5 +1,6 @@
 import type { ContentMeta } from "@/lib/types";
 import type { HowToStep } from "@/lib/types";
+import { safeJsonLd } from "@/lib/jsonld";
 
 export default function HowToSchema({ meta, steps }: { meta: ContentMeta; steps: HowToStep[] }) {
   const schema = {
@@ -18,7 +19,7 @@ export default function HowToSchema({ meta, steps }: { meta: ContentMeta; steps:
   return (
     <script
       type="application/ld+json"
-      dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
+      dangerouslySetInnerHTML={{ __html: safeJsonLd(schema) }}
     />
   );
 }

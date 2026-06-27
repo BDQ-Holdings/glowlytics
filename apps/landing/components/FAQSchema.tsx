@@ -1,4 +1,5 @@
 import type { FAQItem } from "@/lib/types";
+import { safeJsonLd } from "@/lib/jsonld";
 
 export default function FAQSchema({ items }: { items: FAQItem[] }) {
   const schema = {
@@ -17,7 +18,7 @@ export default function FAQSchema({ items }: { items: FAQItem[] }) {
   return (
     <script
       type="application/ld+json"
-      dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
+      dangerouslySetInnerHTML={{ __html: safeJsonLd(schema) }}
     />
   );
 }

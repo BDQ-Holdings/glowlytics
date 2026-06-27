@@ -1,4 +1,5 @@
 import type { ContentMeta } from "@/lib/types";
+import { safeJsonLd } from "@/lib/jsonld";
 
 export default function ArticleSchema({ meta }: { meta: ContentMeta }) {
   const schema = {
@@ -30,7 +31,7 @@ export default function ArticleSchema({ meta }: { meta: ContentMeta }) {
   return (
     <script
       type="application/ld+json"
-      dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
+      dangerouslySetInnerHTML={{ __html: safeJsonLd(schema) }}
     />
   );
 }

@@ -12,6 +12,9 @@ concurrency:
   group: deploy-backend
   cancel-in-progress: false  # never cancel an in-flight deploy
 
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Backend · Pre-deploy Test
@@ -44,7 +47,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Railway CLI
-        run: npm install -g @railway/cli
+        run: npm install -g @railway/cli@5.15.0
 
       - name: Deploy
         env:

@@ -34,6 +34,13 @@ function readMdxFile(filePath: string): ContentItem | null {
     return null;
   }
 
+  // YAML serialises an empty list field as `relatedSlugs:` with no body,
+  // which gray-matter parses back as `null`. Normalise so downstream code
+  // can always call `.length` / `.map` safely.
+  if (!Array.isArray(meta.relatedSlugs)) meta.relatedSlugs = [];
+  if (!Array.isArray(meta.keywords)) meta.keywords = [];
+  if (!Array.isArray(meta.sources)) meta.sources = [];
+
   return { meta, content, filePath };
 }
 

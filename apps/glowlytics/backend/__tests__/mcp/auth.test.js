@@ -233,3 +233,50 @@ test('fails closed when MCP_BETA_USER_IDS empty and MCP_BETA_OPEN unset (MCP-06)
   expect(res.status).toBe(403);
   expect(res.body.error).toBe('beta_only');
 });
+// ---------------------------------------------------------------------------
+// MCP-M1: strict audience binding is the primary acceptance path; the
+// client_id allowlist is a narrow, MCP-exclusive escape hatch. These pin the
+// security invariant so a future refactor can't silently widen the gate.
+// ---------------------------------------------------------------------------
+describe('M1: audience binding + narrow client_id escape hatch', () => {
+  test('correct aud is accepted (strict primary path)', async () => {
+    const tok = await sign({ aud: MCP_AUD, clientId: 'oauth_anything' });
+    const res = await request(buildApp())
+      .get('/protected')
+      .set('Authorization', `Bearer ${tok}`);
+    expect(res.status).toBe(200);
+    expect(res.body.userId).toBe('user_abc');
+  });
+
+  test('wrong aud AND non-allowlisted client_id is rejected (no allowlist configured)', async () => {
+    // No MCP_ALLOWED_CLIENT_IDS set: the only path is strict aud, which misses.
+    const tok = await sign({ aud: 'https://api.glowlytics.ai/internal', clientId: 'oauth_outsider' });
+    const res = await request(buildApp())
+      .get('/protected')
+      .set('Authorization', `Bearer ${tok}`);
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe('token_not_for_mcp');
+  });
+
+  test('wrong aud AND non-allowlisted client_id is rejected (allowlist set but excludes client)', async () => {
+    process.env.MCP_ALLOWED_CLIENT_IDS = 'oauth_known_a,oauth_known_b';
+    const tok = await sign({ aud: 'https://api.glowlytics.ai/internal', clientId: 'oauth_outsider' });
+    const res = await request(buildApp())
+      .get('/protected')
+      .set('Authorization', `Bearer ${tok}`);
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe('token_not_for_mcp');
+  });
+
+  test('allowlisted client_id is the escape hatch: accepted even with a wrong aud (proxy-client behavior preserved)', async () => {
+    // Documents WHY allowlisted client_ids must be MCP-exclusive: an allowlist
+    // hit bypasses the audience check entirely.
+    process.env.MCP_ALLOWED_CLIENT_IDS = 'oauth_proxy_client';
+    const tok = await sign({ aud: 'https://api.glowlytics.ai/internal', clientId: 'oauth_proxy_client' });
+    const res = await request(buildApp())
+      .get('/protected')
+      .set('Authorization', `Bearer ${tok}`);
+    expect(res.status).toBe(200);
+    expect(res.body.userId).toBe('user_abc');
+  });
+});

@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { PAGEVIEW_SESSION_KEY } from "./PageViewBeacon";
+
 type Status = "idle" | "loading" | "success" | "error";
 
 interface Props {
@@ -21,6 +23,30 @@ interface Props {
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+/**
+ * Reads the article-attribution snapshot left by <PageViewBeacon>, if any.
+ * Returns an empty object on the server, in private mode, or when the visitor
+ * has not viewed an article in this tab — the waitlist API tolerates both
+ * cases and only persists the columns when present.
+ */
+function readAttribution(): {
+  attribution_slug?: string;
+  attribution_referrer?: string;
+} {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.sessionStorage.getItem(PAGEVIEW_SESSION_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as { slug?: unknown; ref?: unknown };
+    const slug = typeof parsed.slug === "string" ? parsed.slug : undefined;
+    const ref = typeof parsed.ref === "string" && parsed.ref ? parsed.ref : undefined;
+    if (!slug) return {};
+    return ref ? { attribution_slug: slug, attribution_referrer: ref } : { attribution_slug: slug };
+  } catch {
+    return {};
+  }
+}
+
 
 export default function WaitlistForm({
   id,
@@ -62,7 +88,11 @@ export default function WaitlistForm({
         const res = await fetch("/api/waitlist", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: trimmed, source }),
+          body: JSON.stringify({
+            email: trimmed,
+            source,
+            ...readAttribution(),
+          }),
         });
         const body = (await res.json().catch(() => ({}))) as {
           ok?: boolean;

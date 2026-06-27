@@ -4,6 +4,7 @@ import CTABanner from "./CTABanner";
 import FAQSchema from "./FAQSchema";
 import HowToSchema from "./HowToSchema";
 import RelatedArticles from "./RelatedArticles";
+import PageViewBeacon from "./PageViewBeacon";
 import {
   extractFaqItems,
   extractHeadings,
@@ -56,6 +57,7 @@ export default function ArticleLayout({
 
   return (
     <article className="article-shell">
+      <PageViewBeacon slug={meta.slug} type={meta.type} />
       <Breadcrumbs type={meta.type} title={meta.title} />
       <ArticleSchema meta={meta} />
       {faqItems.length > 0 ? <FAQSchema items={faqItems} /> : null}
