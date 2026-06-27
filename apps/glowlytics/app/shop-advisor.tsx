@@ -567,7 +567,8 @@ export default function ShopAdvisorScreen(): React.ReactElement {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         if (isApiError(err, 413)) ping('That photo is too large — try a tighter crop.');
         else if (isApiError(err, 400)) ping("Couldn't read that — try the barcode.");
-        else ping('Scan failed. Check your connection and try again.');
+        else if (isApiError(err, 0)) ping('That took a little long — give it another scan.');
+        else ping('Scan failed — please try again.');
       } finally {
         setScanning(false);
         processingRef.current = false;

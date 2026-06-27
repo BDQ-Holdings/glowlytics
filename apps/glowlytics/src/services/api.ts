@@ -163,6 +163,9 @@ export const shoppingScan = (input: ShoppingScanInput) =>
   request<ShoppingScanResult>('/api/products/shopping-scan', {
     method: 'POST',
     body: input,
-    timeoutMs: 30_000,
+    // Photo path runs a vision model server-side; give it a generous budget so a
+    // slow-but-successful scan isn't aborted client-side and shown as a failure.
+    // Barcode/name paths are fast and keep a tight budget.
+    timeoutMs: input.image_base64 ? 45_000 : 20_000,
     retries: 0,
   });

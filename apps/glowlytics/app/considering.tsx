@@ -72,7 +72,7 @@ export default function ConsideringScreen(): React.ReactElement {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 50 + insets.bottom }}
       >
-        <FadeUp index={0} style={styles.intro}>
+        <FadeUp index={0} delay={0} style={styles.intro}>
           <Text style={[styles.title, { color: palette.ink }]}>Your shortlist</Text>
           <Text style={[styles.sub, { color: palette.ink + 'B3' }]}>
             Products you saved to weigh later. Tap any to revisit the read.
@@ -80,7 +80,7 @@ export default function ConsideringScreen(): React.ReactElement {
         </FadeUp>
 
         {consideringList.length === 0 ? (
-          <FadeUp index={1} style={styles.emptyWrap}>
+          <FadeUp index={1} delay={0} style={styles.emptyWrap}>
             <Text style={[styles.emptyTitle, { color: palette.ink }]}>Nothing saved yet</Text>
             <Text style={[styles.emptyBody, { color: palette.muted }]}>
               Scan a product in the advisor and tap &ldquo;Save to considering&rdquo; to keep it here.
@@ -96,7 +96,7 @@ export default function ConsideringScreen(): React.ReactElement {
             </Pressable>
           </FadeUp>
         ) : (
-          <FadeUp index={1} style={styles.list}>
+          <FadeUp index={1} delay={0} style={styles.list}>
             {consideringList.map((it) => (
               <View
                 key={it.id}
