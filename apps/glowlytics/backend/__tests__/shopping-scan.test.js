@@ -7,6 +7,7 @@ const mod = require('../shopping-scan');
 const {
   CATEGORY,
   categorizeIngredient,
+  normalizeIngredients,
   analyzeProduct,
   detectConflicts,
   detectRedundancy,
@@ -386,4 +387,239 @@ describe('computeVerdict', () => {
     expect(r.verdict).toBe('maybe');
   });
 
+});
+
+describe('normalizeIngredients', () => {
+  it('splits a single comma-joined element into individual tokens', () => {
+    expect(normalizeIngredients(['Water, Niacinamide, Retinol'])).toEqual([
+      'Water',
+      'Niacinamide',
+      'Retinol',
+    ]);
+  });
+
+  it('splits on semicolons and newlines too', () => {
+    expect(normalizeIngredients(['Water; Niacinamide; Retinol'])).toEqual([
+      'Water',
+      'Niacinamide',
+      'Retinol',
+    ]);
+    expect(normalizeIngredients(['Water\nNiacinamide\nRetinol'])).toEqual([
+      'Water',
+      'Niacinamide',
+      'Retinol',
+    ]);
+  });
+
+  it('strips an "Ingredients:" label and a "May contain:" prefix, dropping empty fragments', () => {
+    expect(
+      normalizeIngredients(['Ingredients: Water, Retinol', '', 'May contain: Fragrance']),
+    ).toEqual(['Water', 'Retinol', 'Fragrance']);
+  });
+
+  it('strips a "+/-" colorant prefix', () => {
+    expect(normalizeIngredients(['+/- CI 77491'])).toEqual(['CI 77491']);
+  });
+
+  it('passes already-individual ingredients through unchanged', () => {
+    expect(normalizeIngredients(['Niacinamide', 'Retinol'])).toEqual(['Niacinamide', 'Retinol']);
+  });
+
+  it('returns an empty array for empty / non-array input', () => {
+    expect(normalizeIngredients([])).toEqual([]);
+    expect(normalizeIngredients(null)).toEqual([]);
+    expect(normalizeIngredients(undefined)).toEqual([]);
+  });
+});
+
+describe('analyzeProduct — varied ingredient input shapes', () => {
+  it('splits a single comma-joined ingredients element before categorizing', () => {
+    const a = analyzeProduct({
+      name: 'Night Serum',
+      ingredients: ['Water, Niacinamide, Retinol, Fragrance, Glycolic Acid'],
+    });
+    expect(a.actives).toEqual(expect.arrayContaining(['niacinamide', 'retinoid', 'aha']));
+    expect(a.hasFragrance).toBe(true);
+  });
+
+  it('splits semicolon-joined and newline-joined elements the same way', () => {
+    const semi = analyzeProduct({
+      name: 'Night Serum',
+      ingredients: ['Water; Niacinamide; Retinol; Fragrance; Glycolic Acid'],
+    });
+    expect(semi.actives).toEqual(expect.arrayContaining(['niacinamide', 'retinoid', 'aha']));
+    expect(semi.hasFragrance).toBe(true);
+
+    const nl = analyzeProduct({
+      name: 'Night Serum',
+      ingredients: ['Water\nNiacinamide\nRetinol\nFragrance\nGlycolic Acid'],
+    });
+    expect(nl.actives).toEqual(expect.arrayContaining(['niacinamide', 'retinoid', 'aha']));
+    expect(nl.hasFragrance).toBe(true);
+  });
+
+  it('detects every active across a mixed array of joined and individual elements', () => {
+    const a = analyzeProduct({
+      name: 'Mixed',
+      ingredients: ['Water, Niacinamide', 'Retinol', 'Glycolic Acid, Fragrance'],
+    });
+    expect(a.actives).toEqual(expect.arrayContaining(['niacinamide', 'retinoid', 'aha']));
+    expect(a.hasFragrance).toBe(true);
+  });
+
+  it('ignores boilerplate / empty fragments without crashing or losing actives', () => {
+    const a = analyzeProduct({
+      name: 'Label Soup',
+      ingredients: ['Ingredients: Niacinamide, Retinol', '', 'May contain: Fragrance'],
+    });
+    expect(a.actives).toEqual(expect.arrayContaining(['niacinamide', 'retinoid']));
+    expect(a.hasFragrance).toBe(true);
+  });
+
+  it('regression: an already-individual array yields the documented actives/categories/flags', () => {
+    const a = analyzeProduct({
+      name: 'Night Serum',
+      ingredients: ['Water', 'Niacinamide', 'Retinol', 'Fragrance', 'Glycolic Acid'],
+    });
+    expect([...a.actives].sort()).toEqual(['aha', 'niacinamide', 'retinoid']);
+    expect([...a.categories].sort()).toEqual([
+      'aha',
+      'fragrance',
+      'niacinamide',
+      'other',
+      'retinoid',
+    ]);
+    expect(a.hasFragrance).toBe(true);
+    expect(a.hasSunscreen).toBe(false);
+
+    // The joined-string form must now produce the SAME verdict-relevant output.
+    const joined = analyzeProduct({
+      name: 'Night Serum',
+      ingredients: ['Water, Niacinamide, Retinol, Fragrance, Glycolic Acid'],
+    });
+    expect([...joined.actives].sort()).toEqual([...a.actives].sort());
+    expect([...joined.categories].sort()).toEqual([...a.categories].sort());
+    expect(joined.hasFragrance).toBe(a.hasFragrance);
+  });
+
+  it('keeps existing single-token noise handling: "Retinol (0.3%)" -> retinoid', () => {
+    expect(categorizeIngredient('Retinol (0.3%)')).toBe('retinoid');
+    expect(analyzeProduct({ name: 'X', ingredients: ['Retinol (0.3%)'] }).actives).toContain(
+      'retinoid',
+    );
+  });
+
+  it('still returns empty actives for empty array and null/undefined ingredients', () => {
+    expect(analyzeProduct({ name: 'E', ingredients: [] }).actives).toEqual([]);
+    expect(analyzeProduct({ name: 'E' }).actives).toEqual([]);
+    expect(analyzeProduct({ name: 'E', ingredients: null }).actives).toEqual([]);
+    expect(() => analyzeProduct({ name: 'E', ingredients: undefined })).not.toThrow();
+  });
+});
+
+describe('blank/whitespace routine names — conflict + redundancy hardening', () => {
+  it('1. second_retinoid with a BLANK routine name produces no empty parenthetical and no usable withProduct', () => {
+    const conflicts = detectConflicts(analyze('Retinol Serum', ['Retinol']), [analyze('   ', ['Tretinoin'])]);
+    const c = conflicts.find((x) => x.code === 'second_retinoid');
+    expect(c).toBeTruthy();
+    expect(c.severity).toBe('high');
+    expect(c.message).not.toMatch(/\(\s*\)/);
+    expect(c.withProduct).toBeUndefined();
+  });
+
+  it('2. second_retinoid with a real routine name keeps the (name) parenthetical and withProduct', () => {
+    const conflicts = detectConflicts(analyze('Retinol Serum', ['Retinol']), [analyze('CeraVe Retinol', ['Tretinoin'])]);
+    const c = conflicts.find((x) => x.code === 'second_retinoid');
+    expect(c).toBeTruthy();
+    expect(c.message).toContain('(CeraVe Retinol)');
+    expect(c.withProduct).toBe('CeraVe Retinol');
+  });
+
+  it('3. a routine name with surrounding whitespace renders trimmed in both message and withProduct', () => {
+    const conflicts = detectConflicts(analyze('Retinol Serum', ['Retinol']), [analyze('  CeraVe  ', ['Tretinoin'])]);
+    const c = conflicts.find((x) => x.code === 'second_retinoid');
+    expect(c).toBeTruthy();
+    expect(c.message).toContain('(CeraVe)');
+    expect(c.message).not.toContain('(  CeraVe  )');
+    expect(c.withProduct).toBe('CeraVe');
+  });
+
+  it('4. detectRedundancy with a blank-name match omits withProduct and yields no empty parenthetical in the reason', () => {
+    const red = detectRedundancy(analyze('Spot Treatment', ['Retinol']), [analyze('   ', ['Retinol'])]);
+    expect(red).toBeTruthy();
+    expect(red.category).toBe('treatment');
+    expect(red.withProduct).toBeUndefined();
+
+    const v = computeVerdict({
+      candidate: analyze('Spot Treatment', ['Retinol']),
+      routine: [analyze('   ', ['Retinol'])],
+      goals: [],
+      profile: {},
+    });
+    const reason = v.reasons.find((x) => x.kind === 'redundancy');
+    expect(reason).toBeTruthy();
+    expect(reason.text).not.toMatch(/\(\s*\)/);
+  });
+
+  it('5. detectRedundancy with a real name keeps a trimmed withProduct and (name) in the reason', () => {
+    const red = detectRedundancy(analyze('Spot Treatment', ['Retinol']), [analyze('  Differin Gel  ', ['Retinol'])]);
+    expect(red).toBeTruthy();
+    expect(red.withProduct).toBe('Differin Gel');
+
+    const v = computeVerdict({
+      candidate: analyze('Spot Treatment', ['Retinol']),
+      routine: [analyze('  Differin Gel  ', ['Retinol'])],
+      goals: [],
+      profile: {},
+    });
+    const reason = v.reasons.find((x) => x.kind === 'redundancy');
+    expect(reason).toBeTruthy();
+    expect(reason.text).toContain('(Differin Gel)');
+  });
+});
+
+describe('normalizeIngredients — single STRING input (GPT photo-identify path)', () => {
+  it('1. analyzeProduct with a comma-joined STRING tokenizes actives and detects fragrance', () => {
+    const a = analyzeProduct({
+      name: 'Serum',
+      ingredients: 'Water, Niacinamide, Retinol, Fragrance',
+    });
+    expect(a.actives).toEqual(expect.arrayContaining(['niacinamide', 'retinoid']));
+    expect(a.hasFragrance).toBe(true);
+  });
+
+  it('2. normalizeIngredients on a STRING splits on comma/semicolon/newline into trimmed tokens', () => {
+    expect(normalizeIngredients('Water, Retinol; Niacinamide\nGlycolic Acid')).toEqual([
+      'Water',
+      'Retinol',
+      'Niacinamide',
+      'Glycolic Acid',
+    ]);
+  });
+
+  it('3. a STRING with an "Ingredients:" prefix strips boilerplate and still categorizes', () => {
+    expect(normalizeIngredients('Ingredients: Water, Retinol')).toEqual(['Water', 'Retinol']);
+    expect(analyzeProduct({ name: 'X', ingredients: 'Ingredients: Water, Retinol' }).actives).toContain(
+      'retinoid',
+    );
+  });
+
+  it('4. regression: ARRAY inputs are byte-identical to before (joined + already-individual)', () => {
+    expect(normalizeIngredients(['Water, Niacinamide, Retinol'])).toEqual([
+      'Water',
+      'Niacinamide',
+      'Retinol',
+    ]);
+    expect(normalizeIngredients(['Niacinamide', 'Retinol'])).toEqual(['Niacinamide', 'Retinol']);
+  });
+
+  it('5. non-array/non-string and empty-string inputs return [] with no throw', () => {
+    expect(normalizeIngredients(null)).toEqual([]);
+    expect(normalizeIngredients(undefined)).toEqual([]);
+    expect(normalizeIngredients(42)).toEqual([]);
+    expect(normalizeIngredients({})).toEqual([]);
+    expect(normalizeIngredients('')).toEqual([]);
+    expect(analyzeProduct({ name: 'E', ingredients: 42 }).actives).toEqual([]);
+    expect(() => analyzeProduct({ name: 'E', ingredients: {} })).not.toThrow();
+  });
 });

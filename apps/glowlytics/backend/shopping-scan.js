@@ -86,6 +86,48 @@ function categorizeIngredient(rawName) {
   return CATEGORY.OTHER;
 }
 
+// Delimiters that join several ingredients into one string: comma, semicolon,
+// newline / carriage-return, middot and bullet. Real sources (OpenBeautyFacts
+// `ingredients_text`, the GPT photo-identify path) often hand back the whole
+// list as a single comma-joined element rather than one entry per ingredient.
+const INGREDIENT_DELIMITERS = /[,;\n\r\u00b7\u2022]+/;
+
+/**
+ * Flatten a raw ingredients value into individual, trimmed ingredient tokens.
+ * Accepts either an array OR a single string (the GPT photo-identify path often
+ * hands back the whole list as one comma-joined string): a string is treated as
+ * a single element and tokenized the same way. Each element is split on common
+ * delimiters, label / disclaimer boilerplate is stripped from the front of a
+ * token, and empty fragments are dropped. An array whose elements are already
+ * individual ingredients (no delimiters) passes through unchanged, so existing
+ * callers keep identical results. Anything that is neither array nor string
+ * (null / undefined / number / object) yields [].
+ * @param {string[]|string} ingredients
+ * @returns {string[]}
+ */
+function normalizeIngredients(ingredients) {
+  const list = Array.isArray(ingredients)
+    ? ingredients
+    : typeof ingredients === 'string'
+      ? [ingredients]
+      : [];
+  const tokens = [];
+  for (const entry of list) {
+    const raw = String(entry == null ? '' : entry);
+    for (const part of raw.split(INGREDIENT_DELIMITERS)) {
+      const token = part
+        .trim()
+        .replace(/^\+\s*\/\s*[-\u2212]\s*/, '') // "+/-" colorant marker
+        .replace(/^(?:active|inactive|other)\s+ingredients?\s*:\s*/i, '') // "Active Ingredients:"
+        .replace(/^ingredients?\s*:\s*/i, '') // "Ingredients:"
+        .replace(/^may\s+contain\s*:?\s*/i, '') // "May contain:" / "May contain "
+        .trim();
+      if (token) tokens.push(token);
+    }
+  }
+  return tokens;
+}
+
 function inferType(name, actives, hasSunscreen) {
   const n = String(name || '').toLowerCase();
   if (/cleanser|cleansing|face wash|\bwash\b|foaming/.test(n)) return 'cleanser';
@@ -107,8 +149,8 @@ function inferType(name, actives, hasSunscreen) {
  */
 function analyzeProduct(input) {
   const name = (input && input.name) || '';
-  const rawIngredients = input && Array.isArray(input.ingredients) ? input.ingredients : [];
-  const cats = rawIngredients.map(categorizeIngredient);
+  const rawIngredients = input ? input.ingredients : [];
+  const cats = normalizeIngredients(rawIngredients).map(categorizeIngredient);
   const categories = [...new Set(cats)];
   const actives = [...new Set(cats.filter((c) => ACTIVE_CATEGORIES.has(c)))];
   const hasFragrance = cats.includes(CATEGORY.FRAGRANCE);
@@ -131,6 +173,13 @@ function routineWithAny(routine, cats) {
   return null;
 }
 
+// Routine product names come straight from `product_catalog.product_name`, which
+// can be blank or whitespace-only in real data. Trim to the displayable name, or
+// '' when there is nothing worth showing — callers omit the name entirely then.
+function cleanName(name) {
+  return typeof name === 'string' ? name.trim() : '';
+}
+
 /**
  * Detect ingredient conflicts between a candidate and the analyzed routine.
  * @returns {Array<{code,severity,message,withProduct?}>}
@@ -149,63 +198,46 @@ function detectConflicts(candidate, routine) {
   const routineAcid = routineWithAny(r, [CATEGORY.AHA, CATEGORY.BHA]);
   const routineBPO = routineWith(r, CATEGORY.BENZOYL_PEROXIDE);
 
+  // Attach a ` (name)` parenthetical and `withProduct` only when the routine
+  // product has a non-blank name; otherwise the message reads naturally without
+  // it and `withProduct` is omitted. `tpl(paren, nm)` builds each sentence.
+  const add = (base, rawName, tpl) => {
+    const nm = cleanName(rawName);
+    const paren = nm ? ` (${nm})` : '';
+    const conflict = { ...base, message: tpl(paren, nm) };
+    if (nm) conflict.withProduct = nm;
+    conflicts.push(conflict);
+  };
+
   if (candRetinoid && routineRetinoid) {
-    conflicts.push({
-      code: 'second_retinoid',
-      severity: 'high',
-      message: `You already use a retinoid (${routineRetinoid.name}); two retinoids at once raises irritation risk.`,
-      withProduct: routineRetinoid.name,
-    });
+    add({ code: 'second_retinoid', severity: 'high' }, routineRetinoid.name,
+      (p) => `You already use a retinoid${p}; two retinoids at once raises irritation risk.`);
   }
 
   if (candAcid && routineRetinoid) {
-    conflicts.push({
-      code: 'exfoliant_stack',
-      severity: 'high',
-      message: `Layering an exfoliating acid over your retinoid (${routineRetinoid.name}) can over-exfoliate and damage your barrier.`,
-      withProduct: routineRetinoid.name,
-    });
+    add({ code: 'exfoliant_stack', severity: 'high' }, routineRetinoid.name,
+      (p) => `Layering an exfoliating acid over your retinoid${p} can over-exfoliate and damage your barrier.`);
   } else if (candRetinoid && routineAcid) {
-    conflicts.push({
-      code: 'exfoliant_stack',
-      severity: 'high',
-      message: `Adding a retinoid on top of your exfoliating acid (${routineAcid.name}) can over-exfoliate and damage your barrier.`,
-      withProduct: routineAcid.name,
-    });
+    add({ code: 'exfoliant_stack', severity: 'high' }, routineAcid.name,
+      (p) => `Adding a retinoid on top of your exfoliating acid${p} can over-exfoliate and damage your barrier.`);
   }
 
   if (candAcid && routineAcid) {
-    conflicts.push({
-      code: 'double_exfoliant',
-      severity: 'med',
-      message: `You already exfoliate with ${routineAcid.name}; doubling up can irritate.`,
-      withProduct: routineAcid.name,
-    });
+    add({ code: 'double_exfoliant', severity: 'med' }, routineAcid.name,
+      (p, nm) => `You already exfoliate${nm ? ` with ${nm}` : ''}; doubling up can irritate.`);
   }
 
   if (candBPO && routineRetinoid) {
-    conflicts.push({
-      code: 'bpo_retinoid',
-      severity: 'med',
-      message: `Benzoyl peroxide can deactivate your retinoid (${routineRetinoid.name}) and increase dryness.`,
-      withProduct: routineRetinoid.name,
-    });
+    add({ code: 'bpo_retinoid', severity: 'med' }, routineRetinoid.name,
+      (p) => `Benzoyl peroxide can deactivate your retinoid${p} and increase dryness.`);
   } else if (candRetinoid && routineBPO) {
-    conflicts.push({
-      code: 'bpo_retinoid',
-      severity: 'med',
-      message: `Your benzoyl peroxide (${routineBPO.name}) can deactivate this retinoid and increase dryness.`,
-      withProduct: routineBPO.name,
-    });
+    add({ code: 'bpo_retinoid', severity: 'med' }, routineBPO.name,
+      (p) => `Your benzoyl peroxide${p} can deactivate this retinoid and increase dryness.`);
   }
 
   if (candVitC && routineRetinoid) {
-    conflicts.push({
-      code: 'vitc_retinoid',
-      severity: 'low',
-      message: `Vitamin C and your retinoid (${routineRetinoid.name}) are best used at different times of day.`,
-      withProduct: routineRetinoid.name,
-    });
+    add({ code: 'vitc_retinoid', severity: 'low' }, routineRetinoid.name,
+      (p) => `Vitamin C and your retinoid${p} are best used at different times of day.`);
   }
 
   return conflicts;
@@ -221,7 +253,8 @@ function detectRedundancy(candidate, routine) {
   if (!type || type === 'unknown') return null;
   const match = r.find((p) => p && p.inferredType === type);
   if (!match) return null;
-  return { category: type, withProduct: match.name };
+  const nm = cleanName(match.name);
+  return nm ? { category: type, withProduct: nm } : { category: type };
 }
 
 /**
@@ -362,6 +395,7 @@ function computeVerdict({ candidate, routine, goals, profile } = {}) {
 module.exports = {
   CATEGORY,
   categorizeIngredient,
+  normalizeIngredients,
   analyzeProduct,
   detectConflicts,
   detectRedundancy,

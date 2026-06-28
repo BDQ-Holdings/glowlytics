@@ -237,4 +237,53 @@ describe('POST /api/products/shopping-scan', () => {
       .expect(400);
   });
 
+  it('sets partial:true (best-effort verdict preserved) when the active-routine load fails', async () => {
+    // Goals + profile resolve; only the active-routine (product_catalog) query rejects.
+    pool.query.mockImplementation((sql) => {
+      if (/scan_protocols/.test(sql)) {
+        return Promise.resolve({ rows: [{ primary_goal: 'skin_age' }] });
+      }
+      if (/user_profiles/.test(sql)) {
+        return Promise.resolve({ rows: [] });
+      }
+      if (/product_catalog/.test(sql)) {
+        return Promise.reject(new Error('connection reset'));
+      }
+      return Promise.resolve({ rows: [] });
+    });
+
+    // A retinol product that WOULD conflict against a routine retinoid had the shelf loaded;
+    // because the shelf failed to load, no conflict is seen -> the danger we surface via partial.
+    const res = await request(app)
+      .post('/api/products/shopping-scan')
+      .send({ name: 'Some Retinol Serum', ingredients: ['Retinol'] })
+      .expect(200);
+
+    expect(res.body.identified).toBe(true);
+    expect(res.body.partial).toBe(true);
+    expect(['buy', 'maybe', 'skip']).toContain(res.body.verdict);
+  });
+
+  it('omits partial on a successful scan where the routine loads cleanly', async () => {
+    stubDb({ goal: 'acne', routine: [] });
+
+    const res = await request(app)
+      .post('/api/products/shopping-scan')
+      .send({ barcode: '301871371054' })
+      .expect(200);
+
+    expect(res.body.identified).toBe(true);
+    expect(res.body).not.toHaveProperty('partial');
+    expect(res.body.partial).toBeUndefined();
+  });
+
+  it('does not add partial to a 400 identification-failure response', async () => {
+    stubDb({});
+    const res = await request(app)
+      .post('/api/products/shopping-scan')
+      .send({})
+      .expect(400);
+    expect(res.body).not.toHaveProperty('partial');
+  });
+
 });

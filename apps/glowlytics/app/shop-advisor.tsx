@@ -45,7 +45,7 @@ import type {
   CodeScanner,
 } from 'react-native-vision-camera';
 
-import { imageToBase64 } from '../src/services/visionAPI';
+import { compressImageForUpload } from '../src/services/imageUpload';
 import { shoppingScan } from '../src/services/api';
 import { isApiError } from '../src/services/httpClient';
 import { trackEvent } from '../src/services/analytics';
@@ -600,7 +600,7 @@ export default function ShopAdvisorScreen(): React.ReactElement {
     void submitScan(async () => {
       const photo = await cam.takePhoto({ flash: 'off' });
       const path = photo.path.startsWith('file://') ? photo.path : `file://${photo.path}`;
-      const image_base64 = await imageToBase64(path);
+      const image_base64 = await compressImageForUpload(path);
       return { image_base64 };
     }, 'photo');
   }, [ping, submitScan]);

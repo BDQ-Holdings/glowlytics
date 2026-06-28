@@ -1031,6 +1031,7 @@ app.post('/api/products/shopping-scan', photoRateLimit, async (req, res) => {
 
     // --- Load the active routine (products with no end_date) ---
     let routine = [];
+    let shelfUnavailable = false;
     try {
       const routineRes = await pool.query(
         'SELECT product_name, ingredients_list FROM product_catalog WHERE user_id = $1 AND end_date IS NULL',
@@ -1040,6 +1041,7 @@ app.post('/api/products/shopping-scan', photoRateLimit, async (req, res) => {
         shoppingScan.analyzeProduct({ name: r.product_name, ingredients: r.ingredients_list || [] })
       );
     } catch (err) {
+      shelfUnavailable = true;
       log.warn('[shopping-scan] routine lookup failed:', err.message);
     }
 
@@ -1055,6 +1057,7 @@ app.post('/api/products/shopping-scan', photoRateLimit, async (req, res) => {
         source: candidateRaw.source,
       },
       ...result,
+      ...(shelfUnavailable ? { partial: true } : {}),
     });
   } catch (err) {
     log.warn('[shopping-scan] Error:', err.message);

@@ -604,6 +604,8 @@ export interface ShoppingScanResult {
   conflicts: ShoppingConflict[];
   redundancy: ShoppingRedundancy | null;
   flags: ShoppingFlag[];
+  /** true when the shelf/routine couldn't be loaded, so conflicts/redundancy may be incomplete */
+  partial?: boolean;
 }
 
 /** Request body for POST /api/products/shopping-scan. */

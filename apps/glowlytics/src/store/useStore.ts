@@ -153,6 +153,11 @@ interface AppState {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+// Cap the persisted considering list to the most-recent N entries to prevent
+// AsyncStorage bloat (mirrors the 365-day records cap). The full-list screen
+// also renders every entry, so an unbounded wishlist would degrade both.
+const CONSIDERING_MAX = 100;
+
 const randomHex = (length: number) =>
   Array.from({ length }, () => Math.floor(Math.random() * 16).toString(16)).join('');
 
@@ -784,7 +789,10 @@ export const useStore = create<AppState>((set, get) => ({
         next[existing] = item;
         return { consideringList: next };
       }
-      return { consideringList: [...s.consideringList, item] };
+      // Appended items are newest; cap to the most-recent CONSIDERING_MAX,
+      // dropping the oldest. (The in-place update branch above never grows the
+      // list, so it needs no cap.)
+      return { consideringList: [...s.consideringList, item].slice(-CONSIDERING_MAX) };
     });
     debouncedPersist(() => get().persistData());
   },
@@ -1144,7 +1152,8 @@ export const useStore = create<AppState>((set, get) => ({
           firstLookInsight: parsed.firstLookInsight || null,
           patternNotifications: parsed.patternNotifications || { first_pattern_unlock_sent: false },
           ritualCompletions: parsed.ritualCompletions || {},
-          consideringList: Array.isArray(parsed.consideringList) ? parsed.consideringList : [],
+          // Trim a previously-bloated persisted list down to the cap on load.
+          consideringList: Array.isArray(parsed.consideringList) ? parsed.consideringList.slice(-CONSIDERING_MAX) : [],
           appearance: {
             // Partial merge so a new field in DEFAULT_APPEARANCE picks up on
             // upgrade without wiping the user's existing choices.

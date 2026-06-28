@@ -145,38 +145,51 @@ export const OverviewSheet: React.FC<OverviewSheetProps> = ({
             </Text>
           </ScrollView>
 
-          {/* Actions */}
+          {/* Actions — the two primaries share one row; Dismiss drops to a quiet
+              link below so "Keep considering" never wraps on a ~320pt screen. */}
           <View style={styles.actions}>
+            <View style={styles.actionsPrimary}>
+              <Pressable
+                onPress={onKeep}
+                accessibilityRole="button"
+                accessibilityLabel={kept ? 'Considering' : 'Keep considering'}
+                accessibilityState={{ selected: kept }}
+                style={[
+                  styles.btnKeep,
+                  {
+                    backgroundColor: kept ? palette.accent + '1f' : 'transparent',
+                    borderColor: kept ? palette.accent : palette.glow,
+                  },
+                ]}
+              >
+                {kept && <GlowIcon name="check" size={15} color={palette.accent} stroke={2.4} />}
+                <Text
+                  numberOfLines={1}
+                  style={[styles.btnKeepText, { color: kept ? palette.accent : palette.ink }]}
+                >
+                  {kept ? 'Considering' : 'Keep considering'}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={onDeep}
+                accessibilityRole="button"
+                accessibilityLabel="Look closer"
+                style={[styles.btnDeep, { backgroundColor: palette.ink }]}
+              >
+                <Text numberOfLines={1} style={[styles.btnDeepText, { color: palette.surface }]}>
+                  Look closer
+                </Text>
+              </Pressable>
+            </View>
             <Pressable
               onPress={onClose}
               accessibilityRole="button"
               accessibilityLabel="Dismiss"
-              style={[styles.btnGhost, { borderColor: palette.glow }]}
+              style={styles.btnGhost}
             >
-              <Text style={[styles.btnGhostText, { color: palette.muted }]}>Dismiss</Text>
-            </Pressable>
-            <Pressable
-              onPress={onKeep}
-              accessibilityRole="button"
-              accessibilityLabel={kept ? 'Considering' : 'Keep considering'}
-              accessibilityState={{ selected: kept }}
-              style={[
-                styles.btnKeep,
-                {
-                  backgroundColor: kept ? palette.accent + '1f' : 'transparent',
-                  borderColor: kept ? palette.accent : palette.glow,
-                },
-              ]}
-            >
-              {kept && <GlowIcon name="check" size={15} color={palette.accent} stroke={2.4} />}
-              <Text
-                style={[styles.btnKeepText, { color: kept ? palette.accent : palette.ink }]}
-              >
-                {kept ? 'Considering' : 'Keep considering'}
+              <Text numberOfLines={1} style={[styles.btnGhostText, { color: palette.muted }]}>
+                Dismiss
               </Text>
-            </Pressable>
-            <Pressable onPress={onDeep} accessibilityRole="button" accessibilityLabel="Look closer" style={[styles.btnDeep, { backgroundColor: palette.ink }]}>
-              <Text style={[styles.btnDeepText, { color: palette.surface }]}>Look closer</Text>
             </Pressable>
           </View>
         </Animated.View>
@@ -304,15 +317,18 @@ const styles = StyleSheet.create({
     minWidth: 120,
   },
   actions: {
+    marginTop: 16,
+    gap: 10,
+  },
+  actionsPrimary: {
     flexDirection: 'row',
     gap: 10,
-    marginTop: 18,
   },
   btnGhost: {
     paddingVertical: 14,
-    paddingHorizontal: 18,
     borderRadius: 999,
-    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   btnGhostText: {
     fontSize: 13.5,

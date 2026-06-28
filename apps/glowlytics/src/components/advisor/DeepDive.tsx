@@ -37,6 +37,13 @@ const KIND_LABEL: Record<ShoppingReason['kind'], string> = {
   neutral: 'Worth knowing',
 };
 
+// Entrance cadence — tighter than the global Glow stagger (150ms steps / 700ms
+// fade) so the deep-dive sections settle promptly without losing the sweep-in.
+// Reduce-motion is still honoured inside FadeUp, so this only affects motion users.
+const REVEAL_STEP = 60;
+const REVEAL_MS = 450;
+const revealDelay = (index: number) => Math.min(index, 5) * REVEAL_STEP;
+
 export const DeepDive: React.FC<DeepDiveProps> = ({ result, saved = false, onBack, onSave, readOnly = false, palette }) => {
   const insets = useSafeAreaInsets();
   const { product, verdict, headline, reasons, conflicts, redundancy, goalFit } = result;
@@ -61,7 +68,7 @@ export const DeepDive: React.FC<DeepDiveProps> = ({ result, saved = false, onBac
     kicker?: React.ReactNode;
     children: React.ReactNode;
   }> = ({ icon, title, index, kicker, children }) => (
-    <FadeUp index={index} style={styles.sec}>
+    <FadeUp delay={revealDelay(index)} duration={REVEAL_MS} style={styles.sec}>
       <View style={styles.secHead}>
         <GlowIcon name={icon} size={16} color={palette.accent} stroke={1.7} />
         <Text style={[styles.secTitle, { color: palette.muted }]}>{title.toUpperCase()}</Text>
@@ -85,7 +92,7 @@ export const DeepDive: React.FC<DeepDiveProps> = ({ result, saved = false, onBac
         contentContainerStyle={{ paddingBottom: 50 + insets.bottom }}
       >
         {/* Hero */}
-        <FadeUp index={0} style={styles.hero}>
+        <FadeUp delay={revealDelay(0)} duration={REVEAL_MS} style={styles.hero}>
           <ProductThumb
             imageUrl={product.image_url}
             tone={palette.glow}
@@ -110,7 +117,7 @@ export const DeepDive: React.FC<DeepDiveProps> = ({ result, saved = false, onBac
         </FadeUp>
 
         {/* Verdict + headline */}
-        <FadeUp index={1} style={styles.verdictWrap}>
+        <FadeUp delay={revealDelay(1)} duration={REVEAL_MS} style={styles.verdictWrap}>
           <View style={[card, styles.verdictCard]}>
             <VerdictMark verdict={verdict} variant="bloom" size="lg" palette={palette} />
             {!!headline && (

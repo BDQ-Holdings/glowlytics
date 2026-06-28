@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useStore } from '../useStore';
 import { localDateStr } from '../../utils/localDate';
+import type { ConsideringItem } from '../../types';
 
 // Mock AsyncStorage
 jest.mock('@react-native-async-storage/async-storage', () => ({
@@ -489,6 +490,94 @@ describe('useStore', () => {
       await useStore.getState().loadPersistedData();
       expect(useStore.getState().subscription.trial_end_date).toBe('2020-01-08T00:00:00.000Z');
       expect(useStore.getState().subscription.trial_start_date).toBe('2020-01-01T00:00:00.000Z');
+    });
+  });
+
+  describe('consideringList cap', () => {
+    // Mirrors CONSIDERING_MAX in useStore.ts — the persisted wishlist is capped
+    // to the most-recent N entries to prevent AsyncStorage bloat, matching the
+    // 365-day records-cap convention.
+    const CAP = 100;
+
+    const makeConsideringItem = (
+      id: string,
+      overrides: Partial<ConsideringItem> = {},
+    ): ConsideringItem => ({
+      id,
+      name: `Product ${id}`,
+      verdict: 'maybe',
+      score: 50,
+      result: {
+        identified: true,
+        product: { name: `Product ${id}`, brand: 'Acme', ingredients: [], image_url: null, source: 'test' },
+        verdict: 'maybe',
+        score: 50,
+        headline: 'Worth a look',
+        reasons: [],
+        goalFit: { score: 50, beneficial: [], label: 'meh' },
+        conflicts: [],
+        redundancy: null,
+        flags: [],
+      },
+      savedAt: 0,
+      ...overrides,
+    });
+
+    beforeEach(() => {
+      useStore.setState({ consideringList: [] });
+    });
+
+    it('caps at CAP on append, dropping the oldest and keeping the newest', () => {
+      for (let i = 0; i < CAP + 5; i++) {
+        useStore.getState().saveToConsidering(makeConsideringItem(`item-${i}`, { savedAt: i }));
+      }
+      const list = useStore.getState().consideringList;
+      expect(list).toHaveLength(CAP);
+      expect(list.find((c) => c.id === 'item-0')).toBeUndefined();
+      expect(list.find((c) => c.id === `item-${CAP + 4}`)).toBeDefined();
+    });
+
+    it('updates an existing id in place without changing length or dropping others', () => {
+      useStore.getState().saveToConsidering(makeConsideringItem('a', { score: 10 }));
+      useStore.getState().saveToConsidering(makeConsideringItem('b', { score: 20 }));
+      useStore.getState().saveToConsidering(makeConsideringItem('c', { score: 30 }));
+
+      useStore.getState().saveToConsidering(makeConsideringItem('b', { score: 99 }));
+
+      const list = useStore.getState().consideringList;
+      expect(list).toHaveLength(3);
+      expect(list.map((x) => x.id)).toEqual(['a', 'b', 'c']);
+      expect(list.find((x) => x.id === 'b')?.score).toBe(99);
+    });
+
+    it('keeps all items when saving fewer than the cap', () => {
+      for (let i = 0; i < 5; i++) {
+        useStore.getState().saveToConsidering(makeConsideringItem(`u-${i}`));
+      }
+      expect(useStore.getState().consideringList).toHaveLength(5);
+    });
+
+    it('trims a previously-bloated persisted list to CAP on load, keeping the newest', async () => {
+      const mockGetItem = AsyncStorage.getItem as jest.Mock;
+      const bloated = Array.from({ length: CAP + 50 }, (_, i) =>
+        makeConsideringItem(`p-${i}`, { savedAt: i }),
+      );
+      mockGetItem.mockResolvedValueOnce(
+        JSON.stringify({
+          user: { user_id: 'u1', age_range: '25-34', onboarding_complete: true },
+          consideringList: bloated,
+        }),
+      );
+
+      await useStore.getState().loadPersistedData();
+
+      const list = useStore.getState().consideringList;
+      expect(list).toHaveLength(CAP);
+      expect(list.find((c) => c.id === 'p-0')).toBeUndefined();
+      expect(list.find((c) => c.id === `p-${CAP + 49}`)).toBeDefined();
+
+      mockGetItem.mockReset();
+      mockGetItem.mockResolvedValue(null);
     });
   });
 });
