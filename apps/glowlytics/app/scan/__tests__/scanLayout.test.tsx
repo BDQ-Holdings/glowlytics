@@ -31,6 +31,12 @@ describe('ScanLayout', () => {
     expect(analyzing?.options?.gestureEnabled).toBe(false);
   });
 
+  it('registers the AI consent screen before camera upload paths', () => {
+    const consent = screens().find((s) => s.name === 'ai-consent');
+    expect(consent).toBeDefined();
+    expect(consent?.options?.gestureEnabled).not.toBe(false);
+  });
+
   it('does NOT lock the camera back-gesture (users must be able to cancel the scan)', () => {
     const camera = screens().find((s) => s.name === 'camera');
     // camera is unregistered here (defaults to gesture-enabled). If a future

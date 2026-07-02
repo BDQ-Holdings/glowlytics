@@ -46,6 +46,8 @@ backend/models/*.pt
 *.apk
 *.aab
 build-*.ipa
+*.log
+dist-web-check/
 
 # generated native folders
 /ios

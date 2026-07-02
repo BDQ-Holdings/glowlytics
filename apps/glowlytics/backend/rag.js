@@ -29,10 +29,12 @@ function getPineconeIndex() {
  * Returns a 1536-dimensional float array.
  */
 async function embedText(text) {
+  // 10s deadline + one retry: the SDK default (600s) would let a hung
+  // embeddings call stall every RAG consumer (insights, /api/rag/query).
   const response = await openai.embeddings.create({
     model: 'text-embedding-3-small',
     input: text,
-  });
+  }, { timeout: 10_000, maxRetries: 1 });
   return response.data[0].embedding;
 }
 
@@ -793,6 +795,21 @@ async function seedGuidelines() {
 
 // ==================== QUERY FUNCTION ====================
 
+// Pinecone's SDK exposes no per-request deadline; a hung connection would
+// otherwise stall every caller awaiting queryGuidelines / queryGuidelinesMulti
+// (and the insight endpoints composed on them). Race a hard timeout instead —
+// same pattern as app.js's Layer-3 OpenAI race. Rejects so callers' existing
+// error paths (catch → template fallback / 500) engage.
+const PINECONE_TIMEOUT_MS = 10_000;
+function withDeadline(promise, ms, label) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    if (typeof timer.unref === 'function') timer.unref();
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 /**
  * Query Pinecone for guideline chunks relevant to the given query.
  * Returns the top-K most relevant guideline excerpts with their scores.
@@ -802,6 +819,7 @@ async function seedGuidelines() {
  * @param {number} topK - Number of results
  * @param {string|null} signalFilter - Filter to a specific signal (e.g., 'hydration'). Includes 'general' chunks too.
  */
+
 async function queryGuidelines(query, topK = 3, signalFilter = null) {
   const index = getPineconeIndex();
   const queryEmbedding = await embedText(query);
@@ -817,7 +835,7 @@ async function queryGuidelines(query, topK = 3, signalFilter = null) {
     queryOpts.filter = { signal: { $in: [signalFilter, 'general'] } };
   }
 
-  const results = await index.query(queryOpts);
+  const results = await withDeadline(index.query(queryOpts), PINECONE_TIMEOUT_MS, 'Pinecone query');
 
   return (results.matches || []).map((match) => ({
     id: match.id,

@@ -1,8 +1,9 @@
-require('dotenv').config();
+// dotenv is a local-dev convenience only: in production (Railway) the platform
+// injects env vars, and a stray .env baked into the image must never override them.
+if (process.env.NODE_ENV !== 'production') require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
-const { Pool } = require('pg');
 const { randomUUID: uuidv4, timingSafeEqual, createHmac, randomBytes } = require('crypto');
 const jwt = require('jsonwebtoken');
 const jwksClient = require('jwks-rsa');
@@ -16,12 +17,12 @@ const noLlmFallback = require('./no-llm-fallback');
 const { searchCuratedProducts, lookupCuratedBarcode, enrichIngredients } = require('./curated-products');
 const shoppingScan = require('./shopping-scan');
 const scanQueries = require('./queries/scans');
-const { poolSsl } = require('./db-ssl');
 const uvScan = require('./uv-scan');
 const loops = require('./loops');
 const uvReport = require('./uv-report');
 const uvQueries = require('./queries/uv');
 const { attachPoolErrorHandler } = require('./pg-resilience');
+const { getPool } = require('./db-pool');
 
 const app = express();
 
@@ -60,11 +61,9 @@ app.use(express.json({ limit: '20mb' }));
 const openaiKey = (process.env.OPENAI_API_KEY || '').replace(/\s+/g, '');
 const openai = new OpenAI({ apiKey: openaiKey });
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://localhost:5432/glowlytics',
-  ssl: poolSsl(),
-});
-attachPoolErrorHandler(pool, 'app');
+// One shared pool for all app routes + query modules (see db-pool.js) — the
+// old per-module pools doubled idle connections against Railway Postgres.
+const pool = getPool();
 
 if (!process.env.DATABASE_URL) {
   console.warn('[DB] DATABASE_URL not set — falling back to localhost:5432. Set DATABASE_URL to your Railway PostgreSQL URL.');
@@ -73,12 +72,20 @@ if (!process.env.DATABASE_URL) {
 // ==================== HEALTH CHECK ====================
 
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', service: 'glowlytics-api', timestamp: new Date().toISOString() });
+  res.json({
+    status: 'ok',
+    service: 'glowlytics-api',
+    timestamp: new Date().toISOString(),
+    // Informational only — /health must stay 200 when ONNX sessions are
+    // missing (degraded, not dead); Railway's healthcheck gates deploys on it.
+    models: signalModels.loadedModels?.() ?? undefined,
+  });
 });
 
 // ==================== WAITLIST (public, no auth) ====================
 
-app.post('/api/waitlist', async (req, res) => {
+// Public + DB-writing: per-IP rate limit keeps a curl loop from bloating the table.
+app.post('/api/waitlist', detectRateLimit, async (req, res) => {
   const { email } = req.body;
   if (!email || typeof email !== 'string' || !email.includes('@')) {
     return res.status(400).json({ error: 'Valid email required' });
@@ -95,7 +102,7 @@ app.post('/api/waitlist', async (req, res) => {
   }
 });
 
-app.get('/api/waitlist/count', async (req, res) => {
+app.get('/api/waitlist/count', detectRateLimit, async (req, res) => {
   try {
     const result = await pool.query('SELECT COUNT(*) FROM waitlist');
     res.json({ count: parseInt(result.rows[0].count, 10) });
@@ -124,35 +131,37 @@ function getKey(header, callback) {
 
 /**
  * Auth middleware: verifies Clerk JWT from Authorization header.
- * - Production: rejects requests without a valid token (401).
- * - Development (NODE_ENV=development): allows unauthenticated requests
- *   through with req.auth = null so the backend works without Clerk.
- * - If CLERK_ISSUER_URL is not set, tokens are accepted but not verified
- *   (dev-mode passthrough).
+ * - CLERK_ISSUER_URL set: ALWAYS verifies the JWT, regardless of NODE_ENV.
+ *   A dev box pointed at a real issuer must not silently admit anonymous
+ *   callers as 'dev-user' (fail closed).
+ * - CLERK_ISSUER_URL unset + NODE_ENV=development: passthrough with a
+ *   synthetic user so the backend works without Clerk locally.
+ * - CLERK_ISSUER_URL unset otherwise: 401 (no credentials) / 503 (credentials
+ *   we have no way to verify).
  */
 const authMiddleware = (req, res, next) => {
   const authHeader = req.headers.authorization;
 
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  if (!client) {
+    // No issuer configured at all — the only state where a passthrough is
+    // acceptable, and only in explicit development mode.
     if (process.env.NODE_ENV === 'development') {
       // Dev mode passthrough — synthetic user so routes that need userId still work
       req.auth = { userId: 'dev-user' };
       return next();
     }
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+    // Deny access when JWKS is not configured and we're not explicitly in dev mode
+    return res.status(503).json({ error: 'Auth service not configured' });
+  }
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Authentication required' });
   }
 
   const token = authHeader.split(' ')[1];
-
-  if (!client) {
-    if (process.env.NODE_ENV !== 'development') {
-      // Deny access when JWKS is not configured and we're not explicitly in dev mode
-      return res.status(503).json({ error: 'Auth service not configured' });
-    }
-    // No JWKS configured -- dev mode passthrough with a synthetic user
-    req.auth = { userId: 'dev-user' };
-    return next();
-  }
 
   // clockTolerance absorbs minor device/server clock skew and the iat/nbf
   // boundary so 60s Clerk session JWTs don't spuriously 401 mid-session.
@@ -843,6 +852,8 @@ function authorizeUser(req, res, userId) {
 // guard, and the outer error response. Shared by the public identify-photo
 // route and the authenticated shopping-scan endpoint.
 async function identifyByPhoto(image_base64) {
+  // 20s deadline + one retry: the SDK default (600s) would let a hung vision
+  // call pin this request — and the caller's spinner — for ten minutes.
   const completion = await openai.chat.completions.create({
     model: 'gpt-4o',
     messages: [
@@ -863,7 +874,7 @@ async function identifyByPhoto(image_base64) {
     ],
     max_tokens: 800,
     temperature: 0.1,
-  });
+  }, { timeout: 20_000, maxRetries: 1 });
 
   const raw = (completion.choices?.[0]?.message?.content || '').trim();
 
@@ -1615,11 +1626,35 @@ app.post('/api/vision/generate-insights', analyzeRateLimit, async (req, res) => 
       return res.end();
     }
 
-    for await (const chunk of stream) {
-      const content = chunk.choices?.[0]?.delta?.content;
-      if (content) {
-        res.write(`data: ${JSON.stringify({ text: content })}\n\n`);
+    // Wall-clock guard: a stalled upstream stream must not pin this SSE
+    // response open indefinitely (default SDK timeout is 10 minutes). On
+    // expiry, abort the OpenAI request — which ends the for-await — and close
+    // the SSE stream cleanly so the client can fall back.
+    let streamTimedOut = false;
+    const streamGuard = setTimeout(() => {
+      streamTimedOut = true;
+      try { stream.controller.abort(); } catch { /* stream already settled */ }
+    }, 120_000);
+    if (typeof streamGuard.unref === 'function') streamGuard.unref();
+
+    try {
+      for await (const chunk of stream) {
+        const content = chunk.choices?.[0]?.delta?.content;
+        if (content) {
+          res.write(`data: ${JSON.stringify({ text: content })}\n\n`);
+        }
       }
+    } catch (err) {
+      if (!streamTimedOut) throw err; // real stream failure → outer handler
+    } finally {
+      clearTimeout(streamGuard);
+    }
+
+    if (streamTimedOut) {
+      log.warn('[generate-insights] stream exceeded 120s wall clock; aborted');
+      res.write(`data: ${JSON.stringify({ error: 'Insight generation timed out' })}\n\n`);
+      res.write('data: [DONE]\n\n');
+      return res.end();
     }
 
     res.write('data: [DONE]\n\n');
@@ -1905,6 +1940,24 @@ app.delete('/api/users/:id', async (req, res) => {
     await client.query('DELETE FROM product_catalog WHERE user_id = $1', [userId]);
     await client.query('DELETE FROM scan_protocols WHERE user_id = $1', [userId]);
     await client.query('DELETE FROM report_artifacts WHERE user_id = $1', [userId]);
+    // Apple 5.1.1(v) PII gap: UV Mirror lead-capture rows (email ↔ this Clerk
+    // user) live outside the app tables above. Delete the user's leads and any
+    // scans only those leads referenced (uv_scans has no user column of its
+    // own — its sole user linkage is uv_leads.scan_id).
+    const uvLeads = await client.query(
+      'DELETE FROM uv_leads WHERE clerk_user_id = $1 RETURNING scan_id',
+      [userId]
+    );
+    const uvScanIds = (uvLeads.rows || []).map((r) => r.scan_id).filter(Boolean);
+    if (uvScanIds.length > 0) {
+      // NOT EXISTS guards the FK: never drop a scan another (surviving) lead
+      // still references.
+      await client.query(
+        `DELETE FROM uv_scans WHERE id = ANY($1::text[])
+           AND NOT EXISTS (SELECT 1 FROM uv_leads l WHERE l.scan_id = uv_scans.id)`,
+        [uvScanIds]
+      );
+    }
     const result = await client.query(
       'DELETE FROM user_profiles WHERE user_id = $1 RETURNING user_id',
       [userId]
@@ -2259,7 +2312,9 @@ app.get('/api/reports/:userId', async (req, res) => {
 // ==================== RAG PIPELINE ====================
 
 // Query relevant guideline excerpts
-app.post('/api/rag/query', async (req, res) => {
+// Embeds via OpenAI + queries Pinecone on every call — rate-limited like the
+// other LLM-backed endpoints so a client loop can't drive unbounded spend.
+app.post('/api/rag/query', analyzeRateLimit, async (req, res) => {
   try {
     const { query } = req.body;
 

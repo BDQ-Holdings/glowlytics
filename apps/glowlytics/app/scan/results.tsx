@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, StyleSheet, Text, useWindowDimensions, View, ViewToken } from 'react-native';
+import { FlatList, LayoutChangeEvent, ScrollView, StyleSheet, Text, useWindowDimensions, View, ViewToken } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import Animated, {
   Easing,
@@ -43,6 +43,25 @@ import {
 import { useStore } from '../../src/store/useStore';
 import { trackEvent } from '../../src/services/analytics';
 import { AnimatedFillBar } from '../../src/components/AnimatedFillBar';
+import type { PrimaryGoal } from '../../src/types';
+
+const GOAL_LABELS: Record<PrimaryGoal, string> = {
+  acne: 'acne clarity',
+  sun_damage: 'sun-damage repair',
+  skin_age: 'skin-age support',
+};
+
+// The greeting name comes from Clerk (the store's UserProfile has no name
+// field). Lazy optional require — same pattern as app/(tabs)/profile.tsx —
+// so Expo Go / jest without the native Clerk module degrade to no greeting.
+let useClerkUser: (() => { user: { firstName?: string | null } | null | undefined }) | undefined;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const clerk = require('@clerk/clerk-expo');
+  useClerkUser = clerk.useUser;
+} catch {
+  // Clerk not available
+}
 
 // ---------------------------------------------------------------------------
 // Story page wrapper — each page fills the viewport
@@ -52,6 +71,19 @@ function StoryPage({ children, screenH, insets }: {
   screenH: number;
   insets: { top: number; bottom: number };
 }) {
+  // Each page fills the viewport and centers its content. When async content
+  // (action plans, clinical sources, the bone mesh + intervention drawer)
+  // loads in and exceeds the viewport, we enable scrolling so nothing clips
+  // off-screen. While content fits, scrolling stays OFF so the vertical swipe
+  // falls through to the parent paging FlatList and page snapping is unchanged.
+  const frameH = useRef(0);
+  const [scrollEnabled, setScrollEnabled] = useState(false);
+  const onLayout = useCallback((e: LayoutChangeEvent) => {
+    frameH.current = e.nativeEvent.layout.height;
+  }, []);
+  const onContentSizeChange = useCallback((_w: number, contentH: number) => {
+    setScrollEnabled(contentH > frameH.current + 1);
+  }, []);
   return (
     <View style={[storyStyles.page, { height: screenH }]}>
       <LinearGradient
@@ -60,20 +92,32 @@ function StoryPage({ children, screenH, insets }: {
         end={{ x: 0.95, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
-      <View style={[
-        storyStyles.pageContent,
-        { paddingTop: insets.top + Spacing.xl, paddingBottom: insets.bottom + Spacing.xxl },
-      ]}>
+      <ScrollView
+        style={storyStyles.scroll}
+        contentContainerStyle={[
+          storyStyles.pageContent,
+          // Extra bottom room clears the persistent disclaimer bar so the last
+          // card never hides behind it.
+          { paddingTop: insets.top + Spacing.xl, paddingBottom: insets.bottom + Spacing.xxl + Spacing.lg },
+        ]}
+        scrollEnabled={scrollEnabled}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+        nestedScrollEnabled
+        onLayout={onLayout}
+        onContentSizeChange={onContentSizeChange}
+      >
         {children}
-      </View>
+      </ScrollView>
     </View>
   );
 }
 
 const storyStyles = StyleSheet.create({
   page: { width: '100%' },
+  scroll: { flex: 1 },
   pageContent: {
-    flex: 1,
+    flexGrow: 1,
     paddingHorizontal: Spacing.lg,
     justifyContent: 'center',
   },
@@ -187,9 +231,16 @@ export default function Results({ hideBottomAction: hideBottomActionProp }: { hi
 
   const allOutputs = useStore((s) => s.modelOutputs);
   const dailyRecords = useStore((s) => s.dailyRecords);
+  const clerkUser = useClerkUser ? useClerkUser() : null;
+  const firstName = clerkUser?.user?.firstName?.trim().split(/\s+/)[0] || null;
+  const protocol = useStore((s) => s.protocol);
+  const getStreak = useStore((s) => s.getStreak);
+  const currentStreak = getStreak();
   const latestOutput = allOutputs.length > 0 ? allOutputs[allOutputs.length - 1] : null;
+  const previousOutput = allOutputs.length >= 2 ? allOutputs[allOutputs.length - 2] : null;
   const baselineOutput = allOutputs.length > 0 ? allOutputs[0] : null;
   const latestDaily = getLatestDailyForOutput(latestOutput, dailyRecords);
+  const previousDaily = getLatestDailyForOutput(previousOutput, dailyRecords);
   const baselineDaily = getLatestDailyForOutput(baselineOutput, dailyRecords);
 
   const overallInsight = useMemo(
@@ -204,6 +255,22 @@ export default function Results({ hideBottomAction: hideBottomActionProp }: { hi
       serverLesions: latestOutput?.lesions,
     }),
     [latestOutput, baselineOutput, latestDaily, baselineDaily],
+  );
+
+  const previousOverallInsight = useMemo(
+    () => previousOutput
+      ? buildOverallSkinInsight({
+        latestOutput: previousOutput,
+        baselineOutput,
+        latestDaily: previousDaily,
+        baselineDaily,
+        serverSignalScores: previousOutput.signal_scores,
+        serverSignalFeatures: previousOutput.signal_features,
+        serverSignalConfidence: previousOutput.signal_confidence,
+        serverLesions: previousOutput.lesions,
+      })
+      : null,
+    [previousOutput, baselineOutput, previousDaily, baselineDaily],
   );
 
   useEffect(() => {
@@ -271,6 +338,12 @@ export default function Results({ hideBottomAction: hideBottomActionProp }: { hi
     const safeScore = Number.isFinite(overallInsight?.score) ? overallInsight!.score : 0;
     const accentColor = scoreColor(safeScore);
 
+    const goalLabel = protocol?.primary_goal ? GOAL_LABELS[protocol.primary_goal] : null;
+    const previousScore = Number.isFinite(previousOverallInsight?.score) ? previousOverallInsight!.score : null;
+    const scoreDelta = previousScore != null ? Math.round(safeScore - previousScore) : null;
+    const showQuickReadCue = generatedInsights?.source === 'local';
+
+
     const p: { key: string; render: () => React.ReactNode }[] = [];
 
     // Page 1: Score reveal
@@ -279,11 +352,44 @@ export default function Results({ hideBottomAction: hideBottomActionProp }: { hi
       render: () => (
         <StoryPage screenH={screenH} insets={stableInsets}>
           <Animated.View entering={ZoomIn.duration(600)} style={styles.scoreCenter}>
+            {(firstName || goalLabel) && (
+              <View style={styles.scorePersonalization}>
+                {firstName ? <Text style={styles.scoreGreeting}>Hi, {firstName}</Text> : null}
+                {goalLabel ? <Text style={styles.scoreGoal}>Focused on {goalLabel}</Text> : null}
+              </View>
+            )}
             <ScoreGlow color={accentColor} />
             <Text style={[styles.bigScore, { color: accentColor }]}>
               {safeScore}
             </Text>
             <Text style={styles.scoreStatus}>{overallInsight?.statusLabel}</Text>
+            {(scoreDelta != null || currentStreak > 1) && (
+              <View style={styles.headlineChipRow}>
+                {scoreDelta != null && (
+                  <View style={styles.headlineChip}>
+                    <Feather
+                      name={scoreDelta > 0 ? 'trending-up' : scoreDelta < 0 ? 'trending-down' : 'minus'}
+                      size={12}
+                      color={scoreDelta > 0 ? Colors.success : scoreDelta < 0 ? Colors.warning : Glow.palette.muted}
+                    />
+                    <Text style={[
+                      styles.headlineChipText,
+                      { color: scoreDelta > 0 ? Colors.success : scoreDelta < 0 ? Colors.warning : Glow.palette.muted },
+                    ]}>
+                      {scoreDelta === 0 ? 'No change' : `${scoreDelta > 0 ? '+' : ''}${scoreDelta} vs last scan`}
+                    </Text>
+                  </View>
+                )}
+                {currentStreak > 1 && (
+                  <View style={styles.headlineChip}>
+                    <Feather name="zap" size={12} color={Glow.palette.accent} />
+                    <Text style={[styles.headlineChipText, { color: Glow.palette.accent }]}>
+                      {currentStreak} day streak
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
           </Animated.View>
           <Animated.View entering={FadeInUp.duration(500).delay(400)}>
             <Text style={styles.scoreAction} numberOfLines={3}>
@@ -291,6 +397,9 @@ export default function Results({ hideBottomAction: hideBottomActionProp }: { hi
                 ? 'This is your baseline. Future scans will show how your skin changes.'
                 : generatedInsights?.overall_score_context || overallInsight?.actionStatement}
             </Text>
+            {showQuickReadCue ? (
+              <Text style={styles.quickReadCue}>Quick read — full analysis unavailable this scan.</Text>
+            ) : null}
           </Animated.View>
           <Animated.View entering={FadeIn.duration(400).delay(800)} style={styles.swipeHint} accessibilityLabel="Swipe up for signal details">
             <Feather name="chevron-up" size={14} color={Glow.palette.accent} />
@@ -517,7 +626,7 @@ export default function Results({ hideBottomAction: hideBottomActionProp }: { hi
     });
 
     return p;
-  }, [latestOutput, overallInsight, latestDaily, allOutputs, screenH, stableInsets, hideBottomAction, router]);
+  }, [latestOutput, overallInsight, previousOverallInsight, latestDaily, allOutputs, firstName, protocol, currentStreak, screenH, stableInsets, hideBottomAction, router]);
 
   const getItemLayout = useCallback(
     (_: unknown, index: number) => ({ length: screenH, offset: screenH * index, index }),
@@ -617,6 +726,24 @@ const styles = StyleSheet.create({
     borderRadius: 70,
     top: -17,
   },
+  scorePersonalization: {
+    alignItems: 'center',
+    gap: Spacing.xxs,
+    marginBottom: Spacing.lg,
+  },
+  scoreGreeting: {
+    color: Glow.palette.ink,
+    fontFamily: FontFamily.sansSemiBold,
+    fontSize: FontSize.lg,
+    letterSpacing: -0.2,
+  },
+  scoreGoal: {
+    color: Glow.palette.muted,
+    fontFamily: FontFamily.sansMedium,
+    fontSize: FontSize.xs,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
   bigScore: {
     fontFamily: FontFamily.sansBold,
     fontSize: 120,
@@ -631,6 +758,29 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     marginTop: Spacing.xs,
   },
+  headlineChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: Spacing.xs,
+    marginTop: Spacing.md,
+  },
+  headlineChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xxs,
+    paddingVertical: 6,
+    paddingHorizontal: Spacing.sm + 2,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Glow.palette.surface,
+    borderWidth: 1,
+    borderColor: Glow.palette.glow,
+  },
+  headlineChipText: {
+    fontFamily: FontFamily.sansSemiBold,
+    fontSize: FontSize.xs,
+    letterSpacing: 0.2,
+  },
   scoreAction: {
     color: Glow.palette.ink,
     fontFamily: FontFamily.sansMedium,
@@ -639,6 +789,15 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
     textAlign: 'center',
     paddingHorizontal: Spacing.lg,
+  },
+  quickReadCue: {
+    marginTop: Spacing.md,
+    color: Glow.palette.muted,
+    fontFamily: FontFamily.sans,
+    fontSize: FontSize.xs,
+    lineHeight: 18,
+    textAlign: 'center',
+    paddingHorizontal: Spacing.xl,
   },
   swipeHint: {
     position: 'absolute',

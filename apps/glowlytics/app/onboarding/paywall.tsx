@@ -159,11 +159,24 @@ export default function OnboardingPaywall() {
         return;
       }
       // CANCELLED / ERROR — stay on screen, user can retry.
-    } catch (e: any) {
-      console.warn(TAG, 'Paywall present failed:', e?.message);
+    } catch (e: unknown) {
+      console.warn(TAG, 'Paywall present failed:', e instanceof Error ? e.message : String(e));
+      // Products unavailable (offline, StoreKit slow, App Review sandbox).
+      // Never strand the user here (Guideline 2.1) — offer a way forward.
+      // Scans stay gated by gateWithPaywall, so continuing leaks no entitlement.
       Alert.alert(
         'Subscription unavailable',
-        'We couldn\u2019t load plans right now. Please check your connection and try again.',
+        'We couldn\u2019t load plans right now. You can try again, or continue and subscribe later.',
+        [
+          { text: 'Try again', style: 'cancel' },
+          {
+            text: 'Continue without subscribing',
+            onPress: () => {
+              trackEvent('onboarding_paywall_bypass_unavailable');
+              completeOnboarding();
+            },
+          },
+        ],
       );
     } finally {
       setBusy(false);
@@ -174,7 +187,7 @@ export default function OnboardingPaywall() {
     <OnboardingTransition
       illustration={<PaywallIllustration />}
       heading="Try Glow Pro free for 7 days"
-      subtext="Daily clinical-grade skin scans, pattern detection, and a routine that adapts to your data. Cancel anytime."
+      subtext="Daily clinically inspired skin scans, pattern detection, and a routine that adapts to your data. Cancel anytime."
       primaryLabel="Start 7-day free trial"
       primaryOnPress={handleStartTrial}
       primaryDisabled={busy}

@@ -7,6 +7,7 @@ interface EnvConfig {
   POSTHOG_API_KEY: string;
   ENABLE_APPLE_OAUTH: boolean;
   ENABLE_GOOGLE_OAUTH: boolean;
+  SENTRY_DSN: string;
 }
 
 const resolvedApiUrl = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:3001';
@@ -70,4 +71,6 @@ export const env: EnvConfig = {
   // Apple Guideline 4.8 requires Sign in with Apple whenever a third-party sign-in is offered.
   ENABLE_APPLE_OAUTH: parseBooleanEnv(process.env.EXPO_PUBLIC_ENABLE_APPLE_OAUTH, true),
   ENABLE_GOOGLE_OAUTH: parseBooleanEnv(process.env.EXPO_PUBLIC_ENABLE_GOOGLE_OAUTH, true),
+  // Sentry crash reporting — empty string disables init entirely (see app/_layout.tsx).
+  SENTRY_DSN: process.env.EXPO_PUBLIC_SENTRY_DSN ?? '',
 };

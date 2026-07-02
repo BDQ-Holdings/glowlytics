@@ -120,8 +120,11 @@ export default function Welcome() {
 
   const handleStart = () => {
     trackEvent('onboarding_started');
-    createUser({ user_id: userId ?? undefined });
-    const flow = buildOnboardingFlow();
+    const existingUser = useStore.getState().user;
+    if (!existingUser || (userId && existingUser.user_id && existingUser.user_id !== userId)) {
+      createUser({ user_id: userId ?? undefined });
+    }
+    const flow = buildOnboardingFlow(existingUser?.sex, existingUser?.menstrual_status, existingUser?.health_connection?.cycle_detected);
     setOnboardingFlow(flow);
     setOnboardingFlowIndex(1);
     router.push(screenToRoute(flow[1]));

@@ -3,6 +3,10 @@ import { Alert, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { FontFamily, Glow, Spacing } from '../../src/constants/theme';
+import { useStore } from '../../src/store/useStore';
+import { trackEvent } from '../../src/services/analytics';
+import { deleteAccountAndSignOut } from '../../src/services/accountDeletion';
+import { activeProducts } from '../../src/services/ritual';
 import {
   Chip,
   GhostButton,
@@ -19,22 +23,60 @@ const DANGER = '#A14A55';
 
 const REASONS = ['Privacy', 'Too many nudges', 'Not useful', 'Cost', 'Other'];
 
+let useClerk: (() => { signOut: () => Promise<void> }) | undefined;
+
+try {
+  const clerk = require('@clerk/clerk-expo');
+  useClerk = clerk.useClerk;
+} catch {
+  // Clerk not available
+}
+
+const getErrorMessage = (err: unknown, fallback: string) =>
+  err instanceof Error && err.message.trim().length > 0 ? err.message : fallback;
+
 export default function DeleteAccountScreen() {
   const router = useRouter();
   const [reason, setReason] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const user = useStore((s) => s.user);
+  const scanCount = useStore((s) => s.modelOutputs.length);
+  const productCount = useStore((s) => activeProducts(s.products).length);
+  // Only patterns actually discovered from the user's data — predicted
+  // cold-start placeholders aren't theirs to lose.
+  const patternCount = useStore((s) => s.patterns.filter((p) => !p.isPredicted).length);
+  const getStreak = useStore((s) => s.getStreak);
+  const streak = getStreak();
+
+  const clerk = useClerk ? useClerk() : null;
 
   const confirmDelete = () => {
+    if (!user?.user_id || deleting) return;
     Alert.alert(
-      'Erase everything?',
-      "We'll begin a 24-hour countdown. You can cancel any time before it ends.",
+      'Delete account?',
+      'This immediately and permanently deletes your account and synced data, including scan history, photos, products, and settings. This action cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Yes, start deletion',
+          text: 'Delete account',
           style: 'destructive',
-          onPress: () => {
-            // Hooks into the cascading-deletion flow handled by the account stack.
-            router.replace('/account' as any);
+          onPress: async () => {
+            setDeleting(true);
+            try {
+              // Fire before deletion — the helper resets the analytics
+              // identity, so this is the last chance to attribute the reason.
+              if (reason) trackEvent('account_delete_reason', { reason });
+              await deleteAccountAndSignOut({ userId: user.user_id, clerk });
+              router.replace('/');
+            } catch (err: unknown) {
+              Alert.alert(
+                'Delete account failed',
+                getErrorMessage(err, 'We could not delete your account. Please try again.'),
+              );
+            } finally {
+              setDeleting(false);
+            }
           },
         },
       ],
@@ -43,7 +85,7 @@ export default function DeleteAccountScreen() {
 
   return (
     <SettingsPage>
-      <SettingsHeader title="Delete account" eyebrow="Step 2 of 3 · This is permanent" />
+      <SettingsHeader title="Delete account" eyebrow="This is permanent" />
 
       <View style={styles.hero}>
         <View style={styles.heroBadge}>
@@ -51,42 +93,39 @@ export default function DeleteAccountScreen() {
         </View>
         <Text style={styles.heroEyebrow}>This can't be undone</Text>
         <Text style={styles.heroTitle}>
-          We'll <Text style={{ color: DANGER }}>erase everything</Text> in 24 hours.
+          Deleting your account <Text style={{ color: DANGER }}>erases everything</Text> immediately.
         </Text>
       </View>
 
       <SectionLabel>What goes away</SectionLabel>
       <ListGroup>
-        <Row label="47 scans · 12-day streak" sub="All check-ins back to March" />
-        <Row label="124 MB of face photos"     sub="From this device + iCloud backup" />
-        <Row label="3 discovered patterns"     sub="Sleep · Tuesday redness · Retinoid" />
-        <Row label="Your product shelf"        sub="5 items + impact history" />
+        <Row
+          label={`${scanCount} ${scanCount === 1 ? 'scan' : 'scans'} · ${streak}-day streak`}
+          sub="All scan history, photos, and check-ins"
+        />
+        <Row
+          label={`${patternCount} discovered ${patternCount === 1 ? 'pattern' : 'patterns'}`}
+          sub="Everything the pattern engine has learned"
+        />
+        <Row
+          label="Your product shelf"
+          sub={`${productCount} ${productCount === 1 ? 'item' : 'items'} + impact history`}
+        />
       </ListGroup>
 
       <SectionLabel>Before you go</SectionLabel>
       <View style={styles.offRamps}>
-        {[
-          {
-            l: 'Export your data first',
-            sub: 'Take it with you',
-            cta: 'Export',
-            go: () => router.push('/settings/export' as any),
-          },
-          {
-            l: 'Take a break instead',
-            sub: 'Pause for 30 days, then we ask again',
-            cta: 'Pause',
-            go: () => router.back(),
-          },
-        ].map((o) => (
-          <View key={o.l} style={styles.rampRow}>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={styles.rampLabel}>{o.l}</Text>
-              <Text style={styles.rampSub}>{o.sub}</Text>
-            </View>
-            <GhostButton label={o.cta} onPress={o.go} style={styles.rampCta} />
+        <View style={styles.rampRow}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.rampLabel}>Export your data first</Text>
+            <Text style={styles.rampSub}>Take it with you</Text>
           </View>
-        ))}
+          <GhostButton
+            label="Export"
+            onPress={() => router.push('/settings/export')}
+            style={styles.rampCta}
+          />
+        </View>
       </View>
 
       <SectionLabel>Why are you leaving?</SectionLabel>
@@ -99,7 +138,12 @@ export default function DeleteAccountScreen() {
       </View>
 
       <View style={styles.actions}>
-        <PrimaryButton label="Delete my account" danger onPress={confirmDelete} style={styles.deleteBtn} />
+        <PrimaryButton
+          label={deleting ? 'Deleting\u2026' : 'Delete my account'}
+          danger
+          onPress={confirmDelete}
+          style={styles.deleteBtn}
+        />
         <GhostButton label="Cancel · keep me" onPress={() => router.back()} />
       </View>
     </SettingsPage>

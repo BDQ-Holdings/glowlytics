@@ -1,0 +1,11 @@
+{
+  "name": "expo-backup-exclusion",
+  "version": "0.1.0",
+  "description": "iCloud/iTunes backup exclusion (NSURLIsExcludedFromBackupKey) for Glowlytics scan photos",
+  "main": "index.ts",
+  "types": "index.ts",
+  "private": true,
+  "keywords": ["expo", "ios", "backup-exclusion"],
+  "repository": "private",
+  "license": "UNLICENSED"
+}

@@ -202,50 +202,27 @@ export default function SkinGoal() {
   const setProtocol = useStore((s) => s.setProtocol);
   const updateUser = useStore((s) => s.updateUser);
 
-  const [selected, setSelected] = useState<PrimaryGoal[]>([]);
-
-  const toggle = (goal: PrimaryGoal) => {
-    setSelected((prev) =>
-      prev.includes(goal)
-        ? prev.filter((g) => g !== goal)
-        : [...prev, goal],
-    );
-  };
-
-  const allSelected = selected.length === GOAL_OPTIONS.length;
+  const [selected, setSelected] = useState<PrimaryGoal | null>(() => useStore.getState().user?.skin_goals?.[0] ?? null);
 
   const handleContinue = () => {
-    if (selected.length === 0) return;
-    const primary = selected[0];
-    const option = GOAL_OPTIONS.find((o) => o.value === primary);
+    if (!selected) return;
+    const option = GOAL_OPTIONS.find((o) => o.value === selected);
     if (!option) return;
-    updateUser({ skin_goals: selected });
-    const region = selected.length === GOAL_OPTIONS.length ? 'whole_face' : option.defaultRegion;
-    setProtocol(option.value, region);
+    updateUser({ skin_goals: [selected] });
+    setProtocol(option.value, option.defaultRegion);
     advance();
   };
 
-  const handleTrackAll = () => {
-    const allGoals = GOAL_OPTIONS.map((o) => o.value);
-    updateUser({ skin_goals: allGoals });
-    setProtocol('acne', 'whole_face');
-    advance();
-  };
-
-  // Show illustration for last selected goal, or default
-  const lastSelected = selected.length > 0 ? selected[selected.length - 1] : null;
-  const illustration = lastSelected ? ILLUSTRATIONS[lastSelected] : <DefaultGoalIllustration />;
+  const illustration = selected ? ILLUSTRATIONS[selected] : <DefaultGoalIllustration />;
 
   return (
     <OnboardingTransition
       illustration={illustration}
-      heading="What do you want to focus on?"
-      subtext="Pick one or several — we'll tailor your scans and insights to all of them."
-      primaryLabel={selected.length > 1 ? `Continue (${selected.length})` : 'Continue'}
+      heading="Choose your main focus"
+      subtext="We'll tailor your scans and insights around the skin signal you care about most."
+      primaryLabel="Continue"
       primaryOnPress={handleContinue}
-      primaryDisabled={selected.length === 0}
-      secondaryLabel={allSelected ? undefined : 'Track everything'}
-      secondaryOnPress={allSelected ? undefined : handleTrackAll}
+      primaryDisabled={!selected}
       showProgress
       totalSteps={onboardingFlow.length}
       currentStep={onboardingFlowIndex}
@@ -258,9 +235,8 @@ export default function SkinGoal() {
             key={opt.value}
             label={opt.label}
             description={opt.description}
-            selected={selected.includes(opt.value)}
-            onPress={() => toggle(opt.value)}
-            multiSelect
+            selected={selected === opt.value}
+            onPress={() => setSelected(opt.value)}
           />
         ))}
       </View>

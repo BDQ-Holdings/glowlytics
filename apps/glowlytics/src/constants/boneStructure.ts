@@ -13,7 +13,7 @@
  * values are the contract.
  */
 
-import type { BoneDomain, BoneFindingCode, BoneMeshSource } from '../types';
+import type { BoneDomain, BoneFindingCode, BoneMeshSource, BoneStructureResult } from '../types';
 import { Colors } from './theme';
 
 // ---------------------------------------------------------------------------
@@ -195,4 +195,194 @@ export function harmonyStatusLabel(score: number | null): string {
   if (score >= 55) return 'Balanced';
   if (score >= 40) return 'Mixed';
   return 'Watch';
+}
+
+// ---------------------------------------------------------------------------
+// Interpretation — turn 0..100 scores into a band + plain-language meaning
+// ---------------------------------------------------------------------------
+
+/** Domain/metric harmony scores are 0..100, higher is better. At/above this
+ *  they read as "in range"; below reads as "below range". */
+export const IDEAL_SCORE_MIN = 70;
+
+export type ScoreBand = 'below' | 'ideal' | 'above';
+
+export interface ScoreInterpretation {
+  band: ScoreBand;
+  bandLabel: string;
+  label: string;
+  scoreText: string;
+  idealText: string;
+  meaning: string;
+}
+
+const IDEAL_TEXT = `ideal ${IDEAL_SCORE_MIN}–100`;
+
+export const DOMAIN_INTERPRETATION: Record<
+  BoneDomain,
+  { label: string; below: string; inRange: string; pending: string }
+> = {
+  symmetry: {
+    label: 'Symmetry',
+    below: 'your facial thirds and left–right mirror-match diverge more than the balanced range.',
+    inRange: 'your proportions and left–right match sit in a balanced range.',
+    pending: 'not enough data yet to read your symmetry.',
+  },
+  periorbital: {
+    label: 'Eye region',
+    below: 'your eye framing — tilt, aperture and lid position — reads heavier than the balanced range.',
+    inRange: 'your eye region reads open and rested.',
+    pending: 'not enough data yet to read your eye region.',
+  },
+  mandibular: {
+    label: 'Jawline',
+    below: 'your jaw angle, chin projection or jaw width pulls the lower third out of balance.',
+    inRange: 'your jawline and chin sit in a balanced range.',
+    pending: 'not enough data yet to read your jawline.',
+  },
+  midface: {
+    label: 'Midface balance',
+    below: 'the middle third of your face is set back relative to the upper and lower thirds.',
+    inRange: 'your cheekbones and midface project in balance with the rest of your face.',
+    pending: 'not enough data yet to read your midface.',
+  },
+  nose: {
+    label: 'Nose',
+    below: 'your nasal base width or nasolabial angle sits outside the balanced range.',
+    inRange: 'your nose proportions sit in a balanced range.',
+    pending: 'not enough data yet to read your nose.',
+  },
+  brow: {
+    label: 'Brow',
+    below: 'your brow height or arch placement pulls the upper face out of balance.',
+    inRange: 'your brow sits at a balanced height and arch.',
+    pending: 'not enough data yet to read your brow.',
+  },
+};
+
+/** Explicit per-metric copy where we have it; other metrics fall back to the
+ *  metric's own hint so every metric is still interpretable. */
+export const METRIC_INTERPRETATION: Partial<Record<BoneMetricKey, { below: string; inRange: string }>> = {
+  gonial_angle: {
+    below: 'your jaw angle is softer than the balanced range, blurring the jaw–neck line.',
+    inRange: 'your jaw angle sits in a balanced range, giving a clean jaw–neck line.',
+  },
+  chin_projection: {
+    below: 'your chin projects less forward than balanced, which flattens the side profile.',
+    inRange: 'your chin projects in balance with your nose and lips on profile.',
+  },
+  canthal_tilt: {
+    below: 'your outer eye corners run flat or downward rather than the balanced upward tilt.',
+    inRange: 'your outer eye corners carry a balanced upward tilt.',
+  },
+  facial_thirds: {
+    below: 'your three vertical face-thirds are less even than the balanced range.',
+    inRange: 'your three vertical face-thirds come out close to even.',
+  },
+  zygomatic_projection: {
+    below: 'your cheekbones sit closer to the central-face plane than balanced.',
+    inRange: 'your cheekbones project in a balanced range.',
+  },
+  bitemporal_bizygomatic_ratio: {
+    below: 'your temples are narrow relative to your cheekbones, softening the ogee curve.',
+    inRange: 'your temple-to-cheekbone width sits in a balanced range.',
+  },
+};
+
+function bandLabelFor(band: ScoreBand): string {
+  if (band === 'ideal') return 'In range';
+  if (band === 'above') return 'Above range';
+  return 'Below range';
+}
+
+export function interpretDomainScore(domain: BoneDomain, score: number | null): ScoreInterpretation {
+  const copy = DOMAIN_INTERPRETATION[domain];
+  if (score == null || !Number.isFinite(score)) {
+    return { band: 'below', bandLabel: 'Pending', label: copy.label, scoreText: '—', idealText: IDEAL_TEXT, meaning: copy.pending };
+  }
+  const band: ScoreBand = score >= IDEAL_SCORE_MIN ? 'ideal' : 'below';
+  return {
+    band,
+    bandLabel: bandLabelFor(band),
+    label: copy.label,
+    scoreText: `${Math.round(score)}/100`,
+    idealText: IDEAL_TEXT,
+    meaning: band === 'ideal' ? copy.inRange : copy.below,
+  };
+}
+
+export function interpretMetricScore(key: BoneMetricKey, score: number): ScoreInterpretation {
+  const meta = METRIC_BY_KEY[key];
+  const band: ScoreBand = Number.isFinite(score) && score >= IDEAL_SCORE_MIN ? 'ideal' : 'below';
+  const copy = METRIC_INTERPRETATION[key];
+  const label = meta?.label ?? key;
+  const hint = meta?.hint ? meta.hint.toLowerCase() : 'this measurement';
+  const meaning = copy
+    ? band === 'ideal' ? copy.inRange : copy.below
+    : band === 'ideal'
+      ? `${label} sits in a balanced range (${hint}).`
+      : `${label} is below its balanced range (${hint}).`;
+  return {
+    band,
+    bandLabel: bandLabelFor(band),
+    label,
+    scoreText: Number.isFinite(score) ? `${Math.round(score)}/100` : '—',
+    idealText: IDEAL_TEXT,
+    meaning,
+  };
+}
+
+export interface DriverReadout {
+  domain: BoneDomain;
+  label: string;
+  scoreText: string;
+  band: ScoreBand;
+  bandLabel: string;
+  meaning: string;
+}
+
+export function buildDriverReadout(
+  bone: Pick<BoneStructureResult, 'dominant_driver' | 'domain_scores'>,
+): DriverReadout | null {
+  const d = bone.dominant_driver;
+  if (!d) return null;
+  const interp = interpretDomainScore(d, bone.domain_scores?.[d] ?? null);
+  return { domain: d, label: interp.label, scoreText: interp.scoreText, band: interp.band, bandLabel: interp.bandLabel, meaning: interp.meaning };
+}
+
+// ---------------------------------------------------------------------------
+// Measurement-label layout — nudge overlapping labels apart (pure, testable)
+// ---------------------------------------------------------------------------
+
+/** A label's bounding box. `y` is the TOP of the box; it spans [y, y+height]. */
+export interface LabelBox { x: number; y: number; width: number; height: number }
+
+/**
+ * Push label boxes down (never sideways) until none overlap. Boxes are
+ * processed top-first; each that would collide with an already-placed box is
+ * dropped below it by `gap`. Deterministic and independent of any render, so
+ * the collision behaviour is unit-testable. Input order is preserved in the
+ * returned array.
+ */
+export function resolveLabelCollisions(boxes: readonly LabelBox[], gap = 2): LabelBox[] {
+  const order = boxes.map((_, i) => i).sort((a, z) => boxes[a].y - boxes[z].y);
+  const placed: LabelBox[] = [];
+  const out = new Array<LabelBox>(boxes.length);
+  for (const i of order) {
+    const src = boxes[i];
+    let y = src.y;
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const p of placed) {
+        const overlapX = Math.abs(p.x - src.x) * 2 < p.width + src.width;
+        const overlapY = y < p.y + p.height + gap && p.y < y + src.height + gap;
+        if (overlapX && overlapY) { y = p.y + p.height + gap; changed = true; }
+      }
+    }
+    const resolved: LabelBox = { x: src.x, y, width: src.width, height: src.height };
+    placed.push(resolved);
+    out[i] = resolved;
+  }
+  return out;
 }

@@ -26,6 +26,7 @@ import {
   detectConflicts,
   generateAdjustments,
 } from '../src/services/routineBuilder';
+import { activeProducts } from '../src/services/ritual';
 
 // ---------------------------------------------------------------------------
 // Score ring
@@ -149,7 +150,10 @@ function buildInsight(data: ProductDatum[], routineScore: number): string | null
 export default function RoutineScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const products = useStore((s) => s.products);
+  const allProducts = useStore((s) => s.products);
+  // Soft-removed products (end_date set) stay in the store for ritual history —
+  // forward-looking scoring/conflicts must only see the active shelf.
+  const products = useMemo(() => activeProducts(allProducts), [allProducts]);
   const protocol = useStore((s) => s.protocol);
   const modelOutputs = useStore((s) => s.modelOutputs);
   const dailyRecords = useStore((s) => s.dailyRecords);

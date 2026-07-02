@@ -25,15 +25,18 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
 } from 'react-native-reanimated';
-// (LinearGradient removed — the calendar strip + day-pager now sit on the
-// page background directly; no warm-coral wash behind the schedule per
-// May 2026 redesign feedback.)
-// (Glow palette no longer needed in this file — the gradient that consumed
-// it was removed; calendar strip + pages now inherit the parent's bg.)
+import { LinearGradient } from 'expo-linear-gradient';
+import { Glow } from '../../constants/theme';
 import { useStore } from '../../store/useStore';
 import { buildDayTimeline, TODAY_INDEX, type DayEntry } from './dayModel';
 import { CalendarStrip } from './CalendarStrip';
 import { DayPage } from './DayPage';
+
+const P = Glow.palette;
+
+// How far the seam scrim bleeds past the strip's bottom edge into the body, so
+// the fade covers the actual strip→body boundary instead of ending mid-strip.
+const SEAM_OVERLAP = 48;
 
 
 export interface DayPagerProps {
@@ -54,6 +57,7 @@ export function DayPager({ onScan, onOpenRitual, onShare }: DayPagerProps) {
   );
   const todayIdx = TODAY_INDEX(days);
   const [activeIdx, setActiveIdx] = useState(todayIdx);
+  const [stripHeight, setStripHeight] = useState(0);
 
   // Arc sparkline — only days with a score, oldest → newest.
   const arcSeries = useMemo(
@@ -123,12 +127,29 @@ export function DayPager({ onScan, onOpenRitual, onShare }: DayPagerProps) {
     listRef.current?.scrollToOffset({ offset: screenWidth * activeIdx, animated: false });
   };
 
+  const handleStripLayout = useCallback((e: LayoutChangeEvent) => {
+    setStripHeight(e.nativeEvent.layout.height);
+  }, []);
+
   return (
     <View style={styles.host}>
-      <View style={styles.strip}>
+      {/* Seam scrim — fades the app background down across the strip→body
+          boundary. Rendered BEFORE the strip (and the FlatList body, whose top
+          is transparent) so it layers BEHIND the CalendarStrip circles, leaving
+          their opacity untouched; pointerEvents none so it never intercepts a
+          tap or swipe. Height = measured strip height + SEAM_OVERLAP so its
+          lower edge bleeds into the top of the body and actually covers the
+          seam rather than fading out mid-strip. */}
+      <LinearGradient
+        testID="strip-gradient"
+        pointerEvents="none"
+        colors={[P.bg + '4D', P.bg + '00']}
+        locations={[0, 1]}
+        style={[styles.seam, { height: stripHeight + SEAM_OVERLAP }]}
+      />
+      <View style={styles.strip} onLayout={handleStripLayout}>
         <CalendarStrip days={days} activeIndex={activeIdx} onPick={handlePick} />
       </View>
-
       <FlatList
         ref={listRef}
         data={days}
@@ -158,6 +179,7 @@ export function DayPager({ onScan, onOpenRitual, onShare }: DayPagerProps) {
 const styles = StyleSheet.create({
   host: { flex: 1 },
   strip: { paddingTop: 12, paddingBottom: 6 },
+  seam: { position: 'absolute', top: 0, left: 0, right: 0 },
 });
 
 interface FadePageProps {

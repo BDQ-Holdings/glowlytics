@@ -2,7 +2,7 @@ import 'react-native-get-random-values';
 import React, { useEffect, useRef, useState } from 'react';
 import { Stack, Redirect, useSegments, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { AppState, Image, StyleSheet, Text, View } from 'react-native';
+import { AppState, Image, StyleSheet, Text, View, useColorScheme } from 'react-native';
 import { useFonts } from 'expo-font';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ClerkProvider, useAuth } from '@clerk/clerk-expo';
@@ -15,6 +15,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { tokenCache } from '@clerk/clerk-expo/token-cache';
 import { resourceCache } from '@clerk/clerk-expo/resource-cache';
+import * as Sentry from '@sentry/react-native';
 import { env } from '../src/config/env';
 import { localDateStr } from '../src/utils/localDate';
 import { resolveAuthRoute } from '../src/utils/authRoute';
@@ -27,6 +28,7 @@ import { initAnalytics, identifyUser as identifyAnalyticsUser, trackEvent } from
 import {
   applyAppIcon,
   currentNativeIcon,
+  resolveColorMode,
 } from '../src/services/appearance';
 import { AppearanceHost } from '../src/components/AppearanceHost';
 import { AppErrorBoundary } from '../src/components/AppErrorBoundary';
@@ -35,6 +37,20 @@ const initLesionDetection = () =>
   import('../src/services/onDeviceLesionDetection').then((m) => m.initLesionDetection());
 const initSignalModels = () =>
   import('../src/services/onDeviceSignalModels').then((m) => m.initSignalModels());
+
+// ─── Sentry Crash Reporting ──────────────────────────────────────
+// Initialized at module scope so native crashes during startup are captured.
+// Inert until EXPO_PUBLIC_SENTRY_DSN is set (eas.json env / EAS secrets) —
+// with an empty DSN we skip init entirely, and even with a DSN, dev builds
+// stay silent via `enabled: !__DEV__`.
+if (env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: env.SENTRY_DSN,
+    enabled: !__DEV__,
+    tracesSampleRate: 0.2, // sample perf traces lightly; errors are always sent
+    sendDefaultPii: false, // never attach IPs/emails — skin data app, keep telemetry lean
+  });
+}
 
 // Brief floor on the splash so iOS's launch image cross-fade into our React
 // view doesn't flicker. Anything longer than this is theatrical, so we keep
@@ -206,6 +222,10 @@ function ClerkGatedApp() {
   const loadPersistedData = useStore((s) => s.loadPersistedData);
   const reconcileAuthUserId = useStore((s) => s.reconcileAuthUserId);
   const setSubscription = useStore((s) => s.setSubscription);
+  // Status bar must react to appearance changes (including 'auto' following the
+  // system scheme), so subscribe via hooks rather than a one-shot getState() read.
+  const appearanceMode = useStore((s) => s.appearance.mode);
+  const systemScheme = useColorScheme();
   const initStarted = useRef(false);
   const servicesInitStarted = useRef(false);
   const clerkInitStartedAt = useRef(Date.now());
@@ -368,7 +388,7 @@ function ClerkGatedApp() {
       <AppearanceHost>
         <AppErrorBoundary>
           <View style={{ flex: 1, backgroundColor: Glow.palette.bg }}>
-            <StatusBar style={useStore.getState().appearance.mode === 'dark' ? 'light' : 'dark'} />
+            <StatusBar style={resolveColorMode(appearanceMode, systemScheme) === 'dark' ? 'light' : 'dark'} />
             <Stack
               screenOptions={{
                 headerShown: false,
@@ -402,7 +422,7 @@ function ClerkGatedApp() {
 }
 
 // ─── Root Layout ─────────────────────────────────────────────────
-export default function RootLayout() {
+function RootLayout() {
   const [fontsLoaded] = useFonts({
     'Switzer-Regular': require('../assets/fonts/Switzer-Regular.ttf'),
     'Switzer-Medium': require('../assets/fonts/Switzer-Medium.ttf'),
@@ -424,3 +444,8 @@ export default function RootLayout() {
     </ClerkProvider>
   );
 }
+
+// Sentry.wrap adds touch-event + profiling instrumentation around the root
+// component. Wrapping unconditionally is the documented pattern and is a
+// no-op-cheap passthrough when Sentry.init was never called (no DSN).
+export default Sentry.wrap(RootLayout);

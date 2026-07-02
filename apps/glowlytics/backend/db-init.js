@@ -12,10 +12,6 @@ const { poolSsl } = require('./db-ssl');
 // TIMESTAMPTZ (OIDs 1114/1184) are intentionally left untouched.
 types.setTypeParser(1082, (v) => v);
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://localhost:5432/glowlytics',
-  ssl: poolSsl(),
-});
 
 const schema = `
 -- User profiles (user_id is the Clerk user ID string, e.g. 'user_2xABC...')
@@ -274,6 +270,13 @@ async function initSchema(externalPool) {
 
 // Standalone execution: `node db-init.js`
 if (require.main === module) {
+  // Pool built here — NOT at module scope — so `require('./db-init')` (server.js
+  // startup, tests) never opens a connection pool as a side effect. Standalone
+  // `npm run db:init` is the only consumer.
+  const pool = new Pool({
+    connectionString: process.env.DATABASE_URL || 'postgresql://localhost:5432/glowlytics',
+    ssl: poolSsl(),
+  });
   (async () => {
     try {
       await initSchema(pool);

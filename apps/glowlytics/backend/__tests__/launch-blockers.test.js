@@ -10,6 +10,11 @@
  */
 
 process.env.NODE_ENV = 'development';
+// Auth fails closed whenever an issuer is configured (even in development) —
+// clear any issuer leaked by an earlier test file (jest shares process.env
+// across files at maxWorkers=1). Set '' (not delete): app.js's dotenv would
+// re-inject a developer's .env CLERK_ISSUER_URL into a deleted slot.
+process.env.CLERK_ISSUER_URL = '';
 
 // ---- Module mocks ----
 
@@ -64,6 +69,18 @@ jest.mock('../signal-models', () => ({
 
 const request = require('supertest');
 const app = require('../app');
+
+// ---- /health stays alive without model introspection ----
+
+describe('GET /health', () => {
+  test('returns 200 even when signal-models exposes no loadedModels (degraded, not dead)', async () => {
+    // The signal-models mock above deliberately lacks loadedModels — Railway's
+    // healthcheck must still get a 200 and the models key is simply omitted.
+    const res = await request(app).get('/health').expect(200);
+    expect(res.body.status).toBe('ok');
+    expect(res.body.models).toBeUndefined();
+  });
+});
 
 // ---- Issue #4: POST /api/users uses Clerk user_id ----
 
@@ -127,7 +144,7 @@ describe('Issue #2: DELETE /api/users/:id account deletion', () => {
   });
 
   test('DELETE /api/users/:id returns 200 and cascading deletes data', async () => {
-    // Mock the transactional client queries (BEGIN, 5 deletes, user delete, COMMIT)
+    // Mock the transactional client queries (BEGIN, 6 deletes, user delete, COMMIT)
     mockClientQuery
       .mockResolvedValueOnce({ rows: [] }) // BEGIN
       .mockResolvedValueOnce({ rows: [] }) // delete model_outputs
@@ -135,6 +152,7 @@ describe('Issue #2: DELETE /api/users/:id account deletion', () => {
       .mockResolvedValueOnce({ rows: [] }) // delete product_catalog
       .mockResolvedValueOnce({ rows: [] }) // delete scan_protocols
       .mockResolvedValueOnce({ rows: [] }) // delete report_artifacts
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // delete uv_leads (no UV rows for this user)
       .mockResolvedValueOnce({ rows: [{ user_id: 'dev-user' }], rowCount: 1 }) // delete user_profiles
       .mockResolvedValueOnce({ rows: [] }); // COMMIT
 
@@ -143,8 +161,8 @@ describe('Issue #2: DELETE /api/users/:id account deletion', () => {
       .expect(200);
 
     expect(res.body.success).toBe(true);
-    // Should have called BEGIN, 6 deletes, COMMIT = 8 total
-    expect(mockClientQuery.mock.calls.length).toBeGreaterThanOrEqual(7);
+    // Should have called BEGIN, 6 deletes, user delete, COMMIT = 9 total
+    expect(mockClientQuery.mock.calls.length).toBeGreaterThanOrEqual(8);
     expect(mockClient.release).toHaveBeenCalled();
   });
 
@@ -156,6 +174,7 @@ describe('Issue #2: DELETE /api/users/:id account deletion', () => {
       .mockResolvedValueOnce({ rows: [], rowCount: 0 })  // delete product_catalog
       .mockResolvedValueOnce({ rows: [], rowCount: 0 })  // delete scan_protocols
       .mockResolvedValueOnce({ rows: [], rowCount: 0 })  // delete report_artifacts
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 })  // delete uv_leads
       .mockResolvedValueOnce({ rows: [], rowCount: 0 })  // delete user_profiles — no row (profile never synced)
       .mockResolvedValueOnce({ rows: [] }); // COMMIT
 
@@ -169,6 +188,37 @@ describe('Issue #2: DELETE /api/users/:id account deletion', () => {
     expect(res.body.success).toBe(true);
     expect(res.body.data_deleted).toBe(false);
     expect(mockClient.release).toHaveBeenCalled();
+  });
+
+  test('DELETE /api/users/:id removes uv_leads PII for that clerk_user_id (Apple 5.1.1(v))', async () => {
+    mockClientQuery.mockImplementation((sql) => {
+      if (typeof sql === 'string' && sql.includes('DELETE FROM uv_leads')) {
+        // One claimed scan + one lead that never had a scan linked.
+        return Promise.resolve({ rows: [{ scan_id: 'scan_uv_1' }, { scan_id: null }], rowCount: 2 });
+      }
+      if (typeof sql === 'string' && sql.includes('DELETE FROM user_profiles')) {
+        return Promise.resolve({ rows: [{ user_id: 'dev-user' }], rowCount: 1 });
+      }
+      return Promise.resolve({ rows: [], rowCount: 0 });
+    });
+
+    await request(app).delete('/api/users/dev-user').expect(200);
+
+    const calls = mockClientQuery.mock.calls;
+    const leadDelete = calls.find(([sql]) => typeof sql === 'string' && sql.includes('DELETE FROM uv_leads'));
+    expect(leadDelete).toBeDefined();
+    expect(leadDelete[0]).toContain('clerk_user_id = $1');
+    expect(leadDelete[0]).toContain('RETURNING scan_id');
+    expect(leadDelete[1]).toEqual(['dev-user']);
+
+    // Scans referenced only by the deleted leads go too (null scan_ids filtered out).
+    const scanDelete = calls.find(([sql]) => typeof sql === 'string' && sql.includes('DELETE FROM uv_scans'));
+    expect(scanDelete).toBeDefined();
+    expect(scanDelete[1]).toEqual([['scan_uv_1']]);
+
+    // The PII removal is part of the same transaction as the app-data cascade.
+    expect(calls.some(([sql]) => sql === 'BEGIN')).toBe(true);
+    expect(calls.some(([sql]) => sql === 'COMMIT')).toBe(true);
   });
 });
 

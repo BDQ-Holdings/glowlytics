@@ -24,7 +24,9 @@ import {
   MEASUREMENT_ANGLES,
   METRIC_BY_KEY,
   formatMetricValue,
+  resolveLabelCollisions,
   type BoneMetricKey,
+  type LabelBox,
 } from '../constants/boneStructure';
 import { Colors, FontFamily, FontSize } from '../constants/theme';
 import type {
@@ -434,90 +436,76 @@ export const Face3DViewer: React.FC<Props> = ({
             </G>
 
             {/* Measurement lines (measurements mode) */}
-            {mode === 'measurements' && bone && (
-              <G>
-                {measurementLines.map((line, i) => {
-                  const pa = projected[line.vertices[0]];
-                  const pb = projected[line.vertices[1]];
-                  const value = bone.metrics?.[line.metricKey]?.value;
-                  if (!pa || !pb) return null;
-                  const labelX = (pa.x + pb.x) / 2;
-                  const labelY = (pa.y + pb.y) / 2 - 8;
-                  const labelText = Number.isFinite(value)
-                    ? `${line.label}  ${formatMetricValue(line.metricKey, value as number)}`
-                    : null;
-                  // Approximate label width — rough but good enough for a
-                  // softly-rounded backdrop that stays legible over wireframe.
-                  const labelWidth = labelText ? labelText.length * 4.2 + 10 : 0;
-                  return (
-                    <G key={`ml${i}`}>
-                      <Line
-                        x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y}
-                        stroke={HARMONY_ACCENT}
-                        strokeWidth={1.4}
-                        strokeDasharray="3,3"
-                      />
-                      {labelText && (
-                        <>
-                          <Rect
-                            x={labelX - labelWidth / 2}
-                            y={labelY - 8}
-                            width={labelWidth}
-                            height={12}
-                            rx={6}
-                            fill={Colors.background}
-                            fillOpacity={0.78}
-                          />
-                          <SvgText
-                            x={labelX} y={labelY}
-                            fontSize={FontSize.xxs}
-                            fontFamily={FontFamily.sansMedium}
-                            fill={HARMONY_ACCENT}
-                            textAnchor="middle"
-                          >
-                            {labelText}
-                          </SvgText>
-                        </>
-                      )}
-                    </G>
-                  );
-                })}
-                {measurementAngles.map((arc, i) => {
-                  const pa = projected[arc.vertices[0]];
-                  const pc = projected[arc.vertices[1]];
-                  const pb = projected[arc.vertices[2]];
-                  const value = bone.metrics?.[arc.metricKey]?.value;
-                  if (!pa || !pc || !pb) return null;
-                  const labelText = Number.isFinite(value)
-                    ? formatMetricValue(arc.metricKey, value as number)
-                    : null;
-                  return (
-                    <G key={`ma${i}`}>
-                      <Line x1={pc.x} y1={pc.y} x2={pa.x} y2={pa.y} stroke={HARMONY_ACCENT} strokeWidth={1.2} strokeOpacity={0.7} />
-                      <Line x1={pc.x} y1={pc.y} x2={pb.x} y2={pb.y} stroke={HARMONY_ACCENT} strokeWidth={1.2} strokeOpacity={0.7} />
-                      {labelText && (
-                        <>
-                          <Rect
-                            x={pc.x + 8} y={pc.y - 12}
-                            width={labelText.length * 4.4 + 8}
-                            height={12} rx={6}
-                            fill={Colors.background} fillOpacity={0.78}
-                          />
-                          <SvgText
-                            x={pc.x + 12} y={pc.y - 4}
-                            fontSize={FontSize.xxs}
-                            fontFamily={FontFamily.sansMedium}
-                            fill={HARMONY_ACCENT}
-                          >
-                            {labelText}
-                          </SvgText>
-                        </>
-                      )}
-                    </G>
-                  );
-                })}
-              </G>
-            )}
+            {mode === 'measurements' && bone && (() => {
+              const LABEL_H = FontSize.xxs + 4;
+              type Candidate = { key: string; text: string; centerX: number; topY: number; width: number };
+              const candidates: Candidate[] = [];
+              const guides: React.ReactNode[] = [];
+
+              measurementLines.forEach((line, i) => {
+                const pa = projected[line.vertices[0]];
+                const pb = projected[line.vertices[1]];
+                if (!pa || !pb) return;
+                guides.push(
+                  <Line key={`ml${i}`} x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y}
+                    stroke={HARMONY_ACCENT} strokeWidth={1.4} strokeDasharray="3,3" />,
+                );
+                const value = bone.metrics?.[line.metricKey]?.value;
+                if (!Number.isFinite(value)) return;
+                const text = `${line.label}  ${formatMetricValue(line.metricKey, value as number)}`;
+                candidates.push({
+                  key: `ll${i}`, text,
+                  centerX: (pa.x + pb.x) / 2,
+                  topY: (pa.y + pb.y) / 2 - LABEL_H - 4,
+                  width: text.length * 4.2 + 10,
+                });
+              });
+
+              measurementAngles.forEach((arc, i) => {
+                const pa = projected[arc.vertices[0]];
+                const pc = projected[arc.vertices[1]];
+                const pb = projected[arc.vertices[2]];
+                if (!pa || !pc || !pb) return;
+                guides.push(
+                  <G key={`ma${i}`}>
+                    <Line x1={pc.x} y1={pc.y} x2={pa.x} y2={pa.y} stroke={HARMONY_ACCENT} strokeWidth={1.2} strokeOpacity={0.7} />
+                    <Line x1={pc.x} y1={pc.y} x2={pb.x} y2={pb.y} stroke={HARMONY_ACCENT} strokeWidth={1.2} strokeOpacity={0.7} />
+                  </G>,
+                );
+                const value = bone.metrics?.[arc.metricKey]?.value;
+                if (!Number.isFinite(value)) return;
+                const text = `${arc.label}  ${formatMetricValue(arc.metricKey, value as number)}`;
+                candidates.push({
+                  key: `la${i}`, text,
+                  centerX: pc.x + text.length * 2.2 + 6,
+                  topY: pc.y - LABEL_H - 6,
+                  width: text.length * 4.2 + 10,
+                });
+              });
+
+              const boxes: LabelBox[] = candidates.map((c) => ({ x: c.centerX, y: c.topY, width: c.width, height: LABEL_H }));
+              const resolved = resolveLabelCollisions(boxes, 3);
+
+              return (
+                <G>
+                  {guides}
+                  {candidates.map((c, idx) => {
+                    const b = resolved[idx];
+                    const baselineY = b.y + LABEL_H - 3;
+                    return (
+                      <G key={c.key}>
+                        <Rect x={b.x - b.width / 2} y={b.y} width={b.width} height={LABEL_H} rx={6}
+                          fill={Colors.background} fillOpacity={0.82} />
+                        <SvgText x={b.x} y={baselineY} fontSize={FontSize.xxs} fontFamily={FontFamily.sansMedium}
+                          fill={HARMONY_ACCENT} textAnchor="middle">
+                          {c.text}
+                        </SvgText>
+                      </G>
+                    );
+                  })}
+                </G>
+              );
+            })()}
 
             {/* Skin mode — lesion dots projected onto mesh */}
             {mode === 'skin' && lesionDots.length > 0 && (

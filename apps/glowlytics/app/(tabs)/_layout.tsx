@@ -6,6 +6,7 @@ import { CoachingTooltip } from '../../src/components/CoachingTooltip';
 import { NotchedTabBar } from '../../src/components/navigation/NotchedTabBar';
 import { gateWithPaywall } from '../../src/services/subscription';
 import { trackEvent } from '../../src/services/analytics';
+import { resolveScanEntryRoute } from '../../src/utils/scanConsentRoute';
 
 export default function TabsLayout() {
   const router = useRouter();
@@ -28,8 +29,10 @@ export default function TabsLayout() {
       trackEvent('paywall_shown', { trigger: 'camera_tab' });
     }
     if (!(await gateWithPaywall())) return;
-    trackEvent('camera_fab_route', { route: activeRouteName, target: 'scan' });
-    router.push('/scan/camera');
+    const aiProcessingConsentGranted = useStore.getState().aiProcessingConsentGranted;
+    const target = resolveScanEntryRoute(aiProcessingConsentGranted);
+    trackEvent('camera_fab_route', { route: activeRouteName, target });
+    router.push(target);
   };
 
   return (

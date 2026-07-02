@@ -375,16 +375,6 @@ export default function AppearanceScreen() {
           }
         />
         <Row
-          label="Serif italics"
-          sub="The little flourish on accents"
-          control={
-            <Toggle
-              on={appearance.serifItalics}
-              onChange={(v) => setAppearance({ serifItalics: v })}
-            />
-          }
-        />
-        <Row
           label="Reduce motion"
           sub="Slower fades, fewer halos"
           control={

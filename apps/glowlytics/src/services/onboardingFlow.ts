@@ -4,7 +4,7 @@ import type { BiologicalSex, MenstrualStatus, OnboardingScreenName } from '../ty
  * Builds the onboarding screen flow based on user answers.
  *
  * Flow order:
- *   welcome → age-range → sex → skin-goal → camera-permission → health-permission
+ *   welcome → age-range → sex → skin-goal → health-permission
  *     → [menstrual → cycle-details]? (female AND !healthSyncedCycleDetected)
  *     → scan-reminder → preview → paywall
  *
@@ -23,7 +23,6 @@ export function buildOnboardingFlow(
     'age-range',
     'sex',
     'skin-goal',
-    'camera-permission',
     'health-permission',
   ];
 
@@ -39,6 +38,18 @@ export function buildOnboardingFlow(
 
   return flow;
 }
+
+/**
+ * Longest currently possible path: female users with regular/irregular cycles
+ * who do not import cycle data from HealthKit.
+ */
+export const LONGEST_ONBOARDING_FLOW_LENGTH = buildOnboardingFlow('female', 'regular').length;
+
+/**
+ * Progress UI excludes welcome and paywall while keeping a stable denominator
+ * across shorter/longer paths.
+ */
+export const ONBOARDING_PROGRESS_DOT_COUNT = Math.max(LONGEST_ONBOARDING_FLOW_LENGTH - 2, 1);
 
 /**
  * Maps an OnboardingScreenName to the Expo Router path.

@@ -21,6 +21,7 @@ import { gateWithPaywall } from '../src/services/subscription';
 import { Glow } from '../src/constants/theme';
 import { useStore } from '../src/store/useStore';
 import { buildDayTimeline, type DayEntry } from '../src/components/day-story/dayModel';
+import { resolveScanEntryRoute } from '../src/utils/scanConsentRoute';
 
 const P = Glow.palette;
 
@@ -32,12 +33,13 @@ export default function Home() {
   const dailyRecords = useStore((s) => s.dailyRecords);
   const modelOutputs = useStore((s) => s.modelOutputs);
   const patterns = useStore((s) => s.patterns);
+  const aiProcessingConsentGranted = useStore((s) => s.aiProcessingConsentGranted);
   const [share, setShare] = useState<ShareState>(null);
 
   const handleScan = useCallback(async () => {
     if (!(await gateWithPaywall())) return;
-    router.push('/scan/camera' as never);
-  }, [router]);
+    router.push(resolveScanEntryRoute(aiProcessingConsentGranted) as never);
+  }, [aiProcessingConsentGranted, router]);
 
   const handleOpenRitual = useCallback(() => {
     router.push('/ritual' as never);

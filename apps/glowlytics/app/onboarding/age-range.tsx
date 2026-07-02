@@ -22,6 +22,7 @@ const AGE_OPTIONS = [
   '45-54',
   '55+',
 ] as const;
+type AgeRangeOption = typeof AGE_OPTIONS[number];
 
 function AgeIllustration() {
   const pulseOpacity = useSharedValue(0.7);
@@ -108,7 +109,10 @@ export default function AgeRange() {
   const { advance, goBack, onboardingFlow, onboardingFlowIndex } = useOnboardingNavigation();
   const updateUser = useStore((s) => s.updateUser);
 
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<AgeRangeOption | null>(() => {
+    const ageRange = useStore.getState().user?.age_range;
+    return AGE_OPTIONS.includes(ageRange as AgeRangeOption) ? (ageRange as AgeRangeOption) : null;
+  });
 
   const handleContinue = () => {
     if (!selected) return;

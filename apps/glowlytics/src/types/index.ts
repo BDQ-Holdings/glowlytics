@@ -314,6 +314,10 @@ export interface SubscriptionState {
 export interface NotificationSettings {
   notifications_enabled: boolean;
   notification_time: string | null; // HH:MM format
+  ritual_am_enabled: boolean;
+  ritual_am_time: string | null; // HH:MM format
+  ritual_pm_enabled: boolean;
+  ritual_pm_time: string | null; // HH:MM format
 }
 
 export interface PatternNotificationsState {
@@ -439,6 +443,10 @@ export interface GeneratedInsights {
   zone_findings: ZoneFinding[];
   product_guidance: ProductGuidance;
   action_plan: string[];
+  /** Where the insight text came from: 'remote' = GPT-4o enrichment,
+   *  'local' = on-device deterministic fallback (reduced depth — results
+   *  surfaces a quick-read cue). Absent on pre-tagging scans. */
+  source?: 'remote' | 'local';
 }
 
 // ─── Pattern Engine types ───────────────────────────────────────────────

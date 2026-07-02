@@ -13,6 +13,7 @@ import Animated, {
 import Svg, { Path } from 'react-native-svg';
 import { Colors, FontFamily, FontSize, Spacing, BorderRadius } from '../constants/theme';
 import { ProgressDots } from './ProgressDots';
+import { ONBOARDING_PROGRESS_DOT_COUNT } from '../services/onboardingFlow';
 
 import { CALM_EASING } from '../utils/animations';
 
@@ -228,10 +229,12 @@ export const OnboardingTransition: React.FC<OnboardingTransitionProps> = ({
             </Animated.View>
           )}
 
-          {/* Progress dots — exclude welcome (index 0) and paywall (last) from display */}
+          {/* Progress dots — exclude welcome (index 0) and paywall (last) from display.
+             Use the longest possible onboarding path so dots never grow when later
+             answers add menstrual/cycle screens. */}
           {showProgress && (
             <View style={styles.dotsContainer}>
-              <ProgressDots total={Math.max(totalSteps - 2, 1)} current={Math.max(currentStep - 1, 0)} />
+              <ProgressDots total={ONBOARDING_PROGRESS_DOT_COUNT} current={Math.max(currentStep - 1, 0)} />
             </View>
           )}
 

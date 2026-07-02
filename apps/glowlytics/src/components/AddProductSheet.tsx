@@ -14,6 +14,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { localDateStr } from '../utils/localDate';
+import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { GlowIcon } from './glow/GlowIcons';
 import { FadeUp } from './glow/GlowPrimitives';
@@ -78,6 +79,7 @@ const MENU: MenuEntry[] = [
 
 export const AddProductSheet: React.FC<Props> = ({ visible, onClose }) => {
   const addProduct = useStore((s) => s.addProduct);
+  const router = useRouter();
   const { hasPermission, requestPermission } = useCameraPermissionHook();
   const device = useCameraDeviceHook('back');
 
@@ -303,19 +305,41 @@ export const AddProductSheet: React.FC<Props> = ({ visible, onClose }) => {
     goToSchedule({ name: manualName.trim(), ingredients }, 'manual');
   };
 
-  const handleConfirmAdd = () => {
+  const handleConfirmAdd = (allowDuplicate = false) => {
     if (!selected) return;
     const captureMethod: CaptureMethod =
       originMode === 'barcode' ? 'barcode' :
       originMode === 'photo' ? 'photo' : 'search';
-    addProduct({
+    const result = addProduct({
       product_name: selected.name,
       brand: selected.brand,
       product_capture_method: captureMethod,
       ingredients_list: selected.ingredients,
       usage_schedule: schedule,
       start_date: localDateStr(),
-    });
+    }, { allowDuplicate });
+    if (result.status === 'duplicate') {
+      Alert.alert(
+        'Already on your shelf',
+        `${result.duplicate.product_name} is already in your shelf.`,
+        [
+          {
+            text: 'View shelf',
+            onPress: () => {
+              handleClose();
+              router.replace('/(tabs)/products');
+            },
+          },
+          { text: 'Add anyway', onPress: () => handleConfirmAdd(true) },
+          { text: 'Cancel', style: 'cancel' },
+        ],
+      );
+      return;
+    }
+    if (result.status === 'ignored') {
+      handleClose();
+      return;
+    }
     trackEvent('product_added', { product_name: selected.name, capture_method: captureMethod, schedule });
     handleClose();
   };
@@ -696,7 +720,7 @@ export const AddProductSheet: React.FC<Props> = ({ visible, onClose }) => {
 
                 <TouchableOpacity
                   style={[styles.confirmButton, { backgroundColor: palette.ink }]}
-                  onPress={handleConfirmAdd}
+                  onPress={() => handleConfirmAdd()}
                   activeOpacity={0.85}
                 >
                   <Text style={[styles.confirmText, { color: palette.surface }]}>Add to shelf</Text>

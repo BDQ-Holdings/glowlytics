@@ -30,6 +30,7 @@ import { trackEvent } from '../../src/services/analytics';
 import { env } from '../../src/config/env';
 import { LesionTracker } from '../../src/services/lesionTracker';
 import type { DetectedLesion } from '../../src/types';
+import { setExcludedFromBackup } from '../../modules/expo-backup-exclusion';
 
 // Lazy import — onnxruntime-react-native crashes in Expo Go.
 type LesionModule = typeof import('../../src/services/onDeviceLesionDetection');
@@ -45,19 +46,45 @@ const loadLesionModule = async (): Promise<Awaited<LesionModule> | null> => {
   }
 };
 
+// Applied at most once per session — NSURLIsExcludedFromBackupKey persists on the
+// directory, so re-applying on every capture is wasted native round-trips.
+let backupExclusionApplied = false;
+
 const persistCaptureForAnalysis = async (sourceUri: string): Promise<string> => {
   const photosDir = `${FileSystemLegacy.documentDirectory}scan_photos/`;
   await FileSystemLegacy.makeDirectoryAsync(photosDir, { intermediates: true });
   // MOB-02: scans intentionally live under documentDirectory (NOT cacheDirectory) because
   // the report PDF + 90-day history depend on this path surviving relaunches. expo-file-system
-  // v19 exposes no backup-exclusion / "skip iCloud backup" flag, so we cannot opt this
-  // directory out of device backups at write time. At-rest protection relies on: (1) wipe-on-delete
-  // of scan_photos when the user deletes their data (see useStore), and (2) the OS app sandbox.
-  // The face metadata blob is separately AES-encrypted (MOB-01); the raw JPEGs are not.
+  // v19 exposes no backup-exclusion / "skip iCloud backup" flag, so the local
+  // modules/expo-backup-exclusion native module sets NSURLIsExcludedFromBackupKey on the
+  // scan_photos/ directory instead — excluding a directory covers its current and future
+  // contents on iOS, so one call handles every JPEG written below. At-rest protection
+  // additionally relies on: (1) wipe-on-delete of scan_photos when the user deletes their
+  // data (see useStore), and (2) the OS app sandbox. The face metadata blob is separately
+  // AES-encrypted (MOB-01); the raw JPEGs are not.
+  if (!backupExclusionApplied) {
+    backupExclusionApplied = true;
+    // Best-effort fire-and-forget: exclusion failing (Expo Go, Android, native build
+    // stripped) must never break the capture path.
+    setExcludedFromBackup(photosDir).catch(() => {});
+  }
   const filename = `scan_${Date.now()}.jpg`;
   const destUri = `${photosDir}${filename}`;
   await FileSystemLegacy.copyAsync({ from: sourceUri, to: destUri });
   return destUri;
+};
+
+const qualityIssueCopy = (issue: string): string => {
+  switch (issue) {
+    case 'too_dark':
+      return 'Too dark — move to brighter light.';
+    case 'too_bright':
+      return 'Too bright — step away from direct light.';
+    case 'low_contrast':
+      return 'Low contrast — face a steady light source.';
+    default:
+      return issue;
+  }
 };
 
 export default function CameraScreen() {
@@ -87,6 +114,14 @@ export default function CameraScreen() {
   const cameraRef = useRef<Camera>(null);
   const protocol = useStore((s) => s.protocol);
   const canPerformScan = useStore((s) => s.canPerformScan);
+  const aiProcessingConsentGranted = useStore((s) => s.aiProcessingConsentGranted);
+
+  useEffect(() => {
+    if (!aiProcessingConsentGranted) {
+      router.replace('/scan/ai-consent');
+    }
+  }, [aiProcessingConsentGranted, router]);
+
 
   // Defense-in-depth: present paywall if scan not allowed
   useEffect(() => {
@@ -279,14 +314,15 @@ export default function CameraScreen() {
         if (__DEV__) console.warn('[Camera] Lesion detection init error:', err);
         trackEvent('camera_lesion_init', { success: false, error: String(err) });
       });
-    return () => {
-      loadLesionModule().then((m) => m?.releaseLesionDetection()).catch(() => {});
-    };
+    // NOTE: intentionally NO release on unmount. The 42.7MB CoreML session is
+    // boot-loaded once in app/_layout.tsx; releasing it here made every camera
+    // re-open pay the full re-init cost. releaseLesionDetection() stays
+    // exported as a memory-pressure hook only.
   }, []);
 
   // Lesion detection — starts as soon as a face is visible (not just aligned)
   useEffect(() => {
-    if (trackingState.status === 'no_face' || capturing) {
+    if (!aiProcessingConsentGranted || trackingState.status === 'no_face' || capturing) {
       if (detectionTimerRef.current) {
         clearInterval(detectionTimerRef.current);
         detectionTimerRef.current = null;
@@ -404,7 +440,7 @@ export default function CameraScreen() {
         detectionTimerRef.current = null;
       }
     };
-  }, [trackingState.status, capturing]);
+  }, [aiProcessingConsentGranted, trackingState.status, capturing]);
 
   // Button animation based on alignment
   useEffect(() => {
@@ -431,7 +467,7 @@ export default function CameraScreen() {
 
   // ─── Capture ───────────────────────────────────────────────────────
   const handleCapture = useCallback(async () => {
-    if (capturing || !cameraRef.current) return;
+    if (!aiProcessingConsentGranted || capturing || !cameraRef.current) return;
     setCapturing(true);
     setQualityFailed(false);
 
@@ -449,7 +485,7 @@ export default function CameraScreen() {
       }
       const photoUri = `file://${photo.path}`;
 
-      // Quality check (passthrough — real detection handled by frame processor)
+      // Final capture quality gate — catches exposure/contrast failures on the saved JPEG.
       const quality = await checkPhotoQuality(photoUri, photo.width, photo.height);
       if (quality.overallPass || quality.issues.length === 0) {
         let analysisPhotoUri = photoUri;
@@ -480,10 +516,12 @@ export default function CameraScreen() {
     } catch {
       setCapturing(false);
     }
-  }, [capturing, router]);
+  }, [aiProcessingConsentGranted, capturing, router]);
 
   const handleCaptureRef = useRef(handleCapture);
   useEffect(() => { handleCaptureRef.current = handleCapture; }, [handleCapture]);
+
+  if (!aiProcessingConsentGranted) return null;
 
   // ─── Permission not yet granted ───────────────────────────────────
   if (!hasPermission) {
@@ -678,7 +716,7 @@ export default function CameraScreen() {
           <View style={styles.retakeContainer}>
             <Text style={styles.retakeTitle}>Photo quality issue</Text>
             {qualityIssues.map((issue, i) => (
-              <Text key={i} style={styles.retakeIssue}>{issue}</Text>
+              <Text key={i} style={styles.retakeIssue}>{qualityIssueCopy(issue)}</Text>
             ))}
             <Button
               title="Retake"

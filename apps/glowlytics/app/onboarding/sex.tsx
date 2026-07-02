@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { useRouter } from 'expo-router';
 import Svg, { Defs, RadialGradient, Stop, Circle, Ellipse, Path } from 'react-native-svg';
 import { OnboardingTransition } from '../../src/components/OnboardingTransition';
 import { OnboardingOptionCard } from '../../src/components/OnboardingOptionCard';
 import { useStore } from '../../src/store/useStore';
 import { useOnboardingNavigation } from '../../src/hooks/useOnboardingNavigation';
-import { buildOnboardingFlow, screenToRoute } from '../../src/services/onboardingFlow';
+import { buildOnboardingFlow } from '../../src/services/onboardingFlow';
 import { Colors, Glow, FontFamily, FontSize, Spacing } from '../../src/constants/theme';
 import type { BiologicalSex } from '../../src/types';
 
@@ -87,28 +86,19 @@ function SexIllustration() {
 }
 
 export default function Sex() {
-  const router = useRouter();
-  const { goBack, onboardingFlow, onboardingFlowIndex } = useOnboardingNavigation();
-  const setOnboardingFlowIndex = useStore((s) => s.setOnboardingFlowIndex);
+  const { advance, goBack, onboardingFlow, onboardingFlowIndex } = useOnboardingNavigation();
   const setOnboardingFlow = useStore((s) => s.setOnboardingFlow);
   const updateUser = useStore((s) => s.updateUser);
 
-  const [selected, setSelected] = useState<BiologicalSex | null>(null);
+  const [selected, setSelected] = useState<BiologicalSex | null>(() => useStore.getState().user?.sex ?? null);
 
   const advanceWithSex = (sex: BiologicalSex) => {
     const periodApplicable = sex === 'female' ? 'yes' : 'no';
     updateUser({ sex, period_applicable: periodApplicable });
 
-    // Rebuild the flow with the selected sex to conditionally include menstrual screens
     const newFlow = buildOnboardingFlow(sex);
     setOnboardingFlow(newFlow);
-
-    // Find our current position in the new flow
-    const currentScreenIndex = newFlow.indexOf('sex');
-    const nextIndex = currentScreenIndex + 1;
-    setOnboardingFlowIndex(nextIndex);
-    // Use replace to prevent stale screens in the navigation stack after flow rebuild
-    router.replace(screenToRoute(newFlow[nextIndex]) as any);
+    advance();
   };
 
   const handleContinue = () => {
@@ -118,12 +108,8 @@ export default function Sex() {
 
   const handlePreferNot = () => {
     updateUser({ sex: 'prefer_not', period_applicable: 'prefer_not' });
-    const newFlow = buildOnboardingFlow('prefer_not');
-    setOnboardingFlow(newFlow);
-    const currentScreenIndex = newFlow.indexOf('sex');
-    const nextIndex = currentScreenIndex + 1;
-    setOnboardingFlowIndex(nextIndex);
-    router.replace(screenToRoute(newFlow[nextIndex]) as any);
+    setOnboardingFlow(buildOnboardingFlow('prefer_not'));
+    advance();
   };
 
   return (

@@ -1,12 +1,6 @@
-const { Pool } = require('pg');
-const { poolSsl } = require('../db-ssl');
-const { attachPoolErrorHandler } = require('../pg-resilience');
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://localhost:5432/glowlytics',
-  ssl: poolSsl(),
-});
-attachPoolErrorHandler(pool, 'scans');
+// Shared process-wide pool (see ../db-pool.js) — this module previously built
+// its own Pool, doubling idle connections against Railway Postgres.
+const pool = require('../db-pool').getPool();
 
 const MAX_RANGE = 90;
 

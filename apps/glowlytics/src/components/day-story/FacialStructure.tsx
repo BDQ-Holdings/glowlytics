@@ -11,8 +11,9 @@
  * (off-screen capture, IG / Twitter aspect ratios).
  */
 
-import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useMemo } from 'react';
+import { Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { router } from 'expo-router';
 import Svg, { Circle, Line, Path, G, Polygon, Defs, ClipPath } from 'react-native-svg';
 import { GlowIcon } from '../glow/GlowIcons';
 import { SectionHead } from '../glow/GlowPrimitives';
@@ -345,15 +346,33 @@ function readingFromBone(bone: BoneStructureResult | undefined | null): Reading 
 export function FacialStructure({ compact = false, onShare }: FacialStructureProps) {
   const modelOutputs = useStore((s) => s.modelOutputs);
 
-  // Use the latest output that carries a bone-structure result — most
-  // scans won't (it's a separate analysis path).
-  const latestBone = (() => {
+  // Use the latest output that carries a bone-structure result — most scans
+  // won't (it's a separate analysis path). Capture BOTH the reading shown and
+  // the daily_id of the output that owns it, so the detail screen opens the
+  // exact read the card displays rather than whatever happens to be the newest
+  // (possibly skin-only) output on record.
+  const { latestBone, boneDailyId } = useMemo(() => {
     for (let i = modelOutputs.length - 1; i >= 0; i--) {
-      const b = modelOutputs[i]?.bone_structure;
-      if (b && b.status === 'ok') return b;
+      const output = modelOutputs[i];
+      const b = output?.bone_structure;
+      if (output && b && b.status === 'ok') {
+        return { latestBone: b, boneDailyId: output.daily_id };
+      }
     }
-    return null;
-  })();
+    return { latestBone: null, boneDailyId: null };
+  }, [modelOutputs]);
+
+  const handleOpenDetail = useCallback(() => {
+    // Navigate with the daily_id of the bone read the card is displaying;
+    // without it bone-results falls back to the newest output, which may be a
+    // skin-only scan → the empty 'waiting' state. No bone read → keep the
+    // param-less path (bone-results shows its own empty state).
+    router.push(
+      boneDailyId
+        ? { pathname: '/scan/bone-results', params: { dailyId: boneDailyId } }
+        : '/scan/bone-results',
+    );
+  }, [boneDailyId]);
 
   const reading = readingFromBone(latestBone);
 
@@ -369,7 +388,13 @@ export function FacialStructure({ compact = false, onShare }: FacialStructurePro
       {!compact && (
         <SectionHead title="Your structure" hint="from your latest face read" ink={P.ink} muted={P.muted} />
       )}
-      <View style={[styles.card, compact && styles.cardCompact]}>
+      <Pressable
+        onPress={handleOpenDetail}
+        accessibilityRole="button"
+        accessibilityLabel="Open your full facial structure read"
+        accessibilityHint="Opens your detailed facial architecture results"
+        style={({ pressed }) => [styles.card, compact && styles.cardCompact, pressed && styles.cardPressed]}
+      >
         {/* breathing halo */}
         <View pointerEvents="none" style={styles.halo} />
 
@@ -437,7 +462,7 @@ export function FacialStructure({ compact = false, onShare }: FacialStructurePro
             <Text style={styles.shareBtnText}>Share my face read</Text>
           </TouchableOpacity>
         )}
-      </View>
+      </Pressable>
     </View>
   );
 }
@@ -455,6 +480,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   cardCompact: { marginTop: 0 },
+  cardPressed: { opacity: 0.94 },
   halo: {
     position: 'absolute',
     top: -30,

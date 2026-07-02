@@ -19,6 +19,7 @@ import { FACET_TONE, type GlowFacetKey } from '../../src/constants/facets';
 import { useStore } from '../../src/store/useStore';
 import { trackEvent } from '../../src/services/analytics';
 import { computeProductEffectiveness } from '../../src/services/ingredientDB';
+import { activeProducts } from '../../src/services/ritual';
 import {
   buildOverallSkinInsight,
   getLatestDailyForOutput,
@@ -43,7 +44,10 @@ export default function ShelfTab() {
   const router = useRouter();
   const palette = Glow.palette;
   const insets = useSafeAreaInsets();
-  const products = useStore((s) => s.products);
+  const allProducts = useStore((s) => s.products);
+  // Soft-removed products stay in the store for ritual history; the Shelf only
+  // shows what's active today so Remove visibly removes.
+  const products = useMemo(() => activeProducts(allProducts), [allProducts]);
   const protocol = useStore((s) => s.protocol);
   const modelOutputs = useStore((s) => s.modelOutputs);
   const dailyRecords = useStore((s) => s.dailyRecords);

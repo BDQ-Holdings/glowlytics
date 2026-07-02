@@ -4,6 +4,10 @@
 
 process.env.NODE_ENV = 'development';
 process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY || 'test-key-for-ci';
+// Auth fails closed when an issuer is configured. Set '' (not delete): jest
+// shares process.env across files (maxWorkers=1) and app.js's dotenv would
+// re-inject a developer's .env CLERK_ISSUER_URL into a deleted slot.
+process.env.CLERK_ISSUER_URL = '';
 
 const mockCreate = jest.fn();
 

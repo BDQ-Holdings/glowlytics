@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { Alert, Linking, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { AtmosphereScreen } from '../src/components/AtmosphereScreen';
@@ -24,9 +23,8 @@ import {
   isTrialActive,
   trialDaysRemaining,
 } from '../src/services/subscription';
-import { scheduleDailyReminder, cancelDailyReminder } from '../src/services/notifications';
-import { trackEvent, resetAnalytics } from '../src/services/analytics';
-import * as api from '../src/services/api';
+import { trackEvent } from '../src/services/analytics';
+import { confirmSignOut } from '../src/services/session';
 import { formatRelativeTime } from '../src/utils/formatRelativeTime';
 import { ConnectedAppsSection } from '../src/components/ConnectedAppsSection';
 import { GamificationCard } from '../src/components/GamificationCard';
@@ -95,9 +93,16 @@ const ArchitectureLauncher: React.FC<{ onPress: () => void }> = ({ onPress }) =>
 };
 
 const getErrorMessage = (err: unknown, fallback = 'Unknown error') => {
-  const clerkMessage = (err as any)?.errors?.[0]?.longMessage ?? (err as any)?.errors?.[0]?.message;
-  if (typeof clerkMessage === 'string' && clerkMessage.trim().length > 0) {
-    return clerkMessage;
+  if (err && typeof err === 'object' && 'errors' in err && Array.isArray(err.errors)) {
+    const firstError = err.errors[0];
+    if (firstError && typeof firstError === 'object') {
+      if ('longMessage' in firstError && typeof firstError.longMessage === 'string' && firstError.longMessage.trim()) {
+        return firstError.longMessage;
+      }
+      if ('message' in firstError && typeof firstError.message === 'string' && firstError.message.trim()) {
+        return firstError.message;
+      }
+    }
   }
   return err instanceof Error ? err.message : String(err ?? fallback);
 };
@@ -117,16 +122,11 @@ export default function AccountScreen() {
   const gamification = useStore((s) => s.gamification);
   const subscription = useStore((s) => s.subscription);
   const setSubscription = useStore((s) => s.setSubscription);
-  const notificationSettings = useStore((s) => s.notificationSettings);
-  const setNotificationTime = useStore((s) => s.setNotificationTime);
-  const resetAll = useStore((s) => s.resetAll);
   const healthConnection = useStore((s) => s.user?.health_connection);
   const healthSyncStatus = useStore((s) => s.healthSyncStatus);
   const updateHealthConnection = useStore((s) => s.updateHealthConnection);
 
-  const [showTimePicker, setShowTimePicker] = useState(false);
   const [healthConnecting, setHealthConnecting] = useState(false);
-  const [deletingAccount, setDeletingAccount] = useState(false);
   const getStreak = useStore((s) => s.getStreak);
   const streak = getStreak();
 
@@ -141,65 +141,12 @@ export default function AccountScreen() {
         ? 'Not applicable'
         : 'Prefer not to say';
 
-  const handleSignOut = async () => {
-    if (clerk) {
-      Alert.alert(
-        'Sign out',
-        'Are you sure you want to sign out?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Sign out',
-            style: 'destructive',
-            onPress: async () => {
-              try {
-                trackEvent('auth_sign_out');
-                resetAnalytics();
-                await clerk.signOut();
-                await resetAll();
-                // AuthRedirector handles navigation when isSignedIn → false
-              } catch {
-                Alert.alert('Sign out failed', 'Please try again.');
-              }
-            },
-          },
-        ],
-      );
-    }
+  const handleSignOut = () => {
+    confirmSignOut(clerk);
   };
 
   const handleDeleteAccount = () => {
-    if (!user?.user_id || deletingAccount) return;
-
-    Alert.alert(
-      'Delete account',
-      'This permanently deletes your Glowlytics account and synced data, including scan history, products, photos, and settings. This action cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete account',
-          style: 'destructive',
-          onPress: async () => {
-            setDeletingAccount(true);
-            try {
-              trackEvent('account_delete_requested');
-              await api.deleteUser(user.user_id);
-              await clerk?.signOut().catch(() => {});
-              resetAnalytics();
-              await resetAll();
-              router.replace('/');
-            } catch (err: unknown) {
-              Alert.alert(
-                'Delete account failed',
-                getErrorMessage(err, 'We could not delete your account. Please try again.'),
-              );
-            } finally {
-              setDeletingAccount(false);
-            }
-          },
-        },
-      ],
-    );
+    router.push('/settings/delete-account');
   };
 
   const handleHealthConnect = async () => {
@@ -341,15 +288,12 @@ export default function AccountScreen() {
         <TouchableOpacity
           style={[styles.modeButton, styles.modeButtonDestructive]}
           onPress={handleDeleteAccount}
-          disabled={deletingAccount}
           activeOpacity={0.7}
           accessibilityRole="button"
           accessibilityLabel="Delete account"
         >
           <Feather name="trash-2" size={16} color={Colors.error} />
-          <Text style={[styles.modeButtonText, { color: Colors.error }]}>
-            {deletingAccount ? 'Deleting account...' : 'Delete account'}
-          </Text>
+          <Text style={[styles.modeButtonText, { color: Colors.error }]}>Delete account</Text>
         </TouchableOpacity>
 
         <View style={styles.divider} />
@@ -513,89 +457,16 @@ export default function AccountScreen() {
           <Text style={styles.cardTitle}>Notifications</Text>
         </View>
         <TouchableOpacity
-          style={styles.infoRow}
-          onPress={() => {
-            if (notificationSettings.notifications_enabled) {
-              setShowTimePicker(true);
-            }
-          }}
-          activeOpacity={notificationSettings.notifications_enabled ? 0.7 : 1}
+          style={styles.modeButton}
+          onPress={() => router.push('/settings/notifications')}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Open notification settings"
         >
-          <Text style={styles.infoLabel}>Daily reminder</Text>
-          <Text style={[styles.infoValue, notificationSettings.notifications_enabled && notificationSettings.notification_time
-            ? { color: Colors.primary }
-            : { color: Colors.textDim }]}>
-            {notificationSettings.notifications_enabled && notificationSettings.notification_time
-              ? notificationSettings.notification_time
-              : 'Off'}
-          </Text>
+          <Feather name="bell" size={16} color={Colors.primary} />
+          <Text style={styles.modeButtonText}>Notifications — scan + ritual reminders</Text>
+          <Feather name="chevron-right" size={16} color={Colors.textMuted} />
         </TouchableOpacity>
-        {showTimePicker && (
-          <DateTimePicker
-            value={(() => {
-              const [h, m] = (notificationSettings.notification_time || '08:00').split(':').map(Number);
-              const d = new Date(2000, 0, 1, h, m);
-              return d;
-            })()}
-            mode="time"
-            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-            onChange={async (_, selected) => {
-              setShowTimePicker(Platform.OS === 'ios');
-              if (selected) {
-                const h = selected.getHours();
-                const m = selected.getMinutes();
-                const timeStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-                try {
-                  await scheduleDailyReminder(h, m);
-                  setNotificationTime(timeStr);
-                } catch { /* notification scheduling failed — non-fatal */ }
-              }
-            }}
-            themeVariant="light"
-          />
-        )}
-        {notificationSettings.notifications_enabled ? (
-          <View style={{ gap: Spacing.sm }}>
-            <TouchableOpacity
-              style={styles.modeButton}
-              onPress={() => setShowTimePicker(!showTimePicker)}
-              activeOpacity={0.7}
-            >
-              <Feather name="clock" size={16} color={Colors.primary} />
-              <Text style={[styles.modeButtonText, { color: Colors.primary }]}>Change time</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.modeButton}
-              onPress={async () => {
-                try {
-                  await cancelDailyReminder();
-                } catch { /* non-fatal */ }
-                setNotificationTime(null);
-                setShowTimePicker(false);
-              }}
-              activeOpacity={0.7}
-            >
-              <Feather name="bell-off" size={16} color={Colors.error} />
-              <Text style={[styles.modeButtonText, { color: Colors.error }]}>Turn off reminders</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <TouchableOpacity
-            style={styles.modeButton}
-            onPress={async () => {
-              const defaultTime = '08:00';
-              const [h, m] = defaultTime.split(':').map(Number);
-              try {
-                await scheduleDailyReminder(h, m);
-                setNotificationTime(defaultTime);
-              } catch { /* non-fatal */ }
-            }}
-            activeOpacity={0.7}
-          >
-            <Feather name="bell" size={16} color={Colors.primary} />
-            <Text style={[styles.modeButtonText, { color: Colors.primary }]}>Enable daily reminder</Text>
-          </TouchableOpacity>
-        )}
       </View>
 
       {/* Your Profile — demographics + scan protocol combined */}
@@ -865,7 +736,7 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   bestItem: {
-    width: '47%' as any,
+    width: '47%',
     borderRadius: BorderRadius.lg,
     padding: Spacing.md,
     gap: Spacing.xxs,

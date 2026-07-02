@@ -15,9 +15,14 @@ beforeEach(() => {
   jest.resetModules();
   process.env.MCP_ENABLED = 'true';
   process.env.MCP_BASE_URL = 'https://api.glowlytics.ai';
-  process.env.CLERK_ISSUER_URL = 'https://clerk.glowlytics.ai';
+  // Auth fails closed whenever CLERK_ISSUER_URL is set (even in development),
+  // so these route-handler tests must run issuer-less to use the dev
+  // passthrough (req.auth = { userId: 'dev-user' }) instead of minting JWTs.
+  // Set '' (not delete): app.js's dotenv would re-inject a developer's .env
+  // CLERK_ISSUER_URL into a deleted slot on every fresh require.
+  process.env.CLERK_ISSUER_URL = '';
   process.env.CLERK_SECRET_KEY = 'sk_test_fake';
-  process.env.NODE_ENV = 'development'; // disables auth gating to allow Supertest probes
+  process.env.NODE_ENV = 'development'; // issuer-less dev passthrough for Supertest probes
   mockListGrants.mockReset();
   mockRevokeGrant.mockReset();
   jest.doMock('../../mcp/clerk-clients', () => ({

@@ -66,10 +66,14 @@ describe('rag.js', () => {
       const { embedText } = require('../rag');
       const result = await embedText('test dermatology query');
 
-      expect(mockEmbeddingsCreate).toHaveBeenCalledWith({
-        model: 'text-embedding-3-small',
-        input: 'test dermatology query',
-      });
+      expect(mockEmbeddingsCreate).toHaveBeenCalledWith(
+        {
+          model: 'text-embedding-3-small',
+          input: 'test dermatology query',
+        },
+        // Per-request deadline so a hung embeddings call can't stall RAG callers.
+        { timeout: 10_000, maxRetries: 1 },
+      );
       expect(result).toEqual(fakeVector);
       expect(result).toHaveLength(1536);
     });
@@ -162,10 +166,13 @@ describe('rag.js', () => {
       const results = await queryGuidelines('how to treat acne', 5);
 
       // Verify embedding was created for the query
-      expect(mockEmbeddingsCreate).toHaveBeenCalledWith({
-        model: 'text-embedding-3-small',
-        input: 'how to treat acne',
-      });
+      expect(mockEmbeddingsCreate).toHaveBeenCalledWith(
+        {
+          model: 'text-embedding-3-small',
+          input: 'how to treat acne',
+        },
+        { timeout: 10_000, maxRetries: 1 },
+      );
 
       // Verify Pinecone was queried with correct params
       expect(mockQuery).toHaveBeenCalledWith({

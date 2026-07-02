@@ -12,6 +12,11 @@
 
 process.env.NODE_ENV = 'development';
 delete process.env.CLERK_SECRET_KEY; // B4: ensure the unverified path by default
+// Auth fails closed whenever an issuer is configured (even in development) —
+// clear any issuer leaked by an earlier test file (jest shares process.env
+// across files at maxWorkers=1). Set '' (not delete): app.js's dotenv would
+// re-inject a developer's .env CLERK_ISSUER_URL into a deleted slot.
+process.env.CLERK_ISSUER_URL = '';
 
 const mockQuery = jest.fn();
 jest.mock('pg', () => {
@@ -282,5 +287,50 @@ describe('B6 — oversized image_base64 rejected with 413', () => {
 
     expect(res.status).toBe(200);
     expect(uvScan.screenImage).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ==================== Waitlist rate limiting (public, DB-writing) ==========
+
+describe('waitlist endpoints are rate-limited per IP', () => {
+  beforeEach(() => {
+    app._resetRateLimiters();
+    mockQuery.mockResolvedValue({ rows: [{ count: '0' }] });
+  });
+  afterEach(() => {
+    app._resetRateLimiters(); // don't leak a hot limiter into other describes
+  });
+
+  test('POST /api/waitlist bursts past the per-IP window → 429 without hitting the DB', async () => {
+    // detectRateLimit allows 10 requests / 10s / IP; the 11th must 429.
+    for (let i = 0; i < 10; i++) {
+      const ok = await request(app).post('/api/waitlist').send({ email: `w${i}@example.com` });
+      expect(ok.status).toBe(200);
+    }
+    const queriesBefore = mockQuery.mock.calls.length;
+    const blocked = await request(app).post('/api/waitlist').send({ email: 'w11@example.com' });
+    expect(blocked.status).toBe(429);
+    expect(blocked.body.error).toMatch(/rate limit/i);
+    expect(mockQuery.mock.calls.length).toBe(queriesBefore); // limiter fired before the handler
+  });
+
+  test('GET /api/waitlist/count shares the same per-IP limiter', async () => {
+    for (let i = 0; i < 10; i++) {
+      await request(app).get('/api/waitlist/count').expect(200);
+    }
+    await request(app).get('/api/waitlist/count').expect(429);
+  });
+});
+
+// ==================== /health model visibility =============================
+
+describe('GET /health reports loaded models without gating on them', () => {
+  test('200 with a models array even when no ONNX session is loaded', async () => {
+    // signal-models is the REAL module here (unmocked); no initModels() has
+    // run, so every session is null — /health must still be 200 (degraded,
+    // not dead: Railway's healthcheck depends on it) and list zero models.
+    const res = await request(app).get('/health').expect(200);
+    expect(res.body.status).toBe('ok');
+    expect(res.body.models).toEqual([]);
   });
 });

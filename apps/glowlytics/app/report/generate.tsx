@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Print from 'expo-print';
@@ -23,6 +23,7 @@ import { useStore } from '../../src/store/useStore';
 import { gateWithPaywall } from '../../src/services/subscription';
 import { trackEvent } from '../../src/services/analytics';
 import { buildReportHtml, type ReportHtmlData } from '../../src/services/reportHtml';
+import { activeProducts } from '../../src/services/ritual';
 
 type TimeRange = 7 | 14 | 30;
 
@@ -58,7 +59,9 @@ export default function GenerateReport() {
   }, []);
 
   const protocol = useStore((s) => s.protocol);
-  const products = useStore((s) => s.products);
+  const allProducts = useStore((s) => s.products);
+  // The dermatologist report presents the CURRENT routine — exclude soft-removed products.
+  const products = useMemo(() => activeProducts(allProducts), [allProducts]);
   const dailyRecords = useStore((s) => s.dailyRecords);
   const modelOutputs = useStore((s) => s.modelOutputs);
 

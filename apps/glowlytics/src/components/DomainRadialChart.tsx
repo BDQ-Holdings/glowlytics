@@ -24,10 +24,14 @@ interface Props {
   /** Optional previous-scan scores — drawn as a ghost outline behind the
    *  live petal so the user can see per-domain movement at a glance. */
   previousScores?: Partial<Record<BoneDomain, number | null>>;
+  /** When false, suppresses the numeric SVG score text on each axis while
+   *  keeping the plotted shape. Defaults to true so existing usages are
+   *  unchanged. */
+  showScoreLabels?: boolean;
   size?: number;
 }
 
-export const DomainRadialChart: React.FC<Props> = ({ scores, previousScores, size = 240 }) => {
+export const DomainRadialChart: React.FC<Props> = ({ scores, previousScores, showScoreLabels = true, size = 240 }) => {
   const center = size / 2;
   const radius = size / 2 - 28; // padding for outside labels
 
@@ -182,7 +186,7 @@ export const DomainRadialChart: React.FC<Props> = ({ scores, previousScores, siz
                 >
                   {a.label}
                 </SvgText>
-                {typeof a.score === 'number' && Number.isFinite(a.score) && (
+                {showScoreLabels && typeof a.score === 'number' && Number.isFinite(a.score) && (
                   <SvgText
                     x={a.scoreLabelX} y={a.scoreLabelY}
                     fontSize={FontSize.xxs}

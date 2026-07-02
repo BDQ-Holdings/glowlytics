@@ -81,6 +81,28 @@ const CANONICAL_LANDMARKS: LandmarkVertex[] = [
   // Mouth corners
   { index: 61,  label: 'cheilion_L',         x:  9.75, y: -20.61, z:  48.50 },
   { index: 291, label: 'cheilion_R',         x: -9.75, y: -20.61, z:  48.50 },
+  // ── NEW: mid-temple + fronto-temporal (forehead width) ──
+  { index: 21,  label: 'mid_temple_L',       x:  27.50, y:  22.00, z:  10.00 },
+  { index: 251, label: 'mid_temple_R',       x: -27.50, y:  22.00, z:  10.00 },
+  { index: 54,  label: 'upper_temple_L',     x:  24.00, y:  36.00, z:   6.00 },
+  { index: 284, label: 'upper_temple_R',     x: -24.00, y:  36.00, z:   6.00 },
+  // ── NEW: lip arch (philtral columns / cupid's bow peaks) ──
+  { index: 37,  label: 'philtrum_L',         x:   2.40, y: -15.40, z:  55.20 },
+  { index: 267, label: 'philtrum_R',         x:  -2.40, y: -15.40, z:  55.20 },
+  // ── NEW: lateral vermilion border (lip outline) ──
+  { index: 40,  label: 'upper_vermilion_L',  x:   5.60, y: -16.80, z:  53.00 },
+  { index: 270, label: 'upper_vermilion_R',  x:  -5.60, y: -16.80, z:  53.00 },
+  { index: 91,  label: 'lower_vermilion_L',  x:   5.60, y: -25.60, z:  51.80 },
+  { index: 321, label: 'lower_vermilion_R',  x:  -5.60, y: -25.60, z:  51.80 },
+  // ── NEW: lower mandibular border (jaw underline: gonion → menton arc) ──
+  { index: 149, label: 'jaw_mid_L',          x:  13.50, y: -38.00, z:  15.00 },
+  { index: 378, label: 'jaw_mid_R',          x: -13.50, y: -38.00, z:  15.00 },
+  { index: 176, label: 'submandible_L',      x:   7.50, y: -46.00, z:  16.00 },
+  { index: 400, label: 'submandible_R',      x:  -7.50, y: -46.00, z:  16.00 },
+  // ── NEW: submental region (under-chin volume) ──
+  { index: 175, label: 'submental_center',   x:   0.00, y: -53.00, z:   6.00 },
+  { index: 171, label: 'submental_L',        x:   6.00, y: -49.00, z:   6.50 },
+  { index: 396, label: 'submental_R',        x:  -6.00, y: -49.00, z:   6.50 },
 ];
 
 // Maximum index present in CANONICAL_LANDMARKS — defines the flat array length.
@@ -97,6 +119,21 @@ export function buildCanonicalMesh(): number[] {
   }
   return arr;
 }
+
+/**
+ * Named vertex-index groups for the landmarks added to give the canonical
+ * head fuller "marquis mask" geometry. Visualization-only — these indices are
+ * not referenced by the metric/scoring pipeline (that reads the captured mesh
+ * via the measurement tables in boneStructure.ts), so adding them changes the
+ * rendered wireframe without touching any score.
+ */
+export const FACE_LANDMARK_GROUPS = {
+  midTemple: [21, 251, 54, 284],
+  lipArch: [37, 267],
+  lateralVermilion: [40, 270, 91, 321],
+  mandibularBorder: [149, 378, 176, 400],
+  submental: [175, 171, 396],
+} as const satisfies Record<string, readonly number[]>;
 
 /** Synthetic capture — wraps the canonical mesh in a CapturedFaceMesh envelope. */
 export function captureCanonicalMesh(): CapturedFaceMesh {
@@ -251,6 +288,14 @@ export const CANONICAL_TRIANGLES: ReadonlyArray<[number, number, number]> = [
   [356, 397, 454],
   [127, 172, 152],
   [356, 152, 397],
+  // ── NEW: lips (vermilion fill) ──
+  [61, 40, 37], [61, 37, 0], [0, 267, 291], [267, 270, 291],
+  [61, 91, 17], [17, 321, 291],
+  // ── NEW: jaw underside + submental ──
+  [172, 149, 176], [172, 176, 152], [397, 378, 400], [397, 400, 152],
+  [152, 175, 171], [152, 396, 175], [172, 171, 175], [397, 175, 396],
+  // ── NEW: temple planes ──
+  [127, 21, 54], [356, 284, 251],
 ];
 
 /**
@@ -278,8 +323,10 @@ export const CANONICAL_OUTLINE_EDGES: ReadonlyArray<[number, number]> = [
   [285, 334], [334, 263],
   [9, 55], [9, 285], [55, 159], [285, 386],
 
-  // Mouth (cheilion ↔ midlines ↔ chin)
-  [61, 0], [0, 291], [61, 17], [17, 291],
+  // Mouth — vermilion outline (replaces the 4 coarse cheilion↔midline↔chin edges)
+  [61, 40], [40, 37], [37, 0], [0, 267], [267, 270], [270, 291],   // upper vermilion arc
+  [61, 91], [91, 17], [17, 321], [321, 291],                       // lower vermilion arc
+  [37, 2], [267, 2],                                               // philtral columns → subnasale
   [61, 49], [291, 279], [61, 199], [291, 199],
 
   // ── Cheek + midface planes ──
@@ -303,4 +350,12 @@ export const CANONICAL_OUTLINE_EDGES: ReadonlyArray<[number, number]> = [
   [172, 152], [397, 152], [199, 152],    // jawline → menton
   [127, 172], [356, 397],         // tragion → gonion (ramus)
   [199, 17],                      // chin → lower lip
+  // ── NEW: temple fan (fuller forehead sides) ──
+  [127, 21], [21, 54], [54, 10], [21, 105],
+  [356, 251], [251, 284], [284, 10], [251, 334],
+  // ── NEW: lower mandibular border (jaw underline) ──
+  [172, 149], [149, 176], [176, 152],
+  [397, 378], [378, 400], [400, 152],
+  // ── NEW: submental arc (under-chin volume) ──
+  [152, 175], [175, 171], [171, 172], [175, 396], [396, 397], [199, 175],
 ];

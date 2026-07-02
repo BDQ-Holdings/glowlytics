@@ -17,6 +17,7 @@ import {
   formatMetricValue,
   HARMONY_ACCENT,
   METRIC_BY_KEY,
+  interpretMetricScore,
   type BoneMetricKey,
 } from '../../src/constants/boneStructure';
 import { buildCanonicalMesh } from '../../src/services/canonicalFaceMesh';
@@ -119,6 +120,23 @@ export default function FindingDetail() {
             </Text>
           </View>
         </View>
+
+        {Number.isFinite(finding.score) && (() => {
+          const interp = interpretMetricScore(finding.metric as BoneMetricKey, finding.score);
+          const ideal = interp.band === 'ideal';
+          return (
+            <View style={styles.interpretCard}>
+              <View style={styles.interpretHead}>
+                <Text style={styles.interpretLabel}>{interp.label}</Text>
+                <View style={[styles.bandChip, ideal ? styles.bandChipIdeal : styles.bandChipBelow]}>
+                  <Text style={[styles.bandChipText, ideal ? styles.bandChipTextIdeal : styles.bandChipTextBelow]}>{interp.bandLabel}</Text>
+                </View>
+              </View>
+              <Text style={styles.interpretIdeal}>{interp.idealText}</Text>
+              <Text style={styles.interpretMeaning}>{interp.meaning}</Text>
+            </View>
+          );
+        })()}
 
         {metricMeta && (
           <Text style={styles.hint}>{metricMeta.hint}</Text>
@@ -268,4 +286,20 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: Spacing.md,
   },
+  interpretCard: {
+    backgroundColor: Glow.palette.surface,
+    borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Glow.palette.glow,
+    paddingVertical: Spacing.md, paddingHorizontal: Spacing.md, gap: Spacing.xxs,
+    marginTop: Spacing.md,
+  },
+  interpretHead: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  interpretLabel: { flex: 1, color: Glow.palette.ink, fontFamily: FontFamily.sansSemiBold, fontSize: FontSize.md },
+  interpretIdeal: { color: Glow.palette.muted, fontFamily: FontFamily.sans, fontSize: FontSize.xs },
+  interpretMeaning: { color: Colors.textSecondary, fontFamily: FontFamily.sans, fontSize: FontSize.sm, lineHeight: 20 },
+  bandChip: { paddingHorizontal: Spacing.xs + 2, paddingVertical: 2, borderRadius: BorderRadius.full },
+  bandChipBelow: { backgroundColor: Colors.warning + '1E' },
+  bandChipIdeal: { backgroundColor: Colors.success + '1E' },
+  bandChipText: { fontFamily: FontFamily.sansSemiBold, fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.6 },
+  bandChipTextBelow: { color: Colors.warning },
+  bandChipTextIdeal: { color: Colors.success },
 });

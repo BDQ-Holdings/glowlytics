@@ -50,3 +50,17 @@ export const resolveMedicalSourceLabel = (sourceCitation?: string | null): strin
   }
   return sourceCitation.trim();
 };
+
+// Resolve a source from arbitrary recommendation content (text/category/signal)
+// when no explicit source_citation is provided. Returns the matched source's
+// canonical label + url, or null when nothing matches.
+export const resolveMedicalSourceForText = (
+  text?: string | null,
+): { label: string; url: string | null } | null => {
+  if (!text || text.trim().length === 0) return null;
+  const match = MEDICAL_SOURCE_MATCHERS.find(({ patterns }) =>
+    patterns.some((pattern) => pattern.test(text)),
+  );
+  if (!match) return null;
+  return { label: match.label, url: match.url };
+};

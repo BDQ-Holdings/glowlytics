@@ -10,19 +10,27 @@ export function useOnboardingNavigation() {
   const router = useRouter();
   const onboardingFlow = useStore((s) => s.onboardingFlow);
   const onboardingFlowIndex = useStore((s) => s.onboardingFlowIndex);
-  const setOnboardingFlowIndex = useStore((s) => s.setOnboardingFlowIndex);
 
   const advance = () => {
-    const nextIndex = onboardingFlowIndex + 1;
-    if (nextIndex >= onboardingFlow.length) return;
-    setOnboardingFlowIndex(nextIndex);
-    router.push(screenToRoute(onboardingFlow[nextIndex]));
+    const {
+      onboardingFlow: currentFlow,
+      onboardingFlowIndex: currentIndex,
+      setOnboardingFlowIndex: setCurrentIndex,
+    } = useStore.getState();
+    const nextIndex = currentIndex + 1;
+    if (nextIndex >= currentFlow.length) return;
+    setCurrentIndex(nextIndex);
+    router.push(screenToRoute(currentFlow[nextIndex]));
   };
 
   const goBack = () => {
-    if (onboardingFlowIndex <= 0) return;
-    const prevIndex = onboardingFlowIndex - 1;
-    setOnboardingFlowIndex(prevIndex);
+    const {
+      onboardingFlowIndex: currentIndex,
+      setOnboardingFlowIndex: setCurrentIndex,
+    } = useStore.getState();
+    if (currentIndex <= 0) return;
+    const prevIndex = currentIndex - 1;
+    setCurrentIndex(prevIndex);
     router.back();
   };
 

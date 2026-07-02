@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import * as MailComposer from 'expo-mail-composer';
 import { FontFamily, Glow } from '../../src/constants/theme';
 import {
   Chip,
@@ -13,45 +13,49 @@ import {
 
 const P = Glow.palette;
 
-const QUESTIONS = [
-  { q: 'How accurate is the Glow score?',          sub: 'Confidence per scan, explained' },
-  { q: 'Where do my photos live?',                 sub: 'On your phone, encrypted' },
-  { q: "Why didn't it find a pattern this week?",  sub: 'What we look for' },
-  { q: 'I started a new medication',               sub: 'Tag a baseline reset' },
-  { q: 'Why is the score lower in winter?',        sub: 'Climate context' },
-];
-
 const FEEDBACK_TYPES = ['Bug', 'Idea', 'Praise', 'Other'] as const;
+const SUPPORT_EMAIL = 'hello@glowlytics.ai';
 
 export default function HelpScreen() {
-  const [query, setQuery] = useState('');
   const [type, setType] = useState<(typeof FEEDBACK_TYPES)[number]>('Idea');
   const [message, setMessage] = useState('');
+
+  const composeFeedbackEmail = async (bodyOverride?: string) => {
+    const available = await MailComposer.isAvailableAsync();
+    if (!available) {
+      Alert.alert('No email configured', 'Please set up an email account on this device first.');
+      return;
+    }
+    await MailComposer.composeAsync({
+      recipients: [SUPPORT_EMAIL],
+      subject: `Glowlytics feedback: ${type}`,
+      body: bodyOverride ?? message,
+    });
+  };
+
+  const handleSendFeedback = async () => {
+    const trimmed = message.trim();
+    if (!trimmed) {
+      Alert.alert('Feedback is empty', 'Write a note first so we know what to look at.');
+      return;
+    }
+    try {
+      await composeFeedbackEmail(trimmed);
+    } catch {
+      Alert.alert('Email failed', 'Unable to open your email composer. Please try again.');
+    }
+  };
 
   return (
     <SettingsPage>
       <SettingsHeader title="Help & feedback" />
 
-      <View style={styles.searchWrap}>
-        <View style={styles.searchBar}>
-          <Feather name="search" size={16} color={P.muted} />
-          <TextInput
-            placeholder="Ask anything…"
-            placeholderTextColor={P.muted}
-            value={query}
-            onChangeText={setQuery}
-            style={styles.searchInput}
-            accessibilityLabel="Search help"
-          />
-        </View>
+      <View style={styles.helpIntro}>
+        <Text style={styles.helpIntroTitle}>Need a hand?</Text>
+        <Text style={styles.helpIntroBody}>
+          Send a note from your configured email app and a person will reply.
+        </Text>
       </View>
-
-      <SectionLabel>Top questions</SectionLabel>
-      <ListGroup>
-        {QUESTIONS.map((q) => (
-          <Row key={q.q} label={q.q} sub={q.sub} onPress={() => undefined} />
-        ))}
-      </ListGroup>
 
       <SectionLabel>Send feedback</SectionLabel>
       <View style={styles.feedbackWrap}>
@@ -75,6 +79,7 @@ export default function HelpScreen() {
             </View>
             <Pressable
               style={({ pressed }) => [styles.sendBtn, pressed && { opacity: 0.85 }]}
+              onPress={handleSendFeedback}
               accessibilityRole="button"
               accessibilityLabel="Send feedback"
             >
@@ -86,8 +91,16 @@ export default function HelpScreen() {
 
       <SectionLabel>Reach a human</SectionLabel>
       <ListGroup>
-        <Row label="Email a person" value="hello@glowlytics.ai" sub="Usually within a day" />
-        <Row label="Talk to a derm"  value="Plus" sub="Optional add-on" />
+        <Row
+          label="Email a person"
+          value={SUPPORT_EMAIL}
+          sub="Usually within a day"
+          onPress={() => {
+            composeFeedbackEmail('').catch(() => {
+              Alert.alert('Email failed', 'Unable to open your email composer. Please try again.');
+            });
+          }}
+        />
       </ListGroup>
 
       <View style={styles.statusRow}>
@@ -101,27 +114,26 @@ export default function HelpScreen() {
 }
 
 const styles = StyleSheet.create({
-  searchWrap: {
+  helpIntro: {
+    marginHorizontal: 16,
     paddingHorizontal: 16,
-    paddingTop: 4,
-  },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: 14,
+    paddingVertical: 14,
+    borderRadius: 18,
     backgroundColor: P.surface,
     borderWidth: 1,
     borderColor: P.glow,
   },
-  searchInput: {
-    flex: 1,
-    fontFamily: FontFamily.sans,
-    fontSize: 13,
+  helpIntroTitle: {
+    fontFamily: FontFamily.sansBold,
+    fontSize: 14,
     color: P.ink,
-    padding: 0,
+  },
+  helpIntroBody: {
+    fontFamily: FontFamily.sans,
+    fontSize: 12,
+    color: P.muted,
+    marginTop: 4,
+    lineHeight: 18,
   },
   feedbackWrap: {
     paddingHorizontal: 16,

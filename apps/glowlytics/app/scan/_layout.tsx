@@ -10,6 +10,7 @@ export default function ScanLayout() {
         animation: 'slide_from_right',
       }}
     >
+      <Stack.Screen name="ai-consent" options={{ animation: 'slide_from_bottom' }} />
       <Stack.Screen name="analyzing" options={{ gestureEnabled: false, animation: 'fade' }} />
       {/* results is a terminal flow screen: locking the swipe-back gesture stops
           a swipe from stranding the user on the half-torn-down analyzing screen

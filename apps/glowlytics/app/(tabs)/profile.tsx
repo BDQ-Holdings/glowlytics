@@ -17,6 +17,7 @@ import {
   buildOverallSkinInsight,
   getLatestDailyForOutput,
 } from '../../src/services/skinInsights';
+import { activeProducts } from '../../src/services/ritual';
 
 let useUser: (() => { user: { firstName?: string | null; primaryEmailAddress?: { emailAddress?: string } } | null | undefined }) | undefined;
 try {
@@ -56,7 +57,8 @@ export default function MeTab() {
 
   const user = useStore((s) => s.user);
   const dailyRecords = useStore((s) => s.dailyRecords);
-  const products = useStore((s) => s.products);
+  const allProducts = useStore((s) => s.products);
+  const products = useMemo(() => activeProducts(allProducts), [allProducts]);
   const modelOutputs = useStore((s) => s.modelOutputs);
   // Future: surface user-defined goals from store; the redesign falls back to
   // sensible defaults derived from streak + onboarding data when none exist.

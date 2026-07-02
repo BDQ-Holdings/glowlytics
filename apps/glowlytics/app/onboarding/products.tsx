@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Alert, View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import Svg, { Defs, RadialGradient, Stop, Rect, Circle, Path, Ellipse } from 'react-native-svg';
 import { Feather } from '@expo/vector-icons';
@@ -8,6 +8,7 @@ import { AddProductSheet } from '../../src/components/AddProductSheet';
 import { useStore } from '../../src/store/useStore';
 import { useOnboardingNavigation } from '../../src/hooks/useOnboardingNavigation';
 import { Colors, Glow, FontFamily, FontSize, Spacing, BorderRadius } from '../../src/constants/theme';
+import { activeProducts } from '../../src/services/ritual';
 
 function ProductsIllustration() {
   return (
@@ -52,7 +53,8 @@ function ProductsIllustration() {
 
 export default function Products() {
   const { advance, goBack, onboardingFlow, onboardingFlowIndex } = useOnboardingNavigation();
-  const products = useStore((s) => s.products);
+  const allProducts = useStore((s) => s.products);
+  const products = useMemo(() => activeProducts(allProducts), [allProducts]);
   const removeProduct = useStore((s) => s.removeProduct);
 
   const [showSheet, setShowSheet] = useState(false);

@@ -18,7 +18,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { Feather } from '@expo/vector-icons';
-import { harmonyStatusLabel, HARMONY_ACCENT } from '../constants/boneStructure';
+import { harmonyStatusLabel, HARMONY_ACCENT, type DriverReadout } from '../constants/boneStructure';
 import { BorderRadius, Colors, FontFamily, FontSize, Glow, Spacing } from '../constants/theme';
 
 const BREATHE_EASING = Easing.inOut(Easing.ease);
@@ -28,13 +28,16 @@ interface Props {
   caption?: string;
   /** Optional previous-scan Harmony for "+3 from last scan" delta chip. */
   previousScore?: number | null;
+  /** Interpreted dominant-driver readout — richer than `caption`. When set,
+   *  replaces the caption line with a label · score · band · meaning block. */
+  driver?: DriverReadout | null;
 }
 
 // Cubic-out easing — fast start, soft land.  Reads as confident rather than
 // jittery (linear) or hesitant (cubic-in).
 const easeOutCubic = (t: number): number => 1 - Math.pow(1 - t, 3);
 
-export const HarmonyScoreReveal: React.FC<Props> = ({ score, caption, previousScore }) => {
+export const HarmonyScoreReveal: React.FC<Props> = ({ score, caption, previousScore, driver }) => {
   const breathe = useSharedValue(1);
 
   useEffect(() => {
@@ -121,7 +124,20 @@ export const HarmonyScoreReveal: React.FC<Props> = ({ score, caption, previousSc
             </Text>
           </Animated.View>
         )}
-        {caption ? (
+        {driver ? (
+          <Animated.View entering={FadeInUp.duration(450).delay(showDelta ? 600 : 500)} style={styles.driverWrap}>
+            <View style={styles.driverHead}>
+              <Text style={styles.driverLabel}>{driver.label}</Text>
+              <Text style={styles.driverScore}>{driver.scoreText}</Text>
+              <View style={[styles.bandChip, driver.band === 'ideal' ? styles.bandChipIdeal : styles.bandChipBelow]}>
+                <Text style={[styles.bandChipText, driver.band === 'ideal' ? styles.bandChipTextIdeal : styles.bandChipTextBelow]}>
+                  {driver.bandLabel}
+                </Text>
+              </View>
+            </View>
+            <Text style={styles.driverMeaning}>{driver.meaning}</Text>
+          </Animated.View>
+        ) : caption ? (
           <Animated.View entering={FadeInUp.duration(450).delay(showDelta ? 600 : 500)}>
             <Text style={styles.caption}>{caption}</Text>
           </Animated.View>
@@ -184,4 +200,15 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.sansSemiBold,
     fontSize: FontSize.xs,
   },
+  driverWrap: { alignItems: 'center', marginTop: Spacing.sm, paddingHorizontal: Spacing.lg, gap: Spacing.xxs },
+  driverHead: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
+  driverLabel: { color: Glow.palette.ink, fontFamily: FontFamily.sansSemiBold, fontSize: FontSize.md },
+  driverScore: { color: Colors.harmony, fontFamily: FontFamily.sansBold, fontSize: FontSize.md, letterSpacing: -0.3 },
+  driverMeaning: { color: Colors.textMuted, fontFamily: FontFamily.sans, fontSize: FontSize.sm, lineHeight: 20, textAlign: 'center' },
+  bandChip: { paddingHorizontal: Spacing.xs + 2, paddingVertical: 2, borderRadius: BorderRadius.full },
+  bandChipBelow: { backgroundColor: Colors.warning + '1E' },
+  bandChipIdeal: { backgroundColor: Colors.success + '1E' },
+  bandChipText: { fontFamily: FontFamily.sansSemiBold, fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.6 },
+  bandChipTextBelow: { color: Colors.warning },
+  bandChipTextIdeal: { color: Colors.success },
 });

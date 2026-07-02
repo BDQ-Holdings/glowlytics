@@ -1,27 +1,16 @@
-import React, { useState } from 'react';
-import { Alert, View, Text, TextInput, StyleSheet, ScrollView } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { Platform, Pressable, View, Text, StyleSheet } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import Svg, { Defs, RadialGradient, Stop, Circle, Path } from 'react-native-svg';
 import { OnboardingTransition } from '../../src/components/OnboardingTransition';
-import { OnboardingGridOption, OnboardingChip, OnboardingOptionCard } from '../../src/components/OnboardingOptionCard';
+import { OnboardingGridOption } from '../../src/components/OnboardingOptionCard';
 import { useStore } from '../../src/store/useStore';
 import { useOnboardingNavigation } from '../../src/hooks/useOnboardingNavigation';
 import { Colors, Glow, FontFamily, FontSize, Spacing, BorderRadius } from '../../src/constants/theme';
-import type { BirthControlType } from '../../src/types';
+import { localDateStr } from '../../src/utils/localDate';
 
 const CYCLE_LENGTH_OPTIONS = ['21-25', '26-30', '31+', 'Not sure'] as const;
 type CycleLengthOption = typeof CYCLE_LENGTH_OPTIONS[number];
-
-const BIRTH_CONTROL_RESPONSE = ['Yes', 'No', 'Prefer not to say'] as const;
-type BirthControlResponse = typeof BIRTH_CONTROL_RESPONSE[number];
-
-const BIRTH_CONTROL_TYPES: { label: string; value: BirthControlType }[] = [
-  { label: 'Pill', value: 'pill' },
-  { label: 'IUD', value: 'iud' },
-  { label: 'Patch', value: 'patch' },
-  { label: 'Ring', value: 'ring' },
-  { label: 'Injection', value: 'injection' },
-  { label: 'Implant', value: 'implant' },
-];
 
 function CycleIllustration() {
   return (
@@ -58,45 +47,56 @@ function cycleLengthToNumber(option: CycleLengthOption): number {
   }
 }
 
-function birthControlResponseToValue(resp: BirthControlResponse): 'yes' | 'no' | 'prefer_not' {
-  switch (resp) {
-    case 'Yes': return 'yes';
-    case 'No': return 'no';
-    case 'Prefer not to say': return 'prefer_not';
-  }
+function cycleLengthFromNumber(days?: number): CycleLengthOption | null {
+  if (!days) return null;
+  if (days <= 25) return '21-25';
+  if (days <= 30) return '26-30';
+  return '31+';
+}
+
+function parseLocalDate(value?: string): Date | null {
+  if (!value) return null;
+  const [year, month, day] = value.split('-').map(Number);
+  if (!year || !month || !day) return null;
+  return new Date(year, month - 1, day);
+}
+
+function formatSelectedDate(value: Date | null): string {
+  if (!value) return 'Pick a date';
+  return value.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
 }
 
 export default function CycleDetails() {
   const { advance, goBack, onboardingFlow, onboardingFlowIndex } = useOnboardingNavigation();
   const updateUser = useStore((s) => s.updateUser);
+  const today = useMemo(() => new Date(), []);
 
-  const [lastPeriodDate, setLastPeriodDate] = useState('');
-  const [cycleLength, setCycleLength] = useState<CycleLengthOption | null>(null);
-  const [birthControl, setBirthControl] = useState<BirthControlResponse | null>(null);
-  const [birthControlType, setBirthControlType] = useState<BirthControlType | null>(null);
+  const [lastPeriodDate, setLastPeriodDate] = useState<Date | null>(() =>
+    parseLocalDate(useStore.getState().user?.period_last_start_date),
+  );
+  const [cycleLength, setCycleLength] = useState<CycleLengthOption | null>(() =>
+    cycleLengthFromNumber(useStore.getState().user?.cycle_length_days),
+  );
+  // Android's DateTimePicker is a one-shot dialog: mounting it permanently
+  // auto-opens it and it can never re-open after dismissal. Mount on press
+  // there; iOS keeps the always-visible inline spinner.
+  const [showAndroidPicker, setShowAndroidPicker] = useState(false);
 
   const handleContinue = () => {
-    const updates: Record<string, any> = {};
+    const updates: Record<string, string | number> = {};
 
-    if (lastPeriodDate.trim()) {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(lastPeriodDate.trim())) {
-        Alert.alert('Invalid date', 'Please enter a date in YYYY-MM-DD format.');
-        return;
-      }
-      updates.period_last_start_date = lastPeriodDate.trim();
+    if (lastPeriodDate) {
+      updates.period_last_start_date = localDateStr(lastPeriodDate);
     }
     if (cycleLength) {
       updates.cycle_length_days = cycleLengthToNumber(cycleLength);
     }
-    if (birthControl) {
-      updates.on_hormonal_birth_control = birthControlResponseToValue(birthControl);
-    }
-    if (birthControl === 'Yes' && birthControlType) {
-      updates.birth_control_type = birthControlType;
-    }
 
     updateUser(updates);
-
     advance();
   };
 
@@ -119,30 +119,36 @@ export default function CycleDetails() {
       showBack
       onBack={goBack}
     >
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
-        {/* Last period date */}
+      <View style={styles.sectionStack}>
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>When did your last period start?</Text>
-          <TextInput
-            style={styles.input}
-            value={lastPeriodDate}
-            onChangeText={setLastPeriodDate}
-            placeholder="YYYY-MM-DD"
-            placeholderTextColor={Colors.textMuted}
-            keyboardType="numbers-and-punctuation"
-            returnKeyType="done"
-            autoCorrect={false}
-            maxLength={10}
-            accessibilityLabel="Last period start date"
-          />
+          <View style={styles.dateCard}>
+            <Pressable
+              disabled={Platform.OS === 'ios'}
+              onPress={() => setShowAndroidPicker(true)}
+              accessibilityRole={Platform.OS === 'ios' ? undefined : 'button'}
+              accessibilityLabel="Change last period start date"
+            >
+              <Text style={styles.dateValue}>{formatSelectedDate(lastPeriodDate)}</Text>
+            </Pressable>
+            {(Platform.OS === 'ios' || showAndroidPicker) && (
+              <DateTimePicker
+                value={lastPeriodDate ?? today}
+                mode="date"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                maximumDate={today}
+                onChange={(_, selected) => {
+                  if (Platform.OS !== 'ios') setShowAndroidPicker(false);
+                  if (selected) setLastPeriodDate(selected);
+                }}
+                textColor={Colors.text}
+                themeVariant="light"
+                style={styles.datePicker}
+              />
+            )}
+          </View>
         </View>
 
-        {/* Cycle length */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Typical cycle length</Text>
           <View style={styles.grid}>
@@ -157,54 +163,14 @@ export default function CycleDetails() {
             ))}
           </View>
         </View>
-
-        {/* Birth control */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Are you on hormonal birth control?</Text>
-          <View style={styles.bcOptions}>
-            {BIRTH_CONTROL_RESPONSE.map((opt) => (
-              <OnboardingOptionCard
-                key={opt}
-                label={opt}
-                selected={birthControl === opt}
-                onPress={() => {
-                  setBirthControl(opt);
-                  if (opt !== 'Yes') setBirthControlType(null);
-                }}
-              />
-            ))}
-          </View>
-        </View>
-
-        {/* Birth control type chips */}
-        {birthControl === 'Yes' && (
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>What type?</Text>
-            <View style={styles.chipRow}>
-              {BIRTH_CONTROL_TYPES.map((bc) => (
-                <OnboardingChip
-                  key={bc.value}
-                  label={bc.label}
-                  selected={birthControlType === bc.value}
-                  onPress={() => setBirthControlType(bc.value)}
-                />
-              ))}
-            </View>
-          </View>
-        )}
-      </ScrollView>
+      </View>
     </OnboardingTransition>
   );
 }
 
 const styles = StyleSheet.create({
-  scroll: {
-    flex: 1,
-    maxHeight: 340,
-  },
-  scrollContent: {
+  sectionStack: {
     gap: Spacing.lg,
-    paddingBottom: Spacing.md,
   },
   section: {
     gap: Spacing.sm,
@@ -215,16 +181,24 @@ const styles = StyleSheet.create({
     fontSize: FontSize.sm,
     letterSpacing: 0.2,
   },
-  input: {
+  dateCard: {
     backgroundColor: Glow.palette.surface,
     borderRadius: BorderRadius.xl,
     borderWidth: 1.5,
     borderColor: Glow.palette.glow,
-    paddingVertical: Spacing.lg,
+    paddingVertical: Spacing.md,
     paddingHorizontal: Spacing.lg,
+    gap: Spacing.sm,
+  },
+  dateValue: {
     color: Glow.palette.ink,
-    fontFamily: FontFamily.sans,
+    fontFamily: FontFamily.sansSemiBold,
     fontSize: FontSize.md,
+    textAlign: 'center',
+  },
+  datePicker: {
+    alignSelf: 'center',
+    width: 280,
   },
   grid: {
     flexDirection: 'row',
@@ -233,13 +207,5 @@ const styles = StyleSheet.create({
   },
   gridItem: {
     width: '48%',
-  },
-  bcOptions: {
-    gap: Spacing.sm,
-  },
-  chipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.sm,
   },
 });

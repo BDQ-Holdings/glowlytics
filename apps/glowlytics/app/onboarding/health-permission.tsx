@@ -29,17 +29,6 @@ interface SyncStats {
   cycleDay: number | null;
 }
 
-// ---------------------------------------------------------------------------
-// Progress messages cycled during the "connecting" state
-// ---------------------------------------------------------------------------
-
-const progressMessages = [
-  'Reading sleep\u2026',
-  'Reading heart rate\u2026',
-  'Reading cycle data\u2026',
-  'Reading steps\u2026',
-  'Reading mindful minutes\u2026',
-];
 
 // ---------------------------------------------------------------------------
 // SVG Illustration — heart motif with radiating pulses
@@ -177,7 +166,6 @@ export default function HealthPermission() {
   const setOnboardingFlow = useStore((s) => s.setOnboardingFlow);
 
   const [screenState, setScreenState] = useState<ScreenState>('idle');
-  const [progressIndex, setProgressIndex] = useState(0);
   const [syncStats, setSyncStats] = useState<SyncStats>({
     daysSynced: 0,
     metricsPopulated: 0,
@@ -186,7 +174,6 @@ export default function HealthPermission() {
 
   // Refs for cleanup
   const autoAdvanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const progressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const mountedRef = useRef(true);
 
   // -----------------------------------------------------------------------
@@ -196,7 +183,6 @@ export default function HealthPermission() {
     return () => {
       mountedRef.current = false;
       if (autoAdvanceTimer.current) clearTimeout(autoAdvanceTimer.current);
-      if (progressTimer.current) clearInterval(progressTimer.current);
     };
   }, []);
 
@@ -233,27 +219,6 @@ export default function HealthPermission() {
     }
   }, []);
 
-  // -----------------------------------------------------------------------
-  // Rotate progress messages during connecting state
-  // -----------------------------------------------------------------------
-  useEffect(() => {
-    if (screenState === 'connecting') {
-      progressTimer.current = setInterval(() => {
-        setProgressIndex((prev) => (prev + 1) % progressMessages.length);
-      }, 400);
-    } else {
-      if (progressTimer.current) {
-        clearInterval(progressTimer.current);
-        progressTimer.current = null;
-      }
-    }
-    return () => {
-      if (progressTimer.current) {
-        clearInterval(progressTimer.current);
-        progressTimer.current = null;
-      }
-    };
-  }, [screenState]);
 
   // -----------------------------------------------------------------------
   // handleConnect
@@ -470,7 +435,7 @@ export default function HealthPermission() {
         return (
           <View style={styles.progressCard}>
             <ActivityIndicator size="small" color={Colors.primary} />
-            <Text style={styles.progressText}>{progressMessages[progressIndex]}</Text>
+            <Text style={styles.progressText}>Syncing your health data…</Text>
           </View>
         );
 

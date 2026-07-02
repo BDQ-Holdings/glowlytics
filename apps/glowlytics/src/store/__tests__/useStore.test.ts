@@ -2,6 +2,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useStore } from '../useStore';
 import { localDateStr } from '../../utils/localDate';
 import type { ConsideringItem } from '../../types';
+import {
+  cancelAllAppNotifications,
+  scheduleDailyReminder,
+  cancelDailyReminder,
+  scheduleRitualReminder,
+  cancelRitualReminder,
+} from '../../services/notifications';
 
 // Mock AsyncStorage
 jest.mock('@react-native-async-storage/async-storage', () => ({
@@ -14,6 +21,14 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
 // so these store-logic tests still observe plaintext JSON in AsyncStorage; the
 // real AES layer is covered by services/__tests__/secureStorage.test.ts.
 jest.mock('../../services/secureStorage');
+
+jest.mock('../../services/notifications', () => ({
+  scheduleDailyReminder: jest.fn(() => Promise.resolve()),
+  cancelDailyReminder: jest.fn(() => Promise.resolve()),
+  scheduleRitualReminder: jest.fn(() => Promise.resolve()),
+  cancelRitualReminder: jest.fn(() => Promise.resolve()),
+  cancelAllAppNotifications: jest.fn(() => Promise.resolve()),
+}));
 
 // Mock uuid
 jest.mock('uuid', () => ({
@@ -43,6 +58,7 @@ const resetStore = () => {
     onboardingStep: 0,
     pendingScanResult: null,
     pendingPhotoBase64: null,
+    aiProcessingConsentGranted: false,
     gamification: {
       xp: 0,
       level: 'Beginner',
@@ -63,6 +79,14 @@ const resetStore = () => {
       free_scans_used: 0,
       trial_start_date: null,
       trial_end_date: null,
+    },
+    notificationSettings: {
+      notifications_enabled: false,
+      notification_time: null,
+      ritual_am_enabled: false,
+      ritual_am_time: null,
+      ritual_pm_enabled: false,
+      ritual_pm_time: null,
     },
   });
 };
@@ -202,8 +226,45 @@ describe('useStore', () => {
     });
   });
 
+  describe('addProduct duplicate guard', () => {
+    beforeEach(() => {
+      useStore.getState().createUser({
+        age_range: '25-34',
+        period_applicable: 'no',
+      });
+    });
+
+    it('does not append a normalized name and brand duplicate unless explicitly allowed', () => {
+      const base = {
+        product_name: '  CeraVe  Moisturizing Cream ',
+        brand: 'CeraVe',
+        product_capture_method: 'search' as const,
+        ingredients_list: ['Ceramide'],
+        usage_schedule: 'AM' as const,
+        start_date: '2026-03-01',
+      };
+
+      const first = useStore.getState().addProduct(base);
+      const duplicate = useStore.getState().addProduct({
+        ...base,
+        product_name: 'cerave moisturizing cream',
+        brand: ' cerave ',
+        usage_schedule: 'PM',
+      });
+
+      expect(first.status).toBe('added');
+      expect(duplicate.status).toBe('duplicate');
+      const dupEntry = duplicate.status === 'duplicate' ? duplicate.duplicate : null;
+      expect(dupEntry?.user_product_id).toBe(useStore.getState().products[0].user_product_id);
+      expect(useStore.getState().products).toHaveLength(1);
+
+      const forced = useStore.getState().addProduct({ ...base, usage_schedule: 'PM' }, { allowDuplicate: true });
+      expect(forced.status).toBe('added');
+      expect(useStore.getState().products).toHaveLength(2);
+    });
+  });
   describe('removeProduct', () => {
-    it('removes a product by id', () => {
+    it('marks a product ended instead of deleting historical shelf data', () => {
       useStore.getState().createUser({
         age_range: '25-34',
         period_applicable: 'no',
@@ -221,7 +282,9 @@ describe('useStore', () => {
       expect(products).toHaveLength(1);
 
       useStore.getState().removeProduct(products[0].user_product_id);
-      expect(useStore.getState().products).toHaveLength(0);
+      const removed = useStore.getState().products[0];
+      expect(removed.end_date).toBe(localDateStr());
+      expect(useStore.getState().products).toHaveLength(1);
     });
   });
 
@@ -578,6 +641,142 @@ describe('useStore', () => {
 
       mockGetItem.mockReset();
       mockGetItem.mockResolvedValue(null);
+    });
+  });
+  describe('AI processing consent', () => {
+    it('defaults to not granted so no scan can upload personal data before permission', () => {
+      expect(useStore.getState().aiProcessingConsentGranted).toBe(false);
+    });
+
+    it('persists and restores the user permission flag', async () => {
+      const mockSetItem = AsyncStorage.setItem as jest.Mock;
+      mockSetItem.mockClear();
+
+      useStore.getState().setAiProcessingConsentGranted(true);
+      await useStore.getState().persistData();
+
+      const [, snapshot] = mockSetItem.mock.calls.at(-1);
+      expect(JSON.parse(snapshot).aiProcessingConsentGranted).toBe(true);
+
+      resetStore();
+      const mockGetItem = AsyncStorage.getItem as jest.Mock;
+      mockGetItem.mockResolvedValueOnce(JSON.stringify({
+        user: { user_id: 'u1', age_range: '25-34', onboarding_complete: true },
+        subscription: { is_active: true, trial_start_date: null, trial_end_date: null },
+        aiProcessingConsentGranted: true,
+      }));
+
+      await useStore.getState().loadPersistedData();
+
+      expect(useStore.getState().aiProcessingConsentGranted).toBe(true);
+
+      mockGetItem.mockReset();
+      mockGetItem.mockResolvedValue(null);
+    });
+  });
+
+  describe('notification settings', () => {
+    beforeEach(() => {
+      (scheduleDailyReminder as jest.Mock).mockClear();
+      (cancelDailyReminder as jest.Mock).mockClear();
+      (scheduleRitualReminder as jest.Mock).mockClear();
+      (cancelRitualReminder as jest.Mock).mockClear();
+      (cancelAllAppNotifications as jest.Mock).mockClear();
+    });
+
+    it('schedules, cancels, persists, and restores all notification settings', async () => {
+      const mockSetItem = AsyncStorage.setItem as jest.Mock;
+      mockSetItem.mockClear();
+
+      await useStore.getState().setDailyReminder(true, '08:15');
+      await useStore.getState().setRitualReminder('am', true, '07:05');
+      await useStore.getState().setRitualReminder('pm', true, '21:30');
+      await useStore.getState().persistData();
+
+      expect(scheduleDailyReminder).toHaveBeenCalledWith(8, 15);
+      expect(scheduleRitualReminder).toHaveBeenCalledWith('am', { hour: 7, minute: 5 });
+      expect(scheduleRitualReminder).toHaveBeenCalledWith('pm', { hour: 21, minute: 30 });
+
+      const [, snapshot] = mockSetItem.mock.calls.at(-1);
+      expect(JSON.parse(snapshot).notificationSettings).toEqual({
+        notifications_enabled: true,
+        notification_time: '08:15',
+        ritual_am_enabled: true,
+        ritual_am_time: '07:05',
+        ritual_pm_enabled: true,
+        ritual_pm_time: '21:30',
+      });
+
+      resetStore();
+      const mockGetItem = AsyncStorage.getItem as jest.Mock;
+      mockGetItem.mockResolvedValueOnce(JSON.stringify({
+        user: { user_id: 'u1', age_range: '25-34', onboarding_complete: true },
+        subscription: { is_active: true, trial_start_date: null, trial_end_date: null },
+        notificationSettings: {
+          notifications_enabled: true,
+          notification_time: '08:15',
+          ritual_am_enabled: true,
+          ritual_am_time: '07:05',
+          ritual_pm_enabled: true,
+          ritual_pm_time: '21:30',
+        },
+      }));
+
+      await useStore.getState().loadPersistedData();
+
+      expect(useStore.getState().notificationSettings).toEqual({
+        notifications_enabled: true,
+        notification_time: '08:15',
+        ritual_am_enabled: true,
+        ritual_am_time: '07:05',
+        ritual_pm_enabled: true,
+        ritual_pm_time: '21:30',
+      });
+
+      mockGetItem.mockReset();
+      mockGetItem.mockResolvedValue(null);
+    });
+
+    it('resetAll cancels every app-owned notification identifier', async () => {
+      await useStore.getState().resetAll();
+
+      expect(cancelAllAppNotifications).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('persisted schema versioning', () => {
+    const mockGetItem = AsyncStorage.getItem as jest.Mock;
+    const mockSetItem = AsyncStorage.setItem as jest.Mock;
+
+
+    afterEach(() => {
+      mockGetItem.mockReset();
+      mockGetItem.mockResolvedValue(null);
+    });
+
+    it('stamps persisted snapshots with the current schemaVersion', async () => {
+      mockSetItem.mockClear();
+
+      await useStore.getState().persistData();
+
+      const [, snapshot] = mockSetItem.mock.calls.at(-1);
+      expect(JSON.parse(snapshot).schemaVersion).toBe(3);
+    });
+
+    it('rehydrates a legacy blob without schemaVersion (implicit v1)', async () => {
+      // Legacy (pre-versioning) blob: no schemaVersion field at all.
+      mockGetItem.mockResolvedValueOnce(JSON.stringify({
+        user: { user_id: 'legacy-u1', age_range: '25-34', onboarding_complete: true },
+        subscription: { is_active: true, trial_start_date: null, trial_end_date: null },
+        aiProcessingConsentGranted: true,
+        dailyQuoteSeenDate: '2026-06-30',
+      }));
+
+      await useStore.getState().loadPersistedData();
+
+      expect(useStore.getState().user?.user_id).toBe('legacy-u1');
+      expect(useStore.getState().aiProcessingConsentGranted).toBe(true);
+      expect(useStore.getState().dailyQuoteSeenDate).toBe('2026-06-30');
     });
   });
 });

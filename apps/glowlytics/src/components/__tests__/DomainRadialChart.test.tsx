@@ -47,4 +47,36 @@ describe('DomainRadialChart', () => {
     );
     expect(UNSAFE_root).toBeTruthy();
   });
+
+  // Six finite scores → six domain labels + six numeric score labels = 12
+  // RNSVGText nodes by default. When showScoreLabels is false the six numeric
+  // score labels are suppressed (labels only, 6 nodes) while the plotted
+  // shape — reference rings, spokes, petal (paths) and score dots (circles) —
+  // is untouched. The interpreted rows on the by-area page then own the
+  // numbers, so the raw score never appears twice.
+  const sixScores = {
+    symmetry: 75, periorbital: 82, mandibular: 68,
+    midface: 36, nose: 65, brow: 72,
+  };
+
+  it('renders a numeric score label for each finite domain by default', () => {
+    const { UNSAFE_root } = render(<DomainRadialChart scores={sixScores} />);
+    // 6 domain labels + 6 numeric score labels
+    expect(UNSAFE_root.findAllByType('RNSVGText' as never)).toHaveLength(12);
+  });
+
+  it('suppresses numeric score labels when showScoreLabels is false, keeping the plotted shape', () => {
+    const withLabels = render(<DomainRadialChart scores={sixScores} />);
+    const shapePaths = withLabels.UNSAFE_root.findAllByType('RNSVGPath' as never).length;
+    const shapeDots = withLabels.UNSAFE_root.findAllByType('RNSVGCircle' as never).length;
+
+    const { UNSAFE_root } = render(
+      <DomainRadialChart scores={sixScores} showScoreLabels={false} />,
+    );
+    // Only the 6 domain labels remain — every numeric score text is gone.
+    expect(UNSAFE_root.findAllByType('RNSVGText' as never)).toHaveLength(6);
+    // Shape is untouched: same rings/spokes/petal paths and score dots.
+    expect(UNSAFE_root.findAllByType('RNSVGPath' as never)).toHaveLength(shapePaths);
+    expect(UNSAFE_root.findAllByType('RNSVGCircle' as never)).toHaveLength(shapeDots);
+  });
 });

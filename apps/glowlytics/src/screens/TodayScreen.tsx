@@ -16,12 +16,14 @@ import {
 } from '../constants/theme';
 import { formatMetricStatus } from '../constants/signals';
 import { useStore } from '../store/useStore';
+import { resolveScanEntryRoute } from '../utils/scanConsentRoute';
 
 export default function TodayScreen() {
   const router = useRouter();
   const protocol = useStore((s) => s.protocol);
   const dailyRecords = useStore((s) => s.dailyRecords);
   const modelOutputs = useStore((s) => s.modelOutputs);
+  const aiProcessingConsentGranted = useStore((s) => s.aiProcessingConsentGranted);
 
   const latestOutput = modelOutputs.length > 0 ? modelOutputs[modelOutputs.length - 1] : null;
   const baseline = modelOutputs.length > 0 ? modelOutputs[0] : null;
@@ -92,7 +94,7 @@ export default function TodayScreen() {
 
   const goalKey = protocol?.primary_goal || 'acne';
   const spotlightMetric = goals[goalKey];
-  const primaryAction = scannedToday && latestOutput ? '/scan/results' : '/scan/camera';
+  const primaryAction = scannedToday && latestOutput ? '/scan/results' : resolveScanEntryRoute(aiProcessingConsentGranted);
 
   return (
     <AtmosphereScreen contentContainerStyle={styles.screenContent}>

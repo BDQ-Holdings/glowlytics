@@ -15,6 +15,7 @@ import {
 } from '../../src/constants/theme';
 import { exportAndSharePattern } from '../../src/services/patternExport';
 import { PatternExportCard } from '../../src/components/PatternExportCard';
+import { ClinicalSourcesCard } from '../../src/components/ClinicalSourcesCard';
 
 // Static "what you can try" lookup — keyed on (signal + driver)
 const SUGGESTIONS: Record<string, string[]> = {
@@ -248,6 +249,15 @@ export default function PatternDetail() {
           </View>
         </FadeUp>
       )}
+
+      <FadeUp index={5}>
+        <View style={s.section}>
+          <ClinicalSourcesCard
+            title="Clinical sources"
+            subtitle="References behind the skin-health recommendations shown here."
+          />
+        </View>
+      </FadeUp>
 
       {/* Share */}
       {!pattern.isPredicted && (

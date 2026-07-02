@@ -86,6 +86,9 @@ jest.mock('../../src/components/HarmonyScoreReveal', () => ({ HarmonyScoreReveal
 jest.mock('../../src/components/InterventionDrawer', () => ({ InterventionDrawer: mockStub('InterventionDrawer') }));
 jest.mock('../../src/components/AnimatedFillBar', () => ({ AnimatedFillBar: mockStub('AnimatedFillBar') }));
 jest.mock('../../src/store/useStore', () => ({ useStore: jest.fn() }));
+// The greeting reads Clerk's useUser via a lazy optional require; outside a
+// ClerkProvider the real hook throws, so stub it (signed-out shape).
+jest.mock('@clerk/clerk-expo', () => ({ useUser: () => ({ user: null }) }));
 
 // Loaded via require so the component jest.mock factories (which reference the
 // mock-prefixed mockStub) resolve it only after mockStub is initialized.
@@ -109,16 +112,18 @@ const skinOutput = (id = 'o1'): SkinOutput => ({
 interface MockState {
   modelOutputs: SkinOutput[];
   dailyRecords: unknown[];
+  protocol: { primary_goal?: string } | null;
+  getStreak: () => number;
 }
 
 // Single boundary cast: the real useStore is a zustand selector hook; we only
 // drive its modelOutputs / dailyRecords selectors here. (rule: no `any`.)
 const mockedUseStore = useStore as unknown as jest.Mock;
 
-let mockState: MockState = { modelOutputs: [], dailyRecords: [] };
+let mockState: MockState = { modelOutputs: [], dailyRecords: [], protocol: null, getStreak: () => 0 };
 
 beforeEach(() => {
-  mockState = { modelOutputs: [], dailyRecords: [] };
+  mockState = { modelOutputs: [], dailyRecords: [], protocol: null, getStreak: () => 0 };
   mockedUseStore.mockReset();
   mockedUseStore.mockImplementation((selector: (s: MockState) => unknown) => selector(mockState));
 });
@@ -134,7 +139,7 @@ describe('Results — rules of hooks across empty → populated', () => {
     expect(getByText('Results appear after your first scan')).toBeTruthy();
 
     // A scan result hydrates into the store while the screen is mounted.
-    mockState = { modelOutputs: [skinOutput()], dailyRecords: [] };
+    mockState = { modelOutputs: [skinOutput()], dailyRecords: [], protocol: null, getStreak: () => 0 };
     expect(() => rerender(<Results />)).not.toThrow();
 
     // Empty state gone; the populated carousel (with its disclaimer bar) shows.

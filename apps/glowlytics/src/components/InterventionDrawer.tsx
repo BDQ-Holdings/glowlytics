@@ -4,7 +4,7 @@
  * disclaimer in addition to the app-wide informational notice.
  */
 import React, { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { BorderRadius, Colors, FontFamily, FontSize, Glow, Spacing } from '../constants/theme';
 import type { BoneIntervention, BoneInterventionTier, InterventionBundle } from '../types';
@@ -19,9 +19,25 @@ const TABS: { key: BoneInterventionTier; label: string; icon: keyof typeof Feath
   { key: 'interventional',  label: 'Procedural',      icon: 'activity' },
 ];
 
+const CLINICAL_SOURCES = [
+  {
+    label: 'AAD Sunscreen Guidance',
+    url: 'https://www.aad.org/public/skin-hair-nails/skin-care/sunscreen/choosing-the-right-sunscreen',
+  },
+  {
+    label: 'American Academy of Dermatology',
+    url: 'https://www.aad.org/public/diseases/acne/derm-treat/treat',
+  },
+  {
+    label: 'American Society of Plastic Surgeons',
+    url: 'https://www.plasticsurgery.org/cosmetic-procedures',
+  },
+] satisfies Array<{ label: string; url: string }>;
+
 export const InterventionDrawer: React.FC<Props> = ({ bundle }) => {
   const [tab, setTab] = useState<BoneInterventionTier>('lifestyle');
   const items: BoneIntervention[] = bundle[tab] || [];
+  const [sourcesOpen, setSourcesOpen] = useState(false);
 
   return (
     <View style={styles.wrap}>
@@ -71,6 +87,35 @@ export const InterventionDrawer: React.FC<Props> = ({ bundle }) => {
           ))
         )}
       </ScrollView>
+
+      <View style={styles.sourcesCard}>
+        <Pressable
+          onPress={() => setSourcesOpen((v) => !v)}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: sourcesOpen }}
+          accessibilityLabel={`Clinical sources, ${CLINICAL_SOURCES.length} references. ${sourcesOpen ? 'Expanded' : 'Collapsed'}.`}
+          style={styles.sourcesSummary}
+        >
+          <Text style={styles.sourcesTitle}>Sources ({CLINICAL_SOURCES.length})</Text>
+          <Feather name={sourcesOpen ? 'chevron-up' : 'chevron-down'} size={16} color={Colors.textMuted} />
+        </Pressable>
+        {sourcesOpen ? (
+          <View style={styles.sourcesList}>
+            {CLINICAL_SOURCES.map((source) => (
+              <Pressable
+                key={source.url}
+                accessibilityRole="link"
+                accessibilityLabel={`Open source: ${source.label}`}
+                onPress={() => Linking.openURL(source.url).catch(() => {})}
+                style={styles.sourceRow}
+              >
+                <Text style={styles.sourceLabel}>{source.label}</Text>
+                <Text style={styles.sourceLink}>Open source</Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+      </View>
     </View>
   );
 };
@@ -167,5 +212,46 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.sans,
     fontSize: FontSize.sm,
     lineHeight: 19,
+  },
+  sourcesCard: {
+    marginTop: Spacing.sm,
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.divider,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    gap: Spacing.xs,
+  },
+  sourcesSummary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  sourcesList: {
+    gap: Spacing.xs,
+    paddingTop: Spacing.xs,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Colors.divider,
+  },
+  sourcesTitle: {
+    color: Colors.text,
+    fontFamily: FontFamily.sansSemiBold,
+    fontSize: FontSize.sm,
+  },
+  sourceRow: {
+    paddingTop: Spacing.xs,
+    gap: 2,
+  },
+  sourceLabel: {
+    color: Glow.palette.ink,
+    fontFamily: FontFamily.sansMedium,
+    fontSize: FontSize.xs,
+  },
+  sourceLink: {
+    color: Glow.palette.accent,
+    fontFamily: FontFamily.sansSemiBold,
+    fontSize: FontSize.xs,
+    textDecorationLine: 'underline',
   },
 });

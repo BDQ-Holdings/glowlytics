@@ -40,6 +40,24 @@ function modelExists(name) {
   return fs.existsSync(path.join(MODEL_DIR, `${name}.onnx`));
 }
 
+// Expected SHA-256 digests for the runtime-downloaded models (the pinned
+// GH_BASE commit below is immutable, so these are stable). Complements the
+// models.sha256 manifest that covers the download-models.sh-managed set.
+const RUNTIME_MODEL_SHA256 = {
+  skin_signals_v2: 'c11efc295efd118e654434abd27a817bd527038f40476a06c801d12444ad2883',
+  acne_detector: 'de7b25f3d1e2af69ee18f2b55cb6d93edf3c8dd29662a1c64cf8d903c3fa8526',
+};
+
+/**
+ * SHA-256 of a file. Buffers the file once — acceptable server-side for a
+ * once-per-deploy verification of a ~20-45MB model (the API already handles
+ * 20MB request bodies routinely).
+ */
+async function fileSha256(filePath) {
+  const data = await fs.promises.readFile(filePath);
+  return require('crypto').createHash('sha256').update(data).digest('hex');
+}
+
 /**
  * Ensure a model file is present and valid (not an external-data stub).
  * Downloads from HuggingFace if missing or below minSize.
@@ -80,8 +98,21 @@ async function ensureModel(name, url, minSize) {
       follow(url);
     });
     fs.renameSync(tmpPath, modelPath);
+    // Verify the fresh download against the pinned digest before it can ever
+    // reach the inference path. Mismatch = tampered/corrupt -> delete; the
+    // caller's modelExists() check then skips loading and Layer 1 fallback
+    // keeps the API serving.
+    const expected = RUNTIME_MODEL_SHA256[name];
+    if (expected) {
+      const actual = await fileSha256(modelPath);
+      if (actual !== expected) {
+        fs.unlinkSync(modelPath);
+        console.error(`[signal-models] ${name}.onnx: SHA-256 mismatch (got ${actual}) — deleted tampered download`);
+        return;
+      }
+    }
     const sz = fs.statSync(modelPath).size;
-    console.log(`[signal-models] ${name}.onnx: downloaded ${(sz / 1024 / 1024).toFixed(1)} MB`);
+    console.log(`[signal-models] ${name}.onnx: downloaded ${(sz / 1024 / 1024).toFixed(1)} MB (sha256 ok)`);
   } catch (err) {
     console.warn(`[signal-models] Failed to download ${name}:`, err.message);
     // Clean up partial download
@@ -145,6 +176,17 @@ async function initModels() {
 
   console.log(`[signal-models] Loaded models: ${loaded.length > 0 ? loaded.join(', ') : 'none (using Layer 1 fallback)'}`);
   return { loaded };
+}
+
+/**
+ * Names of the ONNX sessions currently loaded. Cheap introspection for
+ * /health — reflects initModels() results without touching the sessions.
+ */
+function loadedModels() {
+  const loaded = [];
+  if (skinSignalsSession) loaded.push('skin_signals_v2');
+  if (acneDetectorSession) loaded.push('acne_detector');
+  return loaded;
 }
 
 /**
@@ -569,6 +611,7 @@ function applyLesionFeedback(signalScores, lesions) {
 
 module.exports = {
   initModels,
+  loadedModels,
   runAllModels,
   runAcneDetector,
   runSkinSignalsModel,
