@@ -4,6 +4,13 @@ import {
   buildDriverReadout,
   resolveLabelCollisions,
   BONE_METRICS,
+  FINDING_COPY,
+  MEASUREMENT_LINES,
+  MEASUREMENT_ANGLES,
+  MEASUREMENT_OVERLAY_NOTES,
+  METRIC_INTERPRETATION,
+  formatMetricValue,
+  type BoneMetricKey,
 } from '../boneStructure';
 
 describe('score interpretation', () => {
@@ -37,6 +44,41 @@ describe('score interpretation', () => {
       expect(low.meaning.length).toBeGreaterThan(0);
       expect(high.meaning.length).toBeGreaterThan(0);
     }
+  });
+
+  test('new anthropometry metrics have display metadata, interpretation, and finding copy', () => {
+    const requiredMetrics: BoneMetricKey[] = ['facial_index', 'mouth_nose_ratio', 'lip_ratio'];
+    for (const key of requiredMetrics) {
+      expect(BONE_METRICS.find((m) => m.key === key)).toBeTruthy();
+      expect(METRIC_INTERPRETATION[key]?.below).toEqual(expect.any(String));
+      expect(METRIC_INTERPRETATION[key]?.inRange).toEqual(expect.any(String));
+    }
+
+    for (const code of ['face_long', 'face_short', 'mouth_narrow', 'mouth_wide', 'lip_ratio_high', 'lip_ratio_low'] as const) {
+      expect(FINDING_COPY[code]?.title).toEqual(expect.any(String));
+      expect(FINDING_COPY[code]?.description).toEqual(expect.any(String));
+    }
+  });
+
+  test('projection and lid metrics format as ratios, not fabricated millimetres', () => {
+    expect(formatMetricValue('chin_projection', 0.1234)).toBe('0.12');
+    expect(formatMetricValue('zygomatic_projection', 0.0678)).toBe('0.07');
+    expect(formatMetricValue('scleral_show', 0.0456)).toBe('0.05');
+    expect(formatMetricValue('gonial_angle', 128.44)).toBe('128.4°');
+  });
+
+  test('every metric has a measurement overlay or an explicit non-line reason', () => {
+    const lineKeys = MEASUREMENT_LINES.map((line) => line.metricKey);
+    const angleKeys = MEASUREMENT_ANGLES.map((angle) => angle.metricKey);
+
+    for (const metric of BONE_METRICS) {
+      expect(
+        lineKeys.includes(metric.key) ||
+        angleKeys.includes(metric.key) ||
+        Boolean(MEASUREMENT_OVERLAY_NOTES[metric.key]),
+      ).toBe(true);
+    }
+    expect(MEASUREMENT_OVERLAY_NOTES.fluctuating_asymmetry).toMatch(/paired/i);
   });
 
   test('buildDriverReadout interprets the dominant driver, null when none', () => {

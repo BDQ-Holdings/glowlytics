@@ -63,8 +63,11 @@ export default function FindingDetail() {
   }
 
   const copy = FINDING_COPY[finding.findingCode];
-  const meshVerts = bone.downsampled_mesh?.vertices || buildCanonicalMesh();
-  const meshSource = bone.downsampled_mesh?.source || 'mediapipe';
+  // Finding drill-ins use the bundled canonical topology so metric overlays
+  // always land on true MediaPipe anatomy; raw ARKit meshes are metre-scale and
+  // do not share these landmark indices.
+  const meshVerts = buildCanonicalMesh();
+  const meshSource = 'canonical' as const;
   const filteredBundle = filterInterventionsTo(bone.interventions, finding);
   const viewerSize = Math.min(320, screenW - Spacing.lg * 2);
   const value = bone.metrics?.[finding.metric]?.value;
@@ -99,6 +102,7 @@ export default function FindingDetail() {
             mode="measurements"
             size={viewerSize}
             bone={{ ...bone, findings: [finding] }}
+            highlightMetric={finding.metric as BoneMetricKey}
           />
         </View>
 
@@ -181,6 +185,13 @@ const FINDING_SUGGESTION_IDS: Partial<Record<BoneFindingCode, Record<BoneInterve
   thirds_uneven:            { lifestyle: ['posture_neck', 'sleep_side_rotation'], pharmacological: ['topical_tretinoin'], interventional: [] },
   fifths_uneven:            { lifestyle: ['posture_neck'], pharmacological: [], interventional: ['asymmetric_filler'] },
   asymmetry_elevated:       { lifestyle: ['sleep_side_rotation', 'unilateral_chew_avoid', 'posture_neck'], pharmacological: [], interventional: ['asymmetric_filler'] },
+  // Mirrors backend/interventions.js for the contracted new metrics.
+  face_long:                { lifestyle: ['weight_optimisation', 'posture_neck'], pharmacological: ['topical_tretinoin'], interventional: ['deep_cheek_filler'] },
+  face_short:               { lifestyle: ['posture_neck'], pharmacological: [], interventional: ['chin_filler'] },
+  mouth_narrow:             { lifestyle: [], pharmacological: [], interventional: ['asymmetric_filler'] },
+  mouth_wide:               { lifestyle: [], pharmacological: [], interventional: ['rhinoplasty_consult'] },
+  lip_ratio_high:           { lifestyle: [], pharmacological: ['topical_peptides'], interventional: ['asymmetric_filler'] },
+  lip_ratio_low:            { lifestyle: [], pharmacological: ['topical_peptides'], interventional: ['asymmetric_filler'] },
 };
 
 function filterInterventionsTo(bundle: InterventionBundle, finding: BoneFinding): InterventionBundle {

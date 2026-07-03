@@ -13,7 +13,7 @@
  * values are the contract.
  */
 
-import type { BoneDomain, BoneFindingCode, BoneMeshSource, BoneStructureResult } from '../types';
+import type { BoneDomain, BoneFindingCode, BoneStructureResult } from '../types';
 import { Colors } from './theme';
 
 // ---------------------------------------------------------------------------
@@ -44,11 +44,11 @@ export const HARMONY_ACCENT = Colors.harmony;
 // ---------------------------------------------------------------------------
 
 export type BoneMetricKey =
-  | 'facial_thirds' | 'facial_fifths' | 'fluctuating_asymmetry'
+  | 'facial_thirds' | 'facial_fifths' | 'facial_index' | 'fluctuating_asymmetry'
   | 'canthal_tilt' | 'scleral_show' | 'palpebral_fissure_ratio' | 'ipd_ratio'
   | 'gonial_angle' | 'bigonial_bizygomatic_ratio' | 'chin_projection'
-  | 'bitemporal_bizygomatic_ratio' | 'zygomatic_projection'
-  | 'alar_bizygomatic_ratio' | 'nasolabial_angle'
+  | 'bitemporal_bizygomatic_ratio' | 'zygomatic_projection' | 'lip_ratio'
+  | 'alar_bizygomatic_ratio' | 'mouth_nose_ratio' | 'nasolabial_angle'
   | 'brow_position' | 'brow_apex_lateral_third';
 
 export interface BoneMetricMeta {
@@ -62,17 +62,20 @@ export interface BoneMetricMeta {
 export const BONE_METRICS: readonly BoneMetricMeta[] = [
   { key: 'facial_thirds',                  label: 'Facial thirds',           hint: 'Top, middle, lower thirds match',  unit: 'ratio', domain: 'symmetry' },
   { key: 'facial_fifths',                  label: 'Facial fifths',           hint: 'Five equal vertical slices',       unit: 'ratio', domain: 'symmetry' },
+  { key: 'facial_index',                   label: 'Face length ratio',       hint: 'Face height vs cheekbone width',   unit: 'ratio', domain: 'midface' },
   { key: 'fluctuating_asymmetry',          label: 'Mirror symmetry',         hint: 'Left vs right match',              unit: 'none',  domain: 'symmetry' },
   { key: 'canthal_tilt',                   label: 'Canthal tilt',            hint: 'Upward eye angle',                 unit: 'deg',   domain: 'periorbital' },
-  { key: 'scleral_show',                   label: 'Scleral show',            hint: 'Lid covers inferior limbus',       unit: 'mm',    domain: 'periorbital' },
+  { key: 'scleral_show',                   label: 'Scleral show',            hint: 'Lid covers inferior limbus',       unit: 'ratio', domain: 'periorbital' },
   { key: 'palpebral_fissure_ratio',        label: 'Eye aperture',            hint: 'Height vs width of eye opening',   unit: 'ratio', domain: 'periorbital' },
   { key: 'ipd_ratio',                      label: 'Interpupillary spacing',  hint: 'Pupil distance vs eye width',      unit: 'ratio', domain: 'periorbital' },
   { key: 'gonial_angle',                   label: 'Jaw angle',               hint: 'Mandibular gonion angle',          unit: 'deg',   domain: 'mandibular' },
   { key: 'bigonial_bizygomatic_ratio',     label: 'Jaw : cheekbone ratio',   hint: 'Lower-face width vs cheekbones',   unit: 'ratio', domain: 'mandibular' },
-  { key: 'chin_projection',                label: 'Chin projection',         hint: 'Forward chin position',            unit: 'mm',    domain: 'mandibular' },
+  { key: 'chin_projection',                label: 'Chin projection',         hint: 'Forward chin position',            unit: 'ratio', domain: 'mandibular' },
   { key: 'bitemporal_bizygomatic_ratio',   label: 'Temple : cheekbone',      hint: 'Temple width vs cheekbones',       unit: 'ratio', domain: 'midface' },
-  { key: 'zygomatic_projection',           label: 'Cheekbone projection',    hint: 'Forward cheekbone position',       unit: 'mm',    domain: 'midface' },
+  { key: 'zygomatic_projection',           label: 'Cheekbone projection',    hint: 'Forward cheekbone position',       unit: 'ratio', domain: 'midface' },
+  { key: 'lip_ratio',                      label: 'Lip balance',             hint: 'Upper vs lower lip height',        unit: 'ratio', domain: 'midface' },
   { key: 'alar_bizygomatic_ratio',         label: 'Nose base width',         hint: 'Alar base vs cheekbone width',     unit: 'ratio', domain: 'nose' },
+  { key: 'mouth_nose_ratio',               label: 'Mouth-to-nose width',     hint: 'Smile width vs nose base',         unit: 'ratio', domain: 'nose' },
   { key: 'nasolabial_angle',               label: 'Nasolabial angle',        hint: 'Columella to upper lip',           unit: 'deg',   domain: 'nose' },
   { key: 'brow_position',                  label: 'Brow position',           hint: 'Distance above orbital rim',       unit: 'ratio', domain: 'brow' },
   { key: 'brow_apex_lateral_third',        label: 'Brow apex placement',     hint: 'Apex at lateral third',            unit: 'ratio', domain: 'brow' },
@@ -91,7 +94,13 @@ export const METRIC_BY_KEY: Record<BoneMetricKey, BoneMetricMeta> = Object.fromE
 // follow with the technical detail, instead of the other way around. Loaded
 // comparatives like "more attractive" are out; descriptive read-language
 // ("alert", "rested", "balanced") is in.
-export const FINDING_COPY: Record<BoneFindingCode, { title: string; description: string }> = {
+type HarmonyFindingCode =
+  | BoneFindingCode
+  | 'face_long' | 'face_short'
+  | 'mouth_narrow' | 'mouth_wide'
+  | 'lip_ratio_high' | 'lip_ratio_low';
+
+export const FINDING_COPY: Record<HarmonyFindingCode, { title: string; description: string }> = {
   canthal_tilt_negative:    { title: 'Downward eye tilt',         description: 'Your eye corners run flat or angle slightly down. Even a few degrees of upward tilt at the outer corner shifts the read toward alert and rested.' },
   canthal_tilt_excess:      { title: 'Sharp upward eye tilt',     description: 'Your outer corners sit unusually high. The cosmesis sweet spot tends to land between 4° and 8° — yours is just past that.' },
   scleral_show_inferior:    { title: 'Sclera visible under iris', description: 'A thin band of white shows below your iris at neutral gaze. This often reads as tired regardless of how you actually feel, and it’s among the most reversible items on this list.' },
@@ -115,19 +124,26 @@ export const FINDING_COPY: Record<BoneFindingCode, { title: string; description:
   thirds_uneven:            { title: 'Facial thirds differ',      description: 'The three vertical thirds of your face (hairline to brow, brow to nose, nose to chin) don’t come out equal. Mostly a perceptual quirk, but it’s what trained eyes notice first.' },
   fifths_uneven:            { title: 'Facial fifths differ',      description: 'One or more of the five vertical "fifths" across your face differs in width. Usually small enough that you spot it only when measured.' },
   asymmetry_elevated:       { title: 'Mirror-side asymmetry',     description: 'Your left and right sides don’t mirror each other as closely as typical. Habit-driven asymmetry (sleep side, chewing side) often softens on its own when those habits change.' },
+  face_long:                { title: 'Longer face ratio',         description: 'Your face height runs a little longer relative to cheekbone width. The read is a more elongated oval than the classic balanced proportion.' },
+  face_short:               { title: 'Shorter face ratio',        description: 'Your face height is compact relative to cheekbone width. This gives the face a broader, more grounded read rather than an elongated one.' },
+  mouth_narrow:             { title: 'Narrow mouth-to-nose width', description: 'Your mouth width sits closer to your nose base than the classic proportion. It reads as a compact central feature balance.' },
+  mouth_wide:               { title: 'Wide mouth-to-nose width',   description: 'Your mouth width extends further beyond the nose base than the classic proportion. It gives the lower midface a more open read.' },
+  lip_ratio_high:           { title: 'Upper lip reads fuller',    description: 'Your upper lip height is high relative to the lower lip. The lip balance reads more top-weighted than the usual relaxed proportion.' },
+  lip_ratio_low:            { title: 'Lower lip reads fuller',    description: 'Your lower lip carries more height relative to the upper lip. This is common and usually reads soft rather than sharp.' },
 };
 
 // ---------------------------------------------------------------------------
-// Measurement overlay vertex pairs — for drawing dimension lines on the 3D head
-//
-// Indices are sourced per-mesh-source from the backend's LANDMARK_TABLES.
-// `lineMetrics` produces a 2-point segment; `angleMetrics` produces a 3-point
-// arc (vertexA, vertexCenter, vertexB).
+// Indices follow the canonical MediaPipe face topology used by the viewer.
+// `lineMetrics` produces one or more 2-point segments; `angleMetrics`
+// produces a 3-point arc (vertexA, vertexCenter, vertexB). Multi-segment
+// lines let a single metric (e.g. thirds/fifths) draw every span it compares.
 // ---------------------------------------------------------------------------
+
+type MeasurementSegment = [number, number];
 
 export interface MeasurementLine {
   metricKey: BoneMetricKey;
-  vertices: [number, number]; // [from, to]
+  vertices: MeasurementSegment | MeasurementSegment[]; // [from, to] or multiple spans
   label: string;
 }
 
@@ -137,39 +153,32 @@ export interface MeasurementAngle {
   label: string;
 }
 
-const MEDIAPIPE_LINES: MeasurementLine[] = [
-  { metricKey: 'canthal_tilt',                vertices: [133, 33],   label: 'Canthal tilt' },
-  { metricKey: 'bigonial_bizygomatic_ratio',  vertices: [172, 397],  label: 'Jaw width' },
-  { metricKey: 'bitemporal_bizygomatic_ratio',vertices: [127, 356],  label: 'Temple width' },
-  { metricKey: 'alar_bizygomatic_ratio',      vertices: [49, 279],   label: 'Nose base' },
-  { metricKey: 'ipd_ratio',                   vertices: [468, 473],  label: 'IPD' },
+export const MEASUREMENT_LINES: readonly MeasurementLine[] = [
+  { metricKey: 'facial_thirds',                  vertices: [[10, 9], [9, 2], [2, 152]],             label: 'Facial thirds' },
+  { metricKey: 'facial_fifths',                  vertices: [[127, 33], [33, 133], [133, 362], [362, 263], [263, 356]], label: 'Facial fifths' },
+  { metricKey: 'facial_index',                   vertices: [[10, 152], [234, 454]],                 label: 'Face length' },
+  { metricKey: 'canthal_tilt',                   vertices: [[133, 33], [362, 263]],                 label: 'Canthal tilt' },
+  { metricKey: 'scleral_show',                   vertices: [[468, 145], [473, 374]],                label: 'Lower sclera' },
+  { metricKey: 'palpebral_fissure_ratio',        vertices: [[159, 145], [386, 374]],                label: 'Eye aperture' },
+  { metricKey: 'ipd_ratio',                      vertices: [468, 473],                              label: 'IPD' },
+  { metricKey: 'bigonial_bizygomatic_ratio',     vertices: [172, 397],                              label: 'Jaw width' },
+  { metricKey: 'chin_projection',                vertices: [2, 199],                                label: 'Chin depth' },
+  { metricKey: 'bitemporal_bizygomatic_ratio',   vertices: [127, 356],                              label: 'Temple width' },
+  { metricKey: 'zygomatic_projection',           vertices: [234, 454],                              label: 'Cheekbone line' },
+  { metricKey: 'lip_ratio',                      vertices: [[0, 13], [13, 17]],                     label: 'Lip balance' },
+  { metricKey: 'alar_bizygomatic_ratio',         vertices: [49, 279],                               label: 'Nose base' },
+  { metricKey: 'mouth_nose_ratio',               vertices: [[61, 291], [49, 279]],                  label: 'Mouth : nose' },
+  { metricKey: 'brow_position',                  vertices: [[105, 159], [334, 386]],                label: 'Brow height' },
+  { metricKey: 'brow_apex_lateral_third',        vertices: [[55, 105], [105, 33], [285, 334], [334, 263]], label: 'Brow apex' },
 ];
 
-const MEDIAPIPE_ANGLES: MeasurementAngle[] = [
+export const MEASUREMENT_ANGLES: readonly MeasurementAngle[] = [
   { metricKey: 'gonial_angle',     vertices: [127, 172, 199], label: 'Jaw angle' },
   { metricKey: 'nasolabial_angle', vertices: [1, 2, 0],       label: 'Nasolabial' },
 ];
 
-const ARKIT_LINES: MeasurementLine[] = [
-  { metricKey: 'canthal_tilt',                vertices: [133, 33],   label: 'Canthal tilt' },
-  { metricKey: 'bigonial_bizygomatic_ratio',  vertices: [395, 858],  label: 'Jaw width' },
-  { metricKey: 'bitemporal_bizygomatic_ratio',vertices: [234, 454],  label: 'Temple width' },
-  { metricKey: 'alar_bizygomatic_ratio',      vertices: [49, 279],   label: 'Nose base' },
-];
-
-const ARKIT_ANGLES: MeasurementAngle[] = [
-  { metricKey: 'gonial_angle',     vertices: [234, 395, 175], label: 'Jaw angle' },
-  { metricKey: 'nasolabial_angle', vertices: [4, 164, 13],    label: 'Nasolabial' },
-];
-
-export const MEASUREMENT_LINES: Record<BoneMeshSource, readonly MeasurementLine[]> = {
-  mediapipe: MEDIAPIPE_LINES,
-  arkit: ARKIT_LINES,
-};
-
-export const MEASUREMENT_ANGLES: Record<BoneMeshSource, readonly MeasurementAngle[]> = {
-  mediapipe: MEDIAPIPE_ANGLES,
-  arkit: ARKIT_ANGLES,
+export const MEASUREMENT_OVERLAY_NOTES: Partial<Record<BoneMetricKey, string>> = {
+  fluctuating_asymmetry: 'Drawn from multiple paired left/right landmarks rather than a single stable line segment.',
 };
 
 // ---------------------------------------------------------------------------
@@ -279,6 +288,10 @@ export const METRIC_INTERPRETATION: Partial<Record<BoneMetricKey, { below: strin
     below: 'your three vertical face-thirds are less even than the balanced range.',
     inRange: 'your three vertical face-thirds come out close to even.',
   },
+  facial_index: {
+    below: 'your face height-to-width ratio sits outside the classic balanced oval range.',
+    inRange: 'your face height and cheekbone width sit near the classic balanced oval ratio.',
+  },
   zygomatic_projection: {
     below: 'your cheekbones sit closer to the central-face plane than balanced.',
     inRange: 'your cheekbones project in a balanced range.',
@@ -286,6 +299,14 @@ export const METRIC_INTERPRETATION: Partial<Record<BoneMetricKey, { below: strin
   bitemporal_bizygomatic_ratio: {
     below: 'your temples are narrow relative to your cheekbones, softening the ogee curve.',
     inRange: 'your temple-to-cheekbone width sits in a balanced range.',
+  },
+  lip_ratio: {
+    below: 'your upper-to-lower lip height balance sits outside the relaxed proportional range.',
+    inRange: 'your upper and lower lip heights sit in a balanced range.',
+  },
+  mouth_nose_ratio: {
+    below: 'your mouth width and nose-base width sit outside the classic central-face proportion.',
+    inRange: 'your mouth width and nose-base width sit in a balanced range.',
   },
 };
 

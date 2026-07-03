@@ -548,11 +548,12 @@ export default function AnalyzingScreen() {
           return;
         }
 
-        if (firstResult.persisted === false) {
+        if (firstResult.persisted === false && firstResult.status !== 'no_face') {
           enqueueSync({
             label: 'bone-structure persist',
             run: async () => {
               const retry = await analyzeBoneStructure({ mesh: captured!.mesh, dailyId, sexOverride });
+              if (retry.status === 'no_face') return;
               if (retry.persisted === false) {
                 throw new Error('bone-structure not yet persisted on server');
               }

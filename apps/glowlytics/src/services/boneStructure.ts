@@ -54,6 +54,7 @@ export async function analyzeBoneStructure(
   const analysis = analyzeLocal({
     vertices: mesh.vertices,
     blendShapes: mesh.blendShapes ?? null,
+    indices: mesh.indices ?? null,
     sex: sexOverride ?? null,
     source: mesh.source,
   });
@@ -72,6 +73,9 @@ export async function analyzeBoneStructure(
     downsampled_mesh: { vertices: Array.from(mesh.vertices), source: mesh.source },
     source: mesh.source,
     sex: analysis.sex,
+    estimate: analysis.estimate,
+    confidence: analysis.confidence,
+    landmark_source: analysis.landmark_source,
     generated_at: new Date().toISOString(),
     latency_ms: localLatencyMs,
     persisted: false,
@@ -84,6 +88,7 @@ export async function analyzeBoneStructure(
     mesh: {
       vertices: mesh.vertices,
       blendShapes: mesh.blendShapes,
+      indices: mesh.indices,
       source: mesh.source,
     },
     daily_id: dailyId,

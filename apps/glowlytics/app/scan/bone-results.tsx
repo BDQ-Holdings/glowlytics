@@ -48,8 +48,24 @@ import {
   type BoneMetricKey,
 } from '../../src/constants/boneStructure';
 import { buildCanonicalMesh } from '../../src/services/canonicalFaceMesh';
+import { CANONICAL_FACE_VERTEX_SLOTS } from '../../src/services/canonicalFaceGeometry';
 import { useStore } from '../../src/store/useStore';
 import { BorderRadius, Colors, FontFamily, FontSize, Glow, Spacing } from '../../src/constants/theme';
+
+function readBoneHonestyFields(value: unknown): {
+  estimate: boolean;
+  confidence?: 'high' | 'medium' | 'low';
+} {
+  if (!value || typeof value !== 'object') return { estimate: false };
+  const estimate = 'estimate' in value && value.estimate === true;
+  const confidence = 'confidence' in value ? value.confidence : undefined;
+  return {
+    estimate,
+    confidence: confidence === 'high' || confidence === 'medium' || confidence === 'low'
+      ? confidence
+      : undefined,
+  };
+}
 
 export default function BoneResults() {
   const router = useRouter();
@@ -77,6 +93,9 @@ export default function BoneResults() {
   }, [modelOutputs, dailyId]);
 
   const bone = output?.bone_structure;
+  const boneHonesty = readBoneHonestyFields(bone);
+  const boneEstimate = boneHonesty.estimate;
+  const boneConfidence = boneHonesty.confidence;
 
   // Stable insets ref so useMemo doesn't re-fire on every render
   const insetsTop = insets.top;
@@ -155,7 +174,7 @@ export default function BoneResults() {
           <View style={styles.emptyCopyWrap}>
             <Text style={styles.emptyTitle}>Your facial architecture, waiting</Text>
             <Text style={styles.emptyCopy}>
-              Run a quick scan to map 32 anatomical landmarks across your face. We’ll compose your Harmony score and what to do about each finding.
+              Run a quick scan to map {CANONICAL_FACE_VERTEX_SLOTS} anatomical landmark slots across your face. We’ll compose your Harmony score and what to do about each finding.
             </Text>
           </View>
           <View style={styles.emptyActions}>
@@ -201,6 +220,21 @@ export default function BoneResults() {
         previousScore={previousBone?.harmony ?? null}
         driver={buildDriverReadout(bone)}
       />
+      {boneEstimate && (
+        <View style={styles.estimatePill}>
+          <Text style={styles.estimatePillText}>
+            Estimated from a reference model — scan on a Face ID device for your own measurements
+          </Text>
+        </View>
+      )}
+      {boneConfidence === 'low' && (
+        <View style={styles.confidenceBanner}>
+          <Text style={styles.confidenceBannerTitle}>Reduced-confidence read</Text>
+          <Text style={styles.confidenceBannerText}>
+            Some landmarks were low-confidence on this scan, so treat the measurements as directional.
+          </Text>
+        </View>
+      )}
       <Animated.View entering={FadeIn.duration(400).delay(900)} style={styles.swipeHint} pointerEvents="none">
         <Feather name="chevron-up" size={14} color={Colors.harmony} />
         <Text style={styles.swipeText}>Swipe up</Text>
@@ -283,18 +317,20 @@ export default function BoneResults() {
         {BONE_METRICS.map((m, i) => {
           const value = bone.metrics?.[m.key]?.value;
           const score = bone.scored_metrics?.[m.key];
-          if (!Number.isFinite(value)) return null;
+          const measured = Number.isFinite(value);
           return (
             <Animated.View
               key={m.key}
               entering={FadeInDown.duration(350).delay(80 + i * 25)}
-              style={styles.metricCard}
+              style={[styles.metricCard, !measured && styles.metricCardMissing]}
             >
               <Text style={styles.metricLabel}>{m.label}</Text>
-              <Text style={styles.metricValue}>
-                {formatMetricValue(m.key as BoneMetricKey, value as number)}
+              <Text style={[styles.metricValue, !measured && styles.metricValueMissing]}>
+                {measured ? formatMetricValue(m.key as BoneMetricKey, value as number) : '—'}
               </Text>
-              {Number.isFinite(score) && (() => {
+              {!measured ? (
+                <Text style={styles.metricMissingText}>Not measured this scan</Text>
+              ) : Number.isFinite(score) && (() => {
                 const interp = interpretMetricScore(m.key as BoneMetricKey, score as number);
                 const ideal = interp.band === 'ideal';
                 return (
@@ -355,7 +391,7 @@ export default function BoneResults() {
                   onPress={() =>
                     router.push({
                       pathname: '/architecture/[finding]',
-                      params: { finding: f.findingCode, dailyId: output?.daily_id || '' },
+                      params: { finding: f.findingCode, dailyId: output?.daily_id || '', highlightMetric: f.metric },
                     })
                   }
                   accessibilityLabel={`See details for ${copy.title}`}
@@ -480,6 +516,51 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 1.2,
   },
+  estimatePill: {
+    alignSelf: 'center',
+    maxWidth: 320,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    borderColor: Colors.harmony + '55',
+    backgroundColor: Colors.harmony + '12',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    marginTop: Spacing.xs,
+  },
+  estimatePillText: {
+    color: Glow.palette.ink,
+    fontFamily: FontFamily.sansMedium,
+    fontSize: FontSize.xs,
+    lineHeight: 17,
+    textAlign: 'center',
+  },
+  confidenceBanner: {
+    alignSelf: 'center',
+    maxWidth: 330,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.warning + '44',
+    backgroundColor: Colors.warning + '12',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    marginTop: Spacing.sm,
+    gap: 2,
+  },
+  confidenceBannerTitle: {
+    color: Colors.warning,
+    fontFamily: FontFamily.sansSemiBold,
+    fontSize: FontSize.xs,
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
+    textAlign: 'center',
+  },
+  confidenceBannerText: {
+    color: Glow.palette.muted,
+    fontFamily: FontFamily.sans,
+    fontSize: FontSize.xs,
+    lineHeight: 17,
+    textAlign: 'center',
+  },
 
   // Shared page header pieces
   pageEyebrow: {
@@ -557,6 +638,14 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3,
     marginTop: 2,
   },
+  metricCardMissing: {
+    borderStyle: 'dashed',
+    borderColor: Glow.palette.muted + '55',
+    backgroundColor: Glow.palette.surface + 'B8',
+  },
+  metricValueMissing: {
+    color: Glow.palette.muted,
+  },
   metricFooter: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -576,6 +665,13 @@ const styles = StyleSheet.create({
     borderRadius: 2,
   },
 
+  metricMissingText: {
+    color: Glow.palette.muted,
+    fontFamily: FontFamily.sans,
+    fontSize: FontSize.xs,
+    lineHeight: 16,
+    marginTop: Spacing.xs,
+  },
   // Findings
   findingScroll: { flexGrow: 0 },
   findingList: { gap: Spacing.sm, paddingBottom: Spacing.md },

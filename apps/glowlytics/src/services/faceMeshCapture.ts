@@ -34,6 +34,7 @@ function frameToMesh(frame: ARFaceCaptureFrame): CapturedFaceMesh {
     vertices: frame.vertices,
     indices: frame.indices,
     blendShapes: frame.blendShapes,
+    transform: frame.transform,
     source: 'arkit',
     capturedAt: new Date(frame.timestamp).toISOString(),
   };
@@ -72,5 +73,5 @@ export async function captureFaceMesh(opts: { traits?: FaceTraits } = {}): Promi
   }
 
   const mesh = opts.traits ? deformCanonicalMesh(opts.traits) : captureCanonicalMesh();
-  return { mesh, isHighFidelity: false, mode: 'canonical' };
+  return { mesh: { ...mesh, source: 'canonical' }, isHighFidelity: false, mode: 'canonical' };
 }

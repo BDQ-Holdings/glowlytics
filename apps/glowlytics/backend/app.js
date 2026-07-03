@@ -1718,11 +1718,13 @@ app.post('/api/vision/bone-structure', analyzeRateLimit, async (req, res) => {
       }
     }
 
-    const source = mesh.source === 'mediapipe' ? 'mediapipe' : 'arkit';
+    const source = mesh.source === 'canonical' ? 'canonical' : mesh.source === 'mediapipe' ? 'mediapipe' : 'arkit';
+    const indices = Array.isArray(mesh.indices) ? mesh.indices : null;
+    const coherence = boneStructure.isSourceCoherent(source, mesh.vertices.length / 3, indices);
+    if (!coherence.ok) {
+      return res.status(400).json({ error: `mesh source/count mismatch: ${coherence.reason}` });
+    }
     const blendShapes = mesh.blendShapes && typeof mesh.blendShapes === 'object' ? mesh.blendShapes : null;
-    // `mesh.indices` is accepted in the schema for forwards-compatibility but
-    // intentionally unused — the math module derives all metrics from vertex
-    // positions, and the viewer renders connectivity from CANONICAL_OUTLINE_EDGES.
 
     // ----- Authorization: verify daily_id ownership BEFORE running expensive math -----
     // Returns: 'owned' (proceed + persist), 'pending' (skip persist, still analyse),
@@ -1768,6 +1770,7 @@ app.post('/api/vision/bone-structure', analyzeRateLimit, async (req, res) => {
     // ----- Run the analysis -----
     const result = boneStructure.analyzeBoneStructure({
       vertices: mesh.vertices,
+      indices,
       blendShapes,
       sex,
       source,
@@ -1796,6 +1799,9 @@ app.post('/api/vision/bone-structure', analyzeRateLimit, async (req, res) => {
       domain_scores: result.domainScores,
       scored_metrics: result.scored,
       metrics: result.metrics,
+      estimate: result.estimate,
+      confidence: result.confidence,
+      landmark_source: result.landmark_source,
       findings: result.findings,
       interventions,
       dominant_driver: result.dominantDriver,

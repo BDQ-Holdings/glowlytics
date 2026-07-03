@@ -49,6 +49,35 @@ describe('FacialStructure — clickable card', () => {
     mockState.modelOutputs = [];
   });
 
+  it('uses facial_index for the face ratio cell and marks fallback thirds as estimated', () => {
+    mockState.modelOutputs = [
+      {
+        output_id: 'o1',
+        daily_id: 'day-with-bone',
+        bone_structure: {
+          status: 'ok',
+          estimate: true,
+          harmony: 82,
+          domain_scores: { symmetry: 91 },
+          scored_metrics: { zygomatic_projection: 82, gonial_angle: 62 },
+          metrics: {
+            facial_index: { value: 1.61 },
+            ipd_ratio: { value: 2.08 },
+          },
+          dominant_driver: 'midface',
+        },
+      },
+    ];
+
+    const { getByText, getAllByText } = render(<FacialStructure onShare={jest.fn()} />);
+
+    expect(getByText('FACE RATIO')).toBeTruthy();
+    expect(getByText('1.61')).toBeTruthy();
+    expect(getByText('Symmetry 91/100')).toBeTruthy();
+    expect(getByText(/Estimated from a reference model/i)).toBeTruthy();
+    expect(getAllByText(/estimate/i).length).toBeGreaterThanOrEqual(1);
+  });
+
   it('navigates with the dailyId of the bone read the card is displaying', () => {
     // The OLDER output carries the bone read shown on the card; a NEWER
     // skin-only output has no bone_structure. Navigating param-less would land

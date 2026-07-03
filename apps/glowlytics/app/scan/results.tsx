@@ -517,11 +517,11 @@ export default function Results({ hideBottomAction: hideBottomActionProp }: { hi
       ),
     });
 
-    // Page 4: 3D facial mesh — shows lesion dots on real mesh (or canonical
-    // fallback when no per-user mesh has been captured yet).
+    // Page 4: 3D facial mesh — render lesions on the canonical topology so
+    // feature dots/overlays use the same MediaPipe anatomy on every device.
     if (latestOutput.conditions?.length || (latestOutput.lesions && latestOutput.lesions.length > 0)) {
-      const meshVerts = latestOutput.bone_structure?.downsampled_mesh?.vertices || buildCanonicalMesh();
-      const meshSource = latestOutput.bone_structure?.downsampled_mesh?.source || 'mediapipe';
+      const meshVerts = buildCanonicalMesh();
+      const meshSource = 'canonical' as const;
       p.push({
         key: 'mesh3d',
         render: () => (
@@ -545,11 +545,12 @@ export default function Results({ hideBottomAction: hideBottomActionProp }: { hi
       });
     }
 
-    // Page 5: Facial architecture (conditional on bone analysis)
+    // Page 5: Facial architecture — keep measurements on the canonical mesh;
+    // raw ARKit vertices do not share the MediaPipe landmark topology.
     if (latestOutput.bone_structure?.harmony != null) {
       const bone = latestOutput.bone_structure;
-      const meshVerts = bone.downsampled_mesh?.vertices || buildCanonicalMesh();
-      const meshSource = bone.downsampled_mesh?.source || 'mediapipe';
+      const meshVerts = buildCanonicalMesh();
+      const meshSource = 'canonical' as const;
       p.push({
         key: 'architecture',
         render: () => (

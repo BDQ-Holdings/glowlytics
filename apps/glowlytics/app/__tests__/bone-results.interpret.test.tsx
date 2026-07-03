@@ -52,9 +52,12 @@ jest.mock('../../src/store/useStore', () => ({ useStore: jest.fn() }));
 const BoneResults = require('../scan/bone-results').default as React.ComponentType;
 import { useStore } from '../../src/store/useStore';
 
-const bone: BoneStructureResult = {
+const bone = {
   harmony: 34,
   status: 'ok',
+  estimate: true,
+  confidence: 'low',
+  landmark_source: 'template',
   domain_scores: { symmetry: 72, periorbital: 61, mandibular: 44, midface: 36, nose: 68, brow: 58 },
   scored_metrics: { gonial_angle: 30, chin_projection: 40, zygomatic_projection: 33, facial_thirds: 71 },
   metrics: {
@@ -73,7 +76,7 @@ const bone: BoneStructureResult = {
   source: 'mediapipe',
   sex: null,
   generated_at: new Date('2026-06-01').toISOString(),
-};
+} as BoneStructureResult;
 
 const mockedUseStore = useStore as unknown as jest.Mock;
 beforeEach(() => {
@@ -91,5 +94,14 @@ describe('BoneResults — interpretable readouts', () => {
     expect(getByText(/Your biggest opportunity right now is Midface balance/)).toBeTruthy();
     // no uninterpretable bare "36" node anywhere
     expect(queryByText('36')).toBeNull();
+  });
+
+  it('keeps every metric in the grid and surfaces estimate confidence honestly', () => {
+    const { getByText, getAllByText } = render(<BoneResults />);
+
+    expect(getByText(/Estimated from a reference model/i)).toBeTruthy();
+    expect(getByText(/Reduced-confidence read/i)).toBeTruthy();
+    expect(getByText('Mouth-to-nose width')).toBeTruthy();
+    expect(getAllByText('Not measured this scan').length).toBeGreaterThanOrEqual(1);
   });
 });

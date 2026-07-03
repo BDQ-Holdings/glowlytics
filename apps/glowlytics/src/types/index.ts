@@ -191,7 +191,7 @@ export interface ModelOutput {
 // Bone-structure / Harmony types
 // ---------------------------------------------------------------------------
 
-export type BoneMeshSource = 'arkit' | 'mediapipe';
+export type BoneMeshSource = 'arkit' | 'mediapipe' | 'canonical';
 
 export type BoneDomain = 'symmetry' | 'periorbital' | 'mandibular' | 'midface' | 'nose' | 'brow';
 
@@ -206,7 +206,9 @@ export type BoneFindingCode =
   | 'bitemporal_narrow' | 'bitemporal_wide' | 'midface_flat'
   | 'alar_wide' | 'nasolabial_acute' | 'nasolabial_obtuse'
   | 'brow_low' | 'brow_high' | 'brow_apex_misplaced'
-  | 'thirds_uneven' | 'fifths_uneven' | 'asymmetry_elevated';
+  | 'thirds_uneven' | 'fifths_uneven' | 'asymmetry_elevated'
+  | 'face_long' | 'face_short' | 'mouth_narrow' | 'mouth_wide'
+  | 'lip_ratio_high' | 'lip_ratio_low';
 
 export interface BoneFinding {
   findingCode: BoneFindingCode;
@@ -237,6 +239,7 @@ export interface CapturedFaceMesh {
   indices?: number[];          // optional triangle indices
   normals?: number[];          // flat xyz triples, optional
   blendShapes?: Record<string, number>;
+  transform?: number[];
   source: BoneMeshSource;
   capturedAt: string;
 }
@@ -247,6 +250,9 @@ export interface BoneStructureResult {
   domain_scores: Partial<Record<BoneDomain, number | null>>;
   scored_metrics: Record<string, number>;
   metrics: Record<string, { value: number; raw?: Record<string, unknown> }>;
+  estimate: boolean;
+  confidence: 'high' | 'medium' | 'low';
+  landmark_source: 'indexed' | 'derived' | 'template';
   findings: BoneFinding[];
   interventions: InterventionBundle;
   dominant_driver: BoneDomain | null;

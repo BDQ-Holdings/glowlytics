@@ -31,9 +31,12 @@ describe('canonical face mesh', () => {
     // pronasale Y sits between glabella and subnasale on the sagittal plane
     expect(m[1 * 3 + 1]).toBeLessThan(m[9 * 3 + 1]);  // < glabella.y
     expect(m[1 * 3 + 1]).toBeGreaterThan(m[2 * 3 + 1]); // > subnasale.y
-    // zygion_L at index 234 — cheekbone, positive X in a realistic head-width range
-    expect(m[234 * 3]).toBeGreaterThan(20);
-    expect(m[234 * 3]).toBeLessThan(50);
+    // Index 234 — lateral face point (MediaPipe topology): realistic head
+    // half-width in mm, mirrored against 454 (sign is a topology convention,
+    // not an anatomy label — assert magnitude + mirror instead of sign).
+    expect(Math.abs(m[234 * 3])).toBeGreaterThan(55);
+    expect(Math.abs(m[234 * 3])).toBeLessThan(95);
+    expect(m[454 * 3]).toBeCloseTo(-m[234 * 3], 5);
     // menton at index 152 — chin tip, at the bottom of the face
     expect(m[152 * 3 + 1]).toBeLessThanOrEqual(-50);
   });
@@ -53,9 +56,9 @@ describe('canonical face mesh', () => {
     }
   });
 
-  test('captureCanonicalMesh wraps the mesh with source mediapipe', () => {
+  test('captureCanonicalMesh wraps the mesh with source canonical', () => {
     const c = captureCanonicalMesh();
-    expect(c.source).toBe('mediapipe');
+    expect(c.source).toBe('canonical');
     expect(c.vertices.length).toBeGreaterThan(0);
     expect(c.vertices.length % 3).toBe(0);
   });
@@ -81,7 +84,7 @@ describe('captureFaceMesh', () => {
     const result = await captureFaceMesh();
     expect(result.isHighFidelity).toBe(false);
     expect(result.mode).toBe('canonical');
-    expect(result.mesh.source).toBe('mediapipe');
+    expect(result.mesh.source).toBe('canonical');
     expect(arkit.startTracking).not.toHaveBeenCalled();
   });
 
