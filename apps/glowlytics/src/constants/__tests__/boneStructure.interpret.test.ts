@@ -91,19 +91,18 @@ describe('score interpretation', () => {
 });
 
 describe('resolveLabelCollisions', () => {
-  test('separates two labels stacked at the same position', () => {
+  test('separates two labels stacked at the same position with at least the default 4px gap', () => {
     const out = resolveLabelCollisions(
       [
         { x: 100, y: 50, width: 60, height: 12 },
         { x: 100, y: 50, width: 60, height: 12 },
+        { x: 100, y: 55, width: 60, height: 12 },
       ],
-      2,
     );
-    const [a, b] = out;
-    const overlapY = a.y < b.y + b.height && b.y < a.y + a.height;
-    const overlapX = Math.abs(a.x - b.x) * 2 < a.width + b.width;
-    expect(overlapX && overlapY).toBe(false);
-    expect(out).toHaveLength(2);
+    for (let i = 1; i < out.length; i++) {
+      expect(out[i].y - (out[i - 1].y + out[i - 1].height)).toBeGreaterThanOrEqual(4);
+    }
+    expect(out).toHaveLength(3);
   });
 
   test('leaves already-separated labels in place', () => {

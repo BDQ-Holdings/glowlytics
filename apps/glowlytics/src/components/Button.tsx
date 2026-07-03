@@ -1,10 +1,11 @@
 import React from 'react';
 import {
   ActivityIndicator,
+  Pressable,
+  Platform,
   StyleProp,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
   ViewStyle,
 } from 'react-native';
@@ -14,7 +15,6 @@ import {
   Colors,
   FontFamily,
   FontSize,
-  Shadows,
   Spacing,
 } from '../constants/theme';
 
@@ -41,7 +41,7 @@ const sizeMap = {
     fontSize: FontSize.md,
   },
   lg: {
-    minHeight: 60,
+    minHeight: 58,
     paddingHorizontal: Spacing.xl,
     fontSize: FontSize.lg,
   },
@@ -87,23 +87,33 @@ export const Button: React.FC<Props> = ({
     </View>
   );
 
+  const isPrimary = variant === 'primary';
+  const isDisabled = disabled || loading;
+
   return (
-    <TouchableOpacity
+    <Pressable
       onPress={onPress}
-      disabled={disabled || loading}
-      style={style}
-      activeOpacity={0.86}
+      disabled={isDisabled}
+      accessibilityRole="button"
+      accessibilityLabel={title}
+      accessibilityState={{ disabled: isDisabled, busy: loading }}
+      style={({ pressed }) => [
+        style,
+        isPrimary && !disabled && styles.primaryShadow,
+        pressed && !isDisabled && styles.pressed,
+      ]}
     >
-      {variant === 'primary' ? (
+      {isPrimary ? (
         <LinearGradient
+          testID="button-primary-gradient"
           colors={
             disabled
               ? [Colors.surfaceHighlight, Colors.surface]
-              : [Colors.primaryDark, Colors.primary]
+              : ['#3A9E8F', '#2B8C7E', '#258070']
           }
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={[styles.shell, styles.primaryShell]}
+          style={styles.shell}
         >
           {content}
         </LinearGradient>
@@ -118,7 +128,7 @@ export const Button: React.FC<Props> = ({
           {content}
         </View>
       )}
-    </TouchableOpacity>
+    </Pressable>
   );
 };
 
@@ -127,10 +137,25 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.full,
     overflow: 'hidden',
   },
-  primaryShell: {
-    borderWidth: 1,
-    borderColor: 'rgba(58, 158, 143, 0.20)',
-    ...Shadows.glow,
+  primaryShadow: {
+    borderRadius: BorderRadius.full,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#3A9E8F',
+        shadowOpacity: 0.35,
+        shadowRadius: 16,
+        shadowOffset: { width: 0, height: 8 },
+      },
+      android: {
+        elevation: 8,
+      },
+      default: {
+        shadowColor: '#3A9E8F',
+        shadowOpacity: 0.35,
+        shadowRadius: 16,
+        shadowOffset: { width: 0, height: 8 },
+      },
+    }),
   },
   secondaryShell: {
     backgroundColor: Colors.glass,
@@ -145,6 +170,10 @@ const styles = StyleSheet.create({
   disabledShell: {
     backgroundColor: Colors.surfaceHighlight,
     borderColor: Colors.border,
+  },
+  pressed: {
+    opacity: 0.86,
+    transform: [{ scale: 0.98 }],
   },
   content: {
     alignItems: 'center',

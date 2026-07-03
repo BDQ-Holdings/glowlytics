@@ -54,7 +54,12 @@ interface TriangleRun { key: string; path: string; fill: string; opacity: number
 const TARGET_RADIUS = 78;
 const DEFAULT_DISTANCE = 220;
 const FOV = 45;
-const LIGHT = normalizeVec({ x: 0.3, y: 0.4, z: 1 });
+// Design pass 2026-07-03: halve clay-fill intensity and the viewer halo so the
+// mesh keeps its purple read without overpowering measurement overlays.
+export const FILL_OPACITY_SCALE = 0.5;
+// Projection mirrors x/y into screen space (`+x` => screen-left, `+y` => up), so
+// positive x/y places the key light in the on-screen upper-left at ~45°.
+const LIGHT = normalizeVec({ x: 0.6, y: 0.6, z: 0.55 });
 const SHADE_BUCKETS = 12;
 
 const MAX_REFERENCED_INDEX = (() => {
@@ -197,8 +202,8 @@ function mixHex(a: string, b: string, t: number): string {
 
 function clayRamp(bucket: number, bucketCount: number, tint?: string): string {
   const t = bucketCount <= 1 ? 1 : bucket / (bucketCount - 1);
-  const base = mixHex('#6F5478', HARMONY_ACCENT, 0.55 + 0.35 * t);
-  const lit = mixHex(base, '#F5EDF8', 0.18 + 0.38 * t);
+  const base = mixHex('#84618E', HARMONY_ACCENT, 0.58 + 0.32 * t);
+  const lit = mixHex(base, '#F8F0FA', 0.26 + 0.34 * t);
   return tint ? mixHex(lit, tint, 0.35) : lit;
 }
 
@@ -245,7 +250,7 @@ export function bucketFrontFacingTriangles(input: BucketTrianglesInput): { runs:
       { x: c.tx, y: c.ty, z: c.tz },
     );
     const lambert = Math.max(0, normal.x * LIGHT.x + normal.y * LIGHT.y + normal.z * LIGHT.z);
-    const luminance = 0.22 + 0.78 * lambert;
+    const luminance = 0.3 + 0.7 * lambert;
     const bucket = Math.max(0, Math.min(bucketCount - 1, Math.round(luminance * (bucketCount - 1))));
     const tint = input.tintByVertex?.get(ai) || input.tintByVertex?.get(bi) || input.tintByVertex?.get(ci);
     const key = `${bucket}:${tint || 'clay'}`;
@@ -258,7 +263,7 @@ export function bucketFrontFacingTriangles(input: BucketTrianglesInput): { runs:
       prev.depthSum += depth;
       prev.count++;
     } else {
-      buckets.set(key, { path: d, depthSum: depth, count: 1, fill, opacity: tint ? 0.92 : 1 });
+      buckets.set(key, { path: d, depthSum: depth, count: 1, fill, opacity: (tint ? 0.92 : 1) * FILL_OPACITY_SCALE });
     }
     frontFaceCount++;
   }
@@ -508,7 +513,7 @@ export const Face3DViewer: React.FC<Props> = ({
           <Svg width={size} height={size}>
             <Defs>
               <RadialGradient id="bgGlow" cx="50%" cy="50%" rx="55%" ry="55%">
-                <Stop offset="0%" stopColor={HARMONY_ACCENT} stopOpacity="0.18" />
+                <Stop offset="0%" stopColor={HARMONY_ACCENT} stopOpacity={String(0.18 * FILL_OPACITY_SCALE)} />
                 <Stop offset="100%" stopColor={HARMONY_ACCENT} stopOpacity="0" />
               </RadialGradient>
             </Defs>
@@ -574,7 +579,7 @@ export const Face3DViewer: React.FC<Props> = ({
 
             {mode === 'measurements' && bone && (() => {
               const LABEL_H = FontSize.xxs + 4;
-              type Candidate = { key: string; text: string; centerX: number; topY: number; width: number; fill: string };
+              type Candidate = { key: string; metricKey: BoneMetricKey; text: string; anchorX: number; anchorY: number; topY: number; depth: number; width: number; fill: string; highlighted: boolean };
               const candidates: Candidate[] = [];
               const guides: React.ReactNode[] = [];
 
@@ -599,11 +604,15 @@ export const Face3DViewer: React.FC<Props> = ({
                 const text = `${line.label}  ${formatMetricValue(line.metricKey, value as number)}`;
                 candidates.push({
                   key: `ll${i}`,
+                  metricKey: line.metricKey,
                   text,
-                  centerX: labelPoint.x,
-                  topY: labelPoint.y - LABEL_H - 4,
-                  width: text.length * 4.2 + 10,
+                  anchorX: labelPoint.x,
+                  anchorY: labelPoint.y,
+                  topY: labelPoint.y - LABEL_H / 2,
+                  depth: Math.min(...lineSegments(line).flatMap(([a, b]) => [projected[a]?.depth ?? Infinity, projected[b]?.depth ?? Infinity])),
+                  width: Math.min(96, text.length * 3.8 + 8),
                   fill: stroke,
+                  highlighted,
                 });
               });
 
@@ -631,27 +640,63 @@ export const Face3DViewer: React.FC<Props> = ({
                 const text = `${arc.label}  ${formatMetricValue(arc.metricKey, value as number)}`;
                 candidates.push({
                   key: `la${i}`,
+                  metricKey: arc.metricKey,
                   text,
-                  centerX: labelPoint.x + text.length * 2.2 + 6,
-                  topY: labelPoint.y - LABEL_H - 6,
-                  width: text.length * 4.2 + 10,
+                  anchorX: labelPoint.x,
+                  anchorY: labelPoint.y,
+                  topY: labelPoint.y - LABEL_H / 2,
+                  depth: Math.min(...angleSegments(arc).flatMap(([a, c, b]) => [projected[a]?.depth ?? Infinity, projected[c]?.depth ?? Infinity, projected[b]?.depth ?? Infinity])),
+                  width: Math.min(96, text.length * 3.8 + 8),
                   fill: stroke,
+                  highlighted,
                 });
               });
 
-              const boxes: LabelBox[] = candidates.map((c) => ({ x: c.centerX, y: c.topY, width: c.width, height: LABEL_H }));
-              const resolved = resolveLabelCollisions(boxes, 3);
+              const MAX_LABELS = 10;
+              const visibleCandidates = candidates.length > MAX_LABELS
+                ? candidates
+                    .map((c, index) => ({ c, index }))
+                    .sort((a, b) => Number(b.c.highlighted) - Number(a.c.highlighted) || a.c.depth - b.c.depth || a.index - b.index)
+                    .slice(0, MAX_LABELS)
+                    .sort((a, b) => a.index - b.index)
+                    .map(({ c }) => c)
+                : candidates;
+              const visibleKeys = new Set(visibleCandidates.map((c) => c.key));
+              // Overflow metrics stay as anchor dots; external highlight/tap flows can
+              // still reveal a specific metric without recreating the crowded column.
+              const overflowDots = candidates.filter((c) => !visibleKeys.has(c.key));
+              const boxes: LabelBox[] = visibleCandidates.map((c) => {
+                const side: 'left' | 'right' = c.anchorX < size / 2 ? 'left' : 'right';
+                const x = side === 'left'
+                  ? Math.max(c.width / 2 + 4, size * 0.05 + c.width / 2)
+                  : Math.min(size - c.width / 2 - 4, size * 0.95 - c.width / 2);
+                return {
+                  x,
+                  y: Math.max(4, Math.min(size - LABEL_H - 4, c.topY)),
+                  width: c.width,
+                  height: LABEL_H,
+                };
+              });
+              const resolved = resolveLabelCollisions(boxes, 4);
 
               return (
                 <G>
                   {guides}
-                  {candidates.map((c, idx) => {
+                  {overflowDots.map((c) => (
+                    <Circle key={`${c.key}-dot`} cx={c.anchorX} cy={c.anchorY} r={2.3}
+                      fill={c.fill} fillOpacity={c.highlighted ? 0.95 : 0.72} />
+                  ))}
+                  {visibleCandidates.map((c, idx) => {
                     const b = resolved[idx];
                     const baselineY = b.y + LABEL_H - 3;
+                    const side: 'left' | 'right' = c.anchorX < size / 2 ? 'left' : 'right';
+                    const chipEdgeX = side === 'left' ? b.x + b.width / 2 : b.x - b.width / 2;
                     return (
                       <G key={c.key}>
+                        <Line x1={chipEdgeX} y1={b.y + LABEL_H / 2} x2={c.anchorX} y2={c.anchorY}
+                          stroke={c.fill} strokeOpacity={c.highlighted ? 0.72 : 0.46} strokeWidth={1} />
                         <Rect x={b.x - b.width / 2} y={b.y} width={b.width} height={LABEL_H} rx={6}
-                          fill={Colors.background} fillOpacity={0.86} />
+                          fill={Colors.background} fillOpacity={0.92} />
                         <SvgText x={b.x} y={baselineY} fontSize={FontSize.xxs} fontFamily={FontFamily.sansMedium}
                           fill={c.fill} textAnchor="middle">
                           {c.text}

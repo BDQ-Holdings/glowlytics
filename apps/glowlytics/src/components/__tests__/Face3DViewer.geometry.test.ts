@@ -1,4 +1,5 @@
 import {
+  FILL_OPACITY_SCALE,
   bucketFrontFacingTriangles,
   normalizeMeshToTargetRadius,
   projectVertex,
@@ -80,6 +81,76 @@ describe('Face3DViewer geometry helpers', () => {
     });
 
     expect(shaded.runs.length).toBeLessThanOrEqual(3);
+  });
+
+  test('clay and tinted triangle opacity use the design-pass halving scale', () => {
+    const vertices = [
+      0.1, 0.1, 0.1,
+      1, 0, 0,
+      0, -1, 0,
+    ];
+    const shaded = bucketFrontFacingTriangles({
+      vertices,
+      triangles: [[0, 1, 2]],
+      yaw: 0,
+      pitch: 0,
+      distance: 8,
+      fov: 45,
+      size: 200,
+      bucketCount: 6,
+    });
+    const tinted = bucketFrontFacingTriangles({
+      vertices,
+      triangles: [[0, 1, 2]],
+      yaw: 0,
+      pitch: 0,
+      distance: 8,
+      fov: 45,
+      size: 200,
+      bucketCount: 6,
+      tintByVertex: new Map([[0, '#ff0000']]),
+    });
+
+    expect(FILL_OPACITY_SCALE).toBe(0.5);
+    expect(shaded.runs[0]?.opacity).toBe(1 * FILL_OPACITY_SCALE);
+    expect(tinted.runs[0]?.opacity).toBe(0.92 * FILL_OPACITY_SCALE);
+  });
+
+  test('upper-left screen-facing triangles shade brighter than their lower-right mirror', () => {
+    const upperLeft = bucketFrontFacingTriangles({
+      vertices: [
+        0.1, 0.1, 0.1,
+        0, -1, -1.2,
+        -1, 0, -1.2,
+      ],
+      triangles: [[0, 1, 2]],
+      yaw: 0,
+      pitch: 0,
+      distance: 8,
+      fov: 45,
+      size: 200,
+      bucketCount: 12,
+    });
+    const lowerRight = bucketFrontFacingTriangles({
+      vertices: [
+        0.1, 0.1, 0.1,
+        0, 1, -1.2,
+        1, 0, -1.2,
+      ],
+      triangles: [[0, 1, 2]],
+      yaw: 0,
+      pitch: 0,
+      distance: 8,
+      fov: 45,
+      size: 200,
+      bucketCount: 12,
+    });
+
+    const upperLeftBucket = Number(upperLeft.runs[0]?.key.split(':')[0]);
+    const lowerRightBucket = Number(lowerRight.runs[0]?.key.split(':')[0]);
+    expect(upperLeft.frontFaceCount).toBe(1);
+    expect(lowerRight.frontFaceCount).toBe(1);
+    expect(upperLeftBucket).toBeGreaterThan(lowerRightBucket);
   });
 
   test('half reveal exposes balanced left and right landmark dots', () => {

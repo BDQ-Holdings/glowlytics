@@ -1,24 +1,70 @@
-import React from 'react';
-import { Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect } from 'react';
+import { Linking, Pressable, ScrollView, StyleSheet, Text, View, ViewStyle } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withSequence,
+  withTiming,
+} from 'react-native-reanimated';
 import { Button } from '../../src/components/Button';
+import { FadeUp, BreathingGlow } from '../../src/components/glow/GlowPrimitives';
 import { PRIVACY_POLICY_URL } from '../../src/constants/externalLinks';
-import { BorderRadius, Colors, FontFamily, FontSize, Glow, Spacing } from '../../src/constants/theme';
+import { BorderRadius, FontFamily, FontSize, Glow, Spacing } from '../../src/constants/theme';
 import { useStore } from '../../src/store/useStore';
 
-const P = Glow.palette;
+type FeatherName = React.ComponentProps<typeof Feather>['name'];
 
 const DISCLOSURE_ITEMS = [
-  'Your captured skin scan photo, which may include your face.',
-  'Your skin-analysis scores, recent scan history, and the skin goals or context you entered.',
-  'Limited Apple Health summaries only if you connected Health and they are relevant to the scan insight.',
+  'Scan photo, which may include your face.',
+  'Skin scores, recent scan history, goals, or context.',
+  'Apple Health summaries only if connected and relevant.',
+];
+
+const PROTECTION_ITEMS = [
+  'Our secure backend prepares the request.',
+  'OpenAI receives only what is needed for skin analysis.',
+  'API data is not used for OpenAI model training under our agreement.',
 ];
 
 export default function AiConsentScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const P = Glow.palette;
+  const reduceMotion = useStore((s) => s.appearance.reduceMotion);
   const setAiProcessingConsentGranted = useStore((s) => s.setAiProcessingConsentGranted);
+  const pulseOpacity = useSharedValue(reduceMotion ? 0.16 : 0);
+
+  useEffect(() => {
+    if (reduceMotion) {
+      pulseOpacity.value = 0.16;
+      return;
+    }
+
+    pulseOpacity.value = 0;
+    pulseOpacity.value = withDelay(
+      Glow.motion.stagger[7] + 600,
+      withSequence(
+        withTiming(0.68, {
+          duration: 450,
+          easing: Easing.bezier(...Glow.motion.easingOutCubic),
+        }),
+        withTiming(0, {
+          duration: 450,
+          easing: Easing.bezier(...Glow.motion.easingOutCubic),
+        }),
+      ),
+    );
+  }, [pulseOpacity, reduceMotion]);
+
+  const pulseStyle = useAnimatedStyle(() => ({
+    opacity: pulseOpacity.value,
+  }));
 
   const grantConsent = () => {
     setAiProcessingConsentGranted(true);
@@ -26,63 +72,194 @@ export default function AiConsentScreen() {
   };
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, { backgroundColor: P.bg }]}>
       <LinearGradient
         colors={[P.surface, P.bg]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.iconWrap}>
-          <Feather name="shield" size={24} color={P.accent} />
-        </View>
-
-        <Text style={styles.eyebrow}>Before your scan</Text>
-        <Text style={styles.title}>Allow AI processing for this skin analysis?</Text>
-        <Text style={styles.body}>
-          Glowlytics sends scan data to our secure backend and OpenAI so the app can generate your
-          skin scores, explanations, and recommendations. We need your permission before sharing this
-          personal data with OpenAI.
-        </Text>
-
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Data sent to OpenAI</Text>
-          {DISCLOSURE_ITEMS.map((item) => (
-            <View key={item} style={styles.bulletRow}>
-              <View style={styles.bullet} />
-              <Text style={styles.bulletText}>{item}</Text>
+      <ScrollView
+        contentContainerStyle={[
+          styles.content,
+          {
+            paddingTop: insets.top + Spacing.md,
+            paddingBottom: insets.bottom + Spacing.md,
+          },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
+        <ConsentReveal reduceMotion={reduceMotion} delay={Glow.motion.stagger[0]} duration={500}>
+          <View style={styles.iconStage}>
+            <BreathingGlow color={P.glow} size={Spacing.xxl * 2} style={styles.heroHalo} />
+            <View
+              style={[
+                styles.iconWrap,
+                {
+                  backgroundColor: P.surface,
+                  borderColor: P.glow,
+                },
+              ]}
+            >
+              <Feather name="shield" size={24} color={P.accent} />
             </View>
-          ))}
-        </View>
+          </View>
+        </ConsentReveal>
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Who receives it</Text>
-          <Text style={styles.bodySmall}>
-            OpenAI receives the data only through our API integration for AI-powered skin analysis.
-            OpenAI does not receive your live face-mesh alignment data, and API data is not used for
-            OpenAI model training under our API agreement.
-          </Text>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>If you do not allow</Text>
-          <Text style={styles.bodySmall}>
-            Glowlytics will not start a scan that uploads your personal scan data to OpenAI. You can
-            review our Privacy Policy before deciding.
-          </Text>
-        </View>
-
-        <Button title="I allow AI processing" onPress={grantConsent} size="lg" />
-        <Button title="Not now" onPress={() => router.back()} variant="ghost" size="md" />
-        <Text
-          accessibilityRole="link"
-          style={styles.policyLink}
-          onPress={() => Linking.openURL(PRIVACY_POLICY_URL).catch(() => {})}
+        <ConsentReveal
+          reduceMotion={reduceMotion}
+          delay={Glow.motion.stagger[1]}
+          duration={600}
+          style={styles.heroCopy}
         >
-          Read Privacy Policy
-        </Text>
+          <Text style={[styles.eyebrow, { color: P.muted }]}>Before your scan</Text>
+          <Text style={[styles.title, { color: P.ink }]}>Allow AI processing for this skin analysis?</Text>
+          <Text style={[styles.lede, { color: P.muted }]}>
+            To score your skin, Glowlytics shares your scan with our secure backend and OpenAI. Your call first.
+          </Text>
+        </ConsentReveal>
+
+        <View style={styles.cardsGroup}>
+          <ConsentReveal reduceMotion={reduceMotion} delay={380} duration={600}>
+            <DisclosureCard
+              icon="send"
+              title="What we send"
+              items={DISCLOSURE_ITEMS}
+              palette={P}
+            />
+          </ConsentReveal>
+
+          <ConsentReveal reduceMotion={reduceMotion} delay={530} duration={600}>
+            <DisclosureCard
+              icon="shield"
+              title="How it is protected"
+              items={PROTECTION_ITEMS}
+              palette={P}
+            />
+          </ConsentReveal>
+
+          <ConsentReveal reduceMotion={reduceMotion} delay={680} duration={600}>
+            <View style={[styles.footnote, { borderTopColor: P.glow }]}>
+              <View style={styles.cardHeader}>
+                <View style={[styles.smallIconChip, { backgroundColor: P.glow }]}>
+                  <Feather name="x-circle" size={16} color={P.accent} />
+                </View>
+                <Text style={[styles.footnoteTitle, { color: P.ink }]}>If you do not allow</Text>
+              </View>
+              <Text style={[styles.footnoteText, { color: P.muted }]}>
+                We will not start a scan that uploads personal scan data to OpenAI. You can review
+                the privacy policy before deciding.
+              </Text>
+            </View>
+          </ConsentReveal>
+        </View>
+
+        <ConsentReveal
+          reduceMotion={reduceMotion}
+          delay={Glow.motion.stagger[7]}
+          duration={600}
+          style={styles.actions}
+        >
+          <View style={styles.primaryAction}>
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.ctaPulse,
+                {
+                  backgroundColor: P.glow,
+                  shadowColor: P.accent,
+                },
+                pulseStyle,
+              ]}
+            />
+            <Button title="I allow AI processing" onPress={grantConsent} size="lg" />
+          </View>
+          <Button title="Not now" onPress={() => router.back()} variant="ghost" size="md" />
+          <Pressable
+            accessibilityRole="link"
+            accessibilityLabel="Read privacy policy"
+            hitSlop={Spacing.md}
+            onPress={() => Linking.openURL(PRIVACY_POLICY_URL).catch(() => {})}
+            style={({ pressed }) => [styles.policyHitbox, pressed && styles.linkPressed]}
+          >
+            <Text
+              style={[
+                styles.policyLink,
+                {
+                  color: P.accent,
+                  borderBottomColor: P.accent,
+                },
+              ]}
+            >
+              Read privacy policy
+            </Text>
+          </Pressable>
+        </ConsentReveal>
       </ScrollView>
+    </View>
+  );
+}
+
+function ConsentReveal({
+  reduceMotion,
+  delay,
+  duration,
+  style,
+  children,
+}: {
+  reduceMotion: boolean;
+  delay: number;
+  duration: number;
+  style?: ViewStyle;
+  children: React.ReactNode;
+}) {
+  if (reduceMotion) {
+    return <View style={style}>{children}</View>;
+  }
+
+  return (
+    <FadeUp delay={delay} duration={duration} style={style}>
+      {children}
+    </FadeUp>
+  );
+}
+
+function DisclosureCard({
+  icon,
+  title,
+  items,
+  palette,
+}: {
+  icon: FeatherName;
+  title: string;
+  items: string[];
+  palette: typeof Glow.palette;
+}) {
+  return (
+    <View
+      style={[
+        styles.card,
+        {
+          backgroundColor: palette.surface,
+          borderColor: palette.glow,
+        },
+      ]}
+    >
+      <View style={styles.cardHeader}>
+        <View style={[styles.smallIconChip, { backgroundColor: palette.glow }]}>
+          <Feather name={icon} size={16} color={palette.accent} />
+        </View>
+        <Text style={[styles.cardTitle, { color: palette.ink }]}>{title}</Text>
+      </View>
+
+      <View style={styles.bullets}>
+        {items.map((item) => (
+          <View key={item} style={styles.bulletRow}>
+            <View style={[styles.bullet, { backgroundColor: palette.accent }]} />
+            <Text style={[styles.bulletText, { color: palette.muted }]}>{item}</Text>
+          </View>
+        ))}
+      </View>
     </View>
   );
 }
@@ -90,62 +267,81 @@ export default function AiConsentScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: P.bg,
   },
   content: {
-    paddingTop: 72,
     paddingHorizontal: Spacing.lg,
-    paddingBottom: 48,
-    gap: Spacing.md,
   },
-  iconWrap: {
+  iconStage: {
     alignSelf: 'flex-start',
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: Spacing.xxxl,
+    height: Spacing.xxxl,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: P.surface,
+    marginBottom: Spacing.md,
+  },
+  heroHalo: {
+    top: -Spacing.md,
+    left: -Spacing.md,
+  },
+  iconWrap: {
+    width: Spacing.xxl,
+    height: Spacing.xxl,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: P.glow,
+  },
+  heroCopy: {
+    marginBottom: Spacing.xl,
   },
   eyebrow: {
-    color: P.accent,
     fontFamily: FontFamily.sansSemiBold,
     fontSize: FontSize.xs,
-    letterSpacing: 1.2,
+    letterSpacing: 1.6,
     textTransform: 'uppercase',
+    marginBottom: Spacing.sm,
   },
   title: {
-    color: P.ink,
     fontFamily: FontFamily.sansBold,
-    fontSize: 28,
+    fontSize: FontSize.xxl,
     lineHeight: 34,
+    marginBottom: Spacing.md,
   },
-  body: {
-    color: P.muted,
+  lede: {
     fontFamily: FontFamily.sans,
     fontSize: FontSize.md,
     lineHeight: 22,
   },
-  bodySmall: {
-    color: Colors.textSecondary,
-    fontFamily: FontFamily.sans,
+  cardsGroup: {
+    gap: Spacing.sm,
+    marginBottom: Spacing.xl,
+  },
+  card: {
+    borderRadius: BorderRadius.xl,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: Spacing.md,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  smallIconChip: {
+    width: Spacing.xl,
+    height: Spacing.xl,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardTitle: {
+    flex: 1,
+    fontFamily: FontFamily.sansSemiBold,
     fontSize: FontSize.sm,
     lineHeight: 20,
   },
-  card: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.divider,
-    padding: Spacing.md,
+  bullets: {
     gap: Spacing.sm,
-  },
-  cardTitle: {
-    color: Colors.text,
-    fontFamily: FontFamily.sansSemiBold,
-    fontSize: FontSize.md,
   },
   bulletRow: {
     flexDirection: 'row',
@@ -153,25 +349,66 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   bullet: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginTop: 7,
-    backgroundColor: P.accent,
+    width: Spacing.xs,
+    height: Spacing.xs,
+    borderRadius: BorderRadius.full,
+    marginTop: Spacing.sm,
   },
   bulletText: {
     flex: 1,
-    color: Colors.textSecondary,
     fontFamily: FontFamily.sans,
     fontSize: FontSize.sm,
     lineHeight: 20,
   },
-  policyLink: {
-    alignSelf: 'center',
-    color: P.accent,
+  footnote: {
+    paddingTop: Spacing.md,
+    marginTop: Spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  footnoteTitle: {
+    flex: 1,
     fontFamily: FontFamily.sansSemiBold,
     fontSize: FontSize.sm,
-    marginTop: Spacing.xs,
-    textDecorationLine: 'underline',
+    lineHeight: 20,
+  },
+  footnoteText: {
+    fontFamily: FontFamily.sans,
+    fontSize: FontSize.sm,
+    lineHeight: 20,
+  },
+  actions: {
+    gap: Spacing.sm,
+  },
+  primaryAction: {
+    position: 'relative',
+  },
+  ctaPulse: {
+    position: 'absolute',
+    top: -Spacing.sm,
+    right: -Spacing.sm,
+    bottom: -Spacing.sm,
+    left: -Spacing.sm,
+    borderRadius: BorderRadius.full,
+    shadowOpacity: 0.5,
+    shadowRadius: Spacing.lg,
+    shadowOffset: { width: 0, height: Spacing.sm },
+    elevation: 6,
+  },
+  policyHitbox: {
+    alignSelf: 'center',
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.md,
+  },
+  policyLink: {
+    fontFamily: FontFamily.sansSemiBold,
+    fontSize: FontSize.sm,
+    paddingBottom: Spacing.xxs,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  linkPressed: {
+    opacity: 0.7,
+    transform: [{ scale: 0.98 }],
   },
 });

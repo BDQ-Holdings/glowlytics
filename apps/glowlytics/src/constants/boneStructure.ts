@@ -381,25 +381,22 @@ export interface LabelBox { x: number; y: number; width: number; height: number 
 /**
  * Push label boxes down (never sideways) until none overlap. Boxes are
  * processed top-first; each that would collide with an already-placed box is
- * dropped below it by `gap`. Deterministic and independent of any render, so
- * the collision behaviour is unit-testable. Input order is preserved in the
- * returned array.
+ * dropped below it by `gap`. The resolver is a single bounded pass over the
+ * sorted labels (no unbounded retry loop), so collision behaviour is
+ * deterministic and unit-testable. Input order is preserved in the returned
+ * array.
  */
-export function resolveLabelCollisions(boxes: readonly LabelBox[], gap = 2): LabelBox[] {
+export function resolveLabelCollisions(boxes: readonly LabelBox[], gap = 4): LabelBox[] {
   const order = boxes.map((_, i) => i).sort((a, z) => boxes[a].y - boxes[z].y);
   const placed: LabelBox[] = [];
   const out = new Array<LabelBox>(boxes.length);
   for (const i of order) {
     const src = boxes[i];
     let y = src.y;
-    let changed = true;
-    while (changed) {
-      changed = false;
-      for (const p of placed) {
-        const overlapX = Math.abs(p.x - src.x) * 2 < p.width + src.width;
-        const overlapY = y < p.y + p.height + gap && p.y < y + src.height + gap;
-        if (overlapX && overlapY) { y = p.y + p.height + gap; changed = true; }
-      }
+    for (const p of placed) {
+      const overlapX = Math.abs(p.x - src.x) * 2 < p.width + src.width;
+      const overlapY = y < p.y + p.height + gap && p.y < y + src.height + gap;
+      if (overlapX && overlapY) y = p.y + p.height + gap;
     }
     const resolved: LabelBox = { x: src.x, y, width: src.width, height: src.height };
     placed.push(resolved);
