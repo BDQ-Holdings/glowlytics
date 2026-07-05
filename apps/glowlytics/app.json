@@ -9,11 +9,6 @@
     "newArchEnabled": true,
     "scheme": "glowlytics",
     "backgroundColor": "#FAFAF7",
-    "splash": {
-      "image": "./assets/logo-emblem.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#F5EFE8"
-    },
     "ios": {
       "supportsTablet": false,
       "requireFullScreen": true,
@@ -124,6 +119,18 @@
         {
           "organization": "bdq-holdings",
           "project": "react-native"
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/logo-emblem.png",
+          "imageWidth": 96,
+          "backgroundColor": "#F5EFE8",
+          "dark": {
+            "image": "./assets/logo-emblem.png",
+            "backgroundColor": "#15101A"
+          }
         }
       ]
     ],

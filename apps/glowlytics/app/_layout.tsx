@@ -31,7 +31,6 @@ import {
 } from '../src/services/appearance';
 import { AppearanceHost } from '../src/components/AppearanceHost';
 import { AppErrorBoundary } from '../src/components/AppErrorBoundary';
-import { BreathingGlow } from '../src/components/glow/GlowPrimitives';
 // Lazy import — onnxruntime-react-native crashes in Expo Go
 const initLesionDetection = () =>
   import('../src/services/onDeviceLesionDetection').then((m) => m.initLesionDetection());
@@ -72,15 +71,14 @@ const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 
 // ─── Glowlytics Splash ───────────────────────────────────────────
 // Branded under-layer + safety net beneath the native splash: dusk background,
-// logo emblem fading in over a gentle breathing halo. Shown if the native
-// splash is ever absent (Expo Go, or a frame between control handoffs) so the
-// user never sees black or a bare cream flash.
+// logo emblem fading in. Shown if the native splash is ever absent (Expo Go, or
+// a frame between control handoffs) so the user never sees black or a bare cream flash.
 function GlowSplash() {
   // Follow the system scheme so this branded under-layer matches the native
-  // splash in both modes. NOTE (follow-up): the native app.json splash is still
-  // light-only — an expo-splash-screen dark variant needs a native rebuild, so
-  // that migration is deliberately out of scope here; this JS layer only covers
-  // the handoff gap (#D).
+  // splash in both modes. The native splash now ships light + dark variants via
+  // the expo-splash-screen plugin in app.json (dark #15101A, light #F5EFE8,
+  // imageWidth 96), so this JS layer visually matches it and only covers the
+  // handoff gap (#D).
   const scheme = useColorScheme();
   const P = scheme === 'dark' ? GlowPalettesDark.dusk : Glow.palette;
   const logoOpacity = useSharedValue(0);
@@ -97,9 +95,6 @@ function GlowSplash() {
   return (
     <View style={[splash.container, { backgroundColor: P.bg }]}>
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
-      <View style={splash.halo} pointerEvents="none">
-        <BreathingGlow color={P.glow} size={240} />
-      </View>
       <Animated.View style={logoStyle}>
         <Image
           source={require('../assets/logo-emblem.png')}
@@ -114,11 +109,6 @@ function GlowSplash() {
 const splash = StyleSheet.create({
   container: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  halo: {
-    ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
   },
