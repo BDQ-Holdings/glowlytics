@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
-import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import RevenueCatUI, { PAYWALL_RESULT } from 'react-native-purchases-ui';
 import Svg, { Defs, RadialGradient, Stop, Circle, Ellipse } from 'react-native-svg';
@@ -11,7 +10,7 @@ import Animated, {
   withTiming,
   Easing,
 } from 'react-native-reanimated';
-import { Colors, Glow, FontFamily, FontSize, Spacing, BorderRadius } from '../../src/constants/theme';
+import { Glow, FontFamily, FontSize, Spacing, BorderRadius } from '../../src/constants/theme';
 import { OnboardingTransition } from '../../src/components/OnboardingTransition';
 import { PaywallDisclosure } from '../../src/components/PaywallDisclosure';
 import { useStore } from '../../src/store/useStore';
@@ -28,9 +27,10 @@ const TAG = '[OnboardingPaywall]';
 
 const ENTITLEMENT_ID = 'Glow Pro';
 
-// Hero illustration — premium glow with gold + teal halos. Matches ready.tsx visual language
-// but warmer, with a brighter core to read as "unlocked / Pro".
+// Hero illustration — premium glow halo in the Glow palette (warm accent2 rim,
+// plum accent core) with a bright center to read as "unlocked / Pro".
 function PaywallIllustration() {
+  const P = Glow.palette;
   const pulse = useSharedValue(0.55);
   useEffect(() => {
     pulse.value = withRepeat(
@@ -46,35 +46,35 @@ function PaywallIllustration() {
       <Svg width={220} height={180} viewBox="0 0 220 180">
         <Defs>
           <RadialGradient id="pwOuter" cx="50%" cy="50%" r="50%">
-            <Stop offset="0%" stopColor="#F2B56A" stopOpacity={0.42} />
-            <Stop offset="40%" stopColor="#F2B56A" stopOpacity={0.16} />
-            <Stop offset="80%" stopColor="#3A9E8F" stopOpacity={0.08} />
-            <Stop offset="100%" stopColor="#3A9E8F" stopOpacity={0} />
+            <Stop offset="0%" stopColor={P.accent2} stopOpacity={0.42} />
+            <Stop offset="40%" stopColor={P.accent2} stopOpacity={0.16} />
+            <Stop offset="80%" stopColor={P.accent} stopOpacity={0.08} />
+            <Stop offset="100%" stopColor={P.accent} stopOpacity={0} />
           </RadialGradient>
           <RadialGradient id="pwMid" cx="50%" cy="50%" r="50%">
-            <Stop offset="0%" stopColor="#3A9E8F" stopOpacity={0.85} />
-            <Stop offset="40%" stopColor="#3A9E8F" stopOpacity={0.5} />
-            <Stop offset="100%" stopColor="#39B5BF" stopOpacity={0} />
+            <Stop offset="0%" stopColor={P.accent} stopOpacity={0.85} />
+            <Stop offset="40%" stopColor={P.accent} stopOpacity={0.5} />
+            <Stop offset="100%" stopColor={P.glow} stopOpacity={0} />
           </RadialGradient>
           <RadialGradient id="pwCore" cx="50%" cy="50%" r="50%">
-            <Stop offset="0%" stopColor="#FFFFFF" stopOpacity={0.95} />
-            <Stop offset="35%" stopColor="#5DBCAE" stopOpacity={0.55} />
-            <Stop offset="100%" stopColor="#3A9E8F" stopOpacity={0} />
+            <Stop offset="0%" stopColor={P.surface} stopOpacity={0.95} />
+            <Stop offset="35%" stopColor={P.accent2} stopOpacity={0.55} />
+            <Stop offset="100%" stopColor={P.accent} stopOpacity={0} />
           </RadialGradient>
         </Defs>
         <Ellipse cx={110} cy={90} rx={104} ry={88} fill="url(#pwOuter)" />
         <Circle cx={110} cy={90} r={62} fill="url(#pwMid)" />
-        <Circle cx={110} cy={90} r={56} fill="none" stroke="#F2B56A" strokeWidth={1} strokeOpacity={0.32} />
-        <Circle cx={110} cy={90} r={42} fill="none" stroke="#3A9E8F" strokeWidth={1.2} strokeOpacity={0.32} />
+        <Circle cx={110} cy={90} r={56} fill="none" stroke={P.accent2} strokeWidth={1} strokeOpacity={0.32} />
+        <Circle cx={110} cy={90} r={42} fill="none" stroke={P.accent} strokeWidth={1.2} strokeOpacity={0.32} />
         <Circle cx={110} cy={90} r={28} fill="url(#pwCore)" />
-        <Circle cx={110} cy={90} r={6} fill="#FFFFFF" fillOpacity={0.95} />
+        <Circle cx={110} cy={90} r={6} fill={P.surface} fillOpacity={0.95} />
         {/* Sparkles */}
-        <Circle cx={48} cy={50} r={2.5} fill="#F2B56A" fillOpacity={0.6} />
-        <Circle cx={172} cy={56} r={3} fill="#F2B56A" fillOpacity={0.5} />
-        <Circle cx={56} cy={134} r={2} fill="#3A9E8F" fillOpacity={0.5} />
-        <Circle cx={170} cy={130} r={2.5} fill="#3A9E8F" fillOpacity={0.55} />
-        <Circle cx={110} cy={26} r={1.8} fill="#5DBCAE" fillOpacity={0.5} />
-        <Circle cx={110} cy={158} r={1.6} fill="#5DBCAE" fillOpacity={0.4} />
+        <Circle cx={48} cy={50} r={2.5} fill={P.accent2} fillOpacity={0.6} />
+        <Circle cx={172} cy={56} r={3} fill={P.accent2} fillOpacity={0.5} />
+        <Circle cx={56} cy={134} r={2} fill={P.accent} fillOpacity={0.5} />
+        <Circle cx={170} cy={130} r={2.5} fill={P.accent} fillOpacity={0.55} />
+        <Circle cx={110} cy={26} r={1.8} fill={P.accent2} fillOpacity={0.5} />
+        <Circle cx={110} cy={158} r={1.6} fill={P.accent2} fillOpacity={0.4} />
       </Svg>
     </Animated.View>
   );
@@ -88,8 +88,8 @@ interface BenefitProps {
 
 const Benefit: React.FC<BenefitProps> = ({ icon, title, description }) => (
   <View style={styles.benefitRow}>
-    <View style={styles.benefitIconWrap}>
-      <Feather name={icon} size={18} color={Colors.primary} />
+    <View style={[styles.benefitIconWrap, { backgroundColor: Glow.palette.accent + '1F' }]}>
+      <Feather name={icon} size={18} color={Glow.palette.accent} />
     </View>
     <View style={styles.benefitText}>
       <Text style={styles.benefitTitle}>{title}</Text>
@@ -99,11 +99,9 @@ const Benefit: React.FC<BenefitProps> = ({ icon, title, description }) => (
 );
 
 export default function OnboardingPaywall() {
-  const router = useRouter();
   const setSubscription = useStore((s) => s.setSubscription);
-  const updateUser = useStore((s) => s.updateUser);
   const startTrial = useStore((s) => s.startTrial);
-  const { goBack, onboardingFlow, onboardingFlowIndex } = useOnboardingNavigation();
+  const { advance, goBack, onboardingFlow, onboardingFlowIndex } = useOnboardingNavigation();
 
   const [summary, setSummary] = useState(getPaywallPackageSummary());
   const [busy, setBusy] = useState(false);
@@ -118,10 +116,10 @@ export default function OnboardingPaywall() {
   }, []);
 
   const completeOnboarding = () => {
-    console.log(TAG, 'Completing onboarding → tabs');
-    updateUser({ onboarding_complete: true });
-    if (router.canDismiss()) router.dismissAll();
-    router.replace('/(tabs)/today' as any);
+    // The done end-card owns the actual `onboarding_complete` write so every
+    // paywall outcome (purchase, restore, decline) funnels through one place.
+    console.log(TAG, 'Paywall resolved → done end-card');
+    advance();
   };
 
   const refreshSubscription = async () => {
@@ -233,7 +231,6 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: BorderRadius.full,
-    backgroundColor: 'rgba(58, 158, 143, 0.12)',
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 2,

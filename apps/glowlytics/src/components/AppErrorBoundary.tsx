@@ -74,7 +74,7 @@ export class AppErrorBoundary extends React.Component<Props, State> {
               That shouldn't have happened.
             </Text>
             <Text style={[styles.body, { color: P.muted }]}>
-              We've logged it. Tap below to come back — your data is still on the device.
+              We've logged it. Tap below to come back. Your data is still on the device.
             </Text>
             {__DEV__ && (
               <Text style={[styles.devMsg, { color: P.muted }]} numberOfLines={4}>

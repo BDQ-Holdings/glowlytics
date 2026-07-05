@@ -26,7 +26,9 @@ jest.mock('openai', () => {
 
 jest.mock('pg', () => {
   const mockPool = { query: jest.fn() };
-  return { Pool: jest.fn(() => mockPool) };
+  // db-init.js calls types.setTypeParser at require time; provide it so the
+  // schema/migration structural tests below can require('../db-init') safely.
+  return { Pool: jest.fn(() => mockPool), types: { setTypeParser: jest.fn() } };
 });
 
 jest.mock('../rag', () => ({
@@ -41,6 +43,9 @@ const mockFetch = jest.fn();
 
 const request = require('supertest');
 const app = require('../app');
+const { Pool } = require('pg');
+const pool = new Pool();
+const dbInit = require('../db-init');
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -336,5 +341,75 @@ describe('POST /api/products/identify-photo', () => {
       .expect(200);
 
     expect(res.body.identified).toBe(false);
+  });
+});
+
+// A-fix: the mobile shelf keeps a product `image_url` (from barcode/search
+// lookups). It must survive the backend round-trip — POST /api/products has to
+// persist it and GET /api/products/:userId (SELECT *) has to hand it back —
+// otherwise hydrateForUser overwrites the local shelf with imageless server
+// rows and the thumbnails vanish on the second signed-in launch.
+describe('product_catalog image_url column (db-init structural)', () => {
+  it('declares image_url TEXT on the product_catalog CREATE TABLE', () => {
+    const table = dbInit.schema.match(
+      /CREATE TABLE IF NOT EXISTS product_catalog[\s\S]*?\);/
+    );
+    expect(table).not.toBeNull();
+    expect(table[0]).toMatch(/image_url\s+TEXT/);
+  });
+
+  it('ships a guarded ALTER migration adding image_url for existing deployments', async () => {
+    const migrationPool = { query: jest.fn().mockResolvedValue({ rows: [] }) };
+    await dbInit.initSchema(migrationPool);
+    const ddl = migrationPool.query.mock.calls.map((c) => c[0]).join('\n');
+    expect(ddl).toMatch(
+      /ALTER TABLE product_catalog ADD COLUMN IF NOT EXISTS image_url/
+    );
+  });
+});
+
+describe('POST + GET /api/products image_url round-trip', () => {
+  it('includes image_url in the INSERT column list + values and echoes it back', async () => {
+    const imageUrl = 'https://images.example/cerave-cleanser.png';
+    let insertSql = '';
+    let insertParams = [];
+    pool.query.mockImplementation((sql, params) => {
+      insertSql = sql;
+      insertParams = params;
+      // RETURNING * echoes the row the DB stored; post-migration the column
+      // exists so the inserted image_url comes straight back.
+      return Promise.resolve({
+        rows: [{ user_product_id: 'prod_1', image_url: imageUrl }],
+      });
+    });
+
+    const res = await request(app)
+      .post('/api/products')
+      .send({
+        product_name: 'CeraVe Foaming Cleanser',
+        product_capture_method: 'barcode',
+        ingredients_list: ['Ceramides', 'Niacinamide'],
+        usage_schedule: 'both',
+        start_date: '2026-03-01',
+        image_url: imageUrl,
+      })
+      .expect(201);
+
+    expect(insertSql).toContain('INSERT INTO product_catalog');
+    expect(insertSql).toMatch(/image_url/);
+    expect(insertParams).toContain(imageUrl);
+    expect(res.body.image_url).toBe(imageUrl);
+  });
+
+  it('returns image_url on GET (SELECT * flows the column through)', async () => {
+    const imageUrl = 'https://images.example/anthelios-spf.png';
+    pool.query.mockResolvedValueOnce({
+      rows: [{ user_product_id: 'prod_2', product_name: 'Anthelios', image_url: imageUrl }],
+    });
+
+    const res = await request(app).get('/api/products/dev-user').expect(200);
+
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body[0].image_url).toBe(imageUrl);
   });
 });

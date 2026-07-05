@@ -57,6 +57,7 @@ CREATE TABLE IF NOT EXISTS product_catalog (
   start_date DATE NOT NULL,
   end_date DATE,
   notes TEXT,
+  image_url TEXT,
   created_at TIMESTAMP DEFAULT NOW()
 );
 
@@ -146,6 +147,7 @@ ALTER TABLE model_outputs ADD COLUMN IF NOT EXISTS personalized_feedback TEXT;
 ALTER TABLE model_outputs ADD COLUMN IF NOT EXISTS zone_severity JSONB DEFAULT '{}';
 ALTER TABLE model_outputs ADD COLUMN IF NOT EXISTS generated_insights JSONB DEFAULT '{}';
 ALTER TABLE product_catalog ADD COLUMN IF NOT EXISTS brand VARCHAR(200);
+ALTER TABLE product_catalog ADD COLUMN IF NOT EXISTS image_url TEXT;
 `;
 
 // Migration v2: convert user_id columns from UUID to TEXT for Clerk IDs

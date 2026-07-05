@@ -33,7 +33,7 @@ export default function PrivacyScreen() {
           <Text style={styles.pledgeTitle}>Your scans, handled with care.</Text>
           <Text style={styles.pledgeBody}>
             Photos are uploaded to our secure backend and OpenAI to generate your
-            skin insights — never sold and never used to identify you.
+            skin insights. They’re never sold and never used to identify you.
           </Text>
         </View>
       </View>

@@ -2109,17 +2109,17 @@ app.post('/api/products', async (req, res) => {
     if (!userId) return res.status(401).json({ error: 'Authentication required' });
     const {
       product_name, brand, product_capture_method,
-      ingredients_list, usage_schedule, start_date, notes,
+      ingredients_list, usage_schedule, start_date, notes, image_url,
     } = req.body;
 
     const result = await pool.query(
       `INSERT INTO product_catalog
        (user_id, product_name, brand, product_capture_method, ingredients_list,
-        usage_schedule, start_date, notes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+        usage_schedule, start_date, notes, image_url)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
       [userId, product_name, brand || null, product_capture_method,
        ingredients_list, usage_schedule,
-       start_date || new Date().toISOString().split('T')[0], notes]
+       start_date || new Date().toISOString().split('T')[0], notes, image_url || null]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {

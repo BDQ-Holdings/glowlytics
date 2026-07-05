@@ -89,21 +89,21 @@ export function getXPForScan(streakDays: number, contextItems: number): number {
 // ---------------------------------------------------------------------------
 
 export const BADGE_DEFINITIONS: Record<BadgeId, { name: string; description: string; xp_reward: number }> = {
-  first_scan: { name: 'First Steps', description: 'Complete your first scan', xp_reward: 25 },
-  streak_7: { name: 'Week Warrior', description: 'Maintain a 7-day scan streak', xp_reward: 25 },
-  streak_30: { name: 'Monthly Master', description: 'Maintain a 30-day scan streak', xp_reward: 25 },
-  streak_60: { name: 'Iron Consistency', description: 'Maintain a 60-day scan streak', xp_reward: 25 },
-  sunscreen_champion: { name: 'Sun Shield', description: 'Use sunscreen 7 days in a row', xp_reward: 25 },
-  perfect_week: { name: 'Perfect Week', description: 'Scan every day with full context for 7 days', xp_reward: 25 },
-  sleep_warrior: { name: 'Sleep Champion', description: 'Log great sleep 5 times', xp_reward: 25 },
-  product_expert: { name: 'Product Connoisseur', description: 'Add 5 products to your routine', xp_reward: 25 },
-  early_bird: { name: 'Early Bird', description: 'Complete a scan before 8 AM', xp_reward: 25 },
-  consistency_king: { name: 'Consistency King', description: 'Scan at the same time (plus or minus 1hr) for 7 days', xp_reward: 25 },
-  level_novice: { name: 'Rising Star', description: 'Reach Novice level', xp_reward: 25 },
-  level_enthusiast: { name: 'Skin Enthusiast', description: 'Reach Enthusiast level', xp_reward: 25 },
-  level_expert: { name: 'Skin Expert', description: 'Reach Expert level', xp_reward: 25 },
-  level_master: { name: 'Skin Master', description: 'Reach Master level', xp_reward: 25 },
-  level_scientist: { name: 'Skin Scientist', description: 'Reach the highest level', xp_reward: 25 },
+  first_scan: { name: 'First Steps', description: 'One scan down. The baseline everything else builds on.', xp_reward: 25 },
+  streak_7: { name: 'Week Warrior', description: 'Seven days of showing up. The mirror noticed.', xp_reward: 25 },
+  streak_30: { name: 'Monthly Master', description: 'Thirty days straight. At this point it is just who you are.', xp_reward: 25 },
+  streak_60: { name: 'Iron Consistency', description: 'Sixty days. Your skin has never been so thoroughly supervised.', xp_reward: 25 },
+  sunscreen_champion: { name: 'Sun Shield', description: 'Sunscreen seven days running. The sun will have to try elsewhere.', xp_reward: 25 },
+  perfect_week: { name: 'Perfect Week', description: 'Seven full check-ins, no gaps. Textbook, honestly.', xp_reward: 25 },
+  sleep_warrior: { name: 'Sleep Champion', description: 'Five nights of great sleep, logged. Your skin slept well too.', xp_reward: 25 },
+  product_expert: { name: 'Product Connoisseur', description: 'Five products on the shelf, each earning its place.', xp_reward: 25 },
+  early_bird: { name: 'Early Bird', description: 'Scanned before 8 AM. The bathroom light barely woke up.', xp_reward: 25 },
+  consistency_king: { name: 'Consistency King', description: 'Same scan hour for a week. Your circadian rhythm approves.', xp_reward: 25 },
+  level_novice: { name: 'Rising Star', description: 'Novice level reached. The learning curve bends here.', xp_reward: 25 },
+  level_enthusiast: { name: 'Skin Enthusiast', description: 'Enthusiast level. You read ingredient lists for fun now.', xp_reward: 25 },
+  level_expert: { name: 'Skin Expert', description: 'Expert level. Friends have started asking you for advice.', xp_reward: 25 },
+  level_master: { name: 'Skin Master', description: 'Master level. Very little gets past you.', xp_reward: 25 },
+  level_scientist: { name: 'Skin Scientist', description: 'The highest level there is. Peer review pending.', xp_reward: 25 },
 };
 
 // ---------------------------------------------------------------------------

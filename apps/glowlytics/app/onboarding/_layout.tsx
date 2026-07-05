@@ -1,12 +1,12 @@
 import { Stack } from 'expo-router';
-import { Colors } from '../../src/constants/theme';
+import { Glow } from '../../src/constants/theme';
 
 export default function OnboardingLayout() {
   return (
     <Stack
       screenOptions={{
         headerShown: false,
-        contentStyle: { backgroundColor: Colors.background },
+        contentStyle: { backgroundColor: Glow.palette.bg },
         animation: 'fade',
       }}
     />

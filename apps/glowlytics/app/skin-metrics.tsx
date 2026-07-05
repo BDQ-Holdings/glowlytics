@@ -75,7 +75,7 @@ export default function SkinMetricsScreen() {
         <View style={styles.emptyState}>
           <Text style={styles.emptyTitle}>Metrics appear after your first scan</Text>
           <Text style={styles.emptyCopy}>
-            Your first scan generates acne, sun damage, and skin age assessments — calibrated to you.
+            Your first scan generates acne, sun damage, and skin age assessments, calibrated to you.
           </Text>
           <Button title="Start your first scan" onPress={async () => {
             if (!(await gateWithPaywall())) return;

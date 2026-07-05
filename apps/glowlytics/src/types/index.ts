@@ -72,10 +72,11 @@ export type HandWashingFrequency = 'rarely' | 'few_daily' | 'after_meals' | 'ver
 export type BirthControlType = 'pill' | 'iud' | 'patch' | 'ring' | 'injection' | 'implant';
 
 export type OnboardingScreenName =
-  | 'welcome' | 'age-range' | 'sex' | 'location' | 'skin-goal'
+  | 'welcome' | 'how-it-works' | 'name' | 'age-range' | 'sex' | 'location' | 'skin-goal'
   | 'products' | 'menstrual' | 'cycle-details' | 'supplements' | 'exercise'
   | 'shower-frequency' | 'hand-washing' | 'scan-reminder'
-  | 'camera-permission' | 'health-permission' | 'ready' | 'preview' | 'paywall';
+  | 'camera-permission' | 'health-permission' | 'privacy' | 'ready' | 'preview' | 'paywall'
+  | 'done';
 
 export interface HealthConnectionState {
   status: PermissionStatus;
@@ -134,6 +135,8 @@ export interface ProductEntry {
   end_date?: string;
   notes?: string;
   brand?: string;
+  /** Product image from barcode/search lookups; null for photo/manual adds. */
+  image_url?: string | null;
 }
 
 export interface DailyRecord {

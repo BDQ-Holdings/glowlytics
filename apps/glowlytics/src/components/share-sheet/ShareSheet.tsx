@@ -36,18 +36,20 @@ import { StructureCard } from './cards/StructureCard';
 import { StreakCard } from './cards/StreakCard';
 import { PatternCard } from './cards/PatternCard';
 import { ArcCard } from './cards/ArcCard';
+import { computeCardFit, type CardAspect } from './cardFit';
 
-const P = Glow.palette;
+// Breathing room subtracted from the measured carousel band so the fitted card
+// never butts against the aspect pills above or the dots below.
+const CAROUSEL_VPAD = 12;
 
 // ---------------------------------------------------------------------------
 // Aspect ratios + templates
 // ---------------------------------------------------------------------------
 
-type AspectId = 'story' | 'post' | 'tweet';
 type TemplateId = 'glow' | 'structure' | 'streak' | 'pattern' | 'arc';
 
 interface AspectSpec {
-  id: AspectId;
+  id: CardAspect;
   label: string;
   ratio: string;
   /** Authored card width — the off-screen render target. */
@@ -99,9 +101,14 @@ export function ShareSheet({
 }: ShareSheetProps) {
   const { width: screenWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const [aspect, setAspect] = useState<AspectId>('story');
+  const [aspect, setAspect] = useState<CardAspect>('story');
   const [activeTemplate, setActiveTemplate] = useState<TemplateId>(initialTemplate);
   const [exporting, setExporting] = useState(false);
+  const [bandH, setBandH] = useState<number | undefined>(undefined);
+  // Read the live palette in render so palette/dark-mode switches propagate —
+  // module-level StyleSheet bakes load-time colors (see design.md §1). Only the
+  // sheet CHROME reads live; card interiors stay baked (fixed brand assets).
+  const P = Glow.palette;
   const listRef = useRef<FlatList<TemplateId> | null>(null);
   const cardRefs = useRef<Record<TemplateId, View | null>>({
     glow: null, structure: null, streak: null, pattern: null, arc: null,
@@ -123,31 +130,40 @@ export function ShareSheet({
 
   const spec = ASPECTS.find((a) => a.id === aspect) ?? ASPECTS[0];
 
-  // Carousel slot width — leaves ~16px gutter on either side of the card.
-  const slotWidth = screenWidth - 32;
-  // Fit the authored card into the slot while preserving aspect.
-  const scale = Math.min(slotWidth / spec.baseW, 1);
-  const slotHeight = Math.round(spec.baseH * scale) + 24;
+  // Fit the authored card into the carousel page: bounded by screen width AND
+  // the measured band height (so a tall story card can't overflow into the
+  // aspect pills/dots). The wrapper reserves the SCALED dims (and clips) while
+  // the authored card is transform-scaled about its top-left — RN's centre
+  // transform origin would otherwise leave the layout box authored-size.
+  const availHeight =
+    bandH === undefined ? undefined : Math.max(0, bandH - CAROUSEL_VPAD * 2);
+  const fit = computeCardFit(screenWidth, spec.baseW, spec.baseH, availHeight);
 
-  const renderCard: ListRenderItem<TemplateId> = ({ item }) => {
-    const card = (
-      <View
-        ref={(ref) => { cardRefs.current[item] = ref; }}
-        collapsable={false}
-        style={[styles.cardAuthored, { width: spec.baseW, height: spec.baseH }]}
-      >
-        {renderTemplate(item, { day, arcSeries, patternHeadline, patternBody })}
-      </View>
-    );
-
-    return (
-      <View style={[styles.cardSlot, { width: slotWidth, height: slotHeight }]}>
-        <View style={[styles.cardScale, { transform: [{ scale }] }]}>
-          {card}
+  const renderCard: ListRenderItem<TemplateId> = ({ item }) => (
+    <View style={[styles.cardSlot, { width: fit.slotWidth, height: fit.wrapperH }]}>
+      <View style={[styles.cardWrap, { width: fit.wrapperW, height: fit.wrapperH }]}>
+        <View
+          style={{
+            width: spec.baseW,
+            height: spec.baseH,
+            transform: [
+              { translateX: fit.translateX },
+              { translateY: fit.translateY },
+              { scale: fit.scale },
+            ],
+          }}
+        >
+          <View
+            ref={(ref) => { cardRefs.current[item] = ref; }}
+            collapsable={false}
+            style={[styles.cardAuthored, { width: spec.baseW, height: spec.baseH }]}
+          >
+            {renderTemplate(item, { day, arcSeries, patternHeadline, patternBody, aspect })}
+          </View>
         </View>
       </View>
-    );
-  };
+    </View>
+  );
 
   const onViewableItemsChanged = useRef<(info: { viewableItems: ViewToken[] }) => void>(({ viewableItems }) => {
     const first = viewableItems[0];
@@ -209,7 +225,7 @@ export function ShareSheet({
       presentationStyle="overFullScreen"
       transparent={false}
     >
-      <View style={[styles.fullSheet, { paddingTop: insets.top + 8 }]}>
+      <View style={[styles.fullSheet, { paddingTop: insets.top + 8, backgroundColor: P.bg }]}>
         {/* Floating close affordance — sits below the Dynamic Island, no
             covered header text. */}
         <View style={styles.closeRow}>
@@ -218,7 +234,7 @@ export function ShareSheet({
             accessibilityRole="button"
             accessibilityLabel="Close share sheet"
             hitSlop={12}
-            style={styles.closeBtn}
+            style={[styles.closeBtn, { backgroundColor: P.surface }]}
           >
             <GlowIcon name="x" size={20} color={P.ink} stroke={1.9} />
           </TouchableOpacity>
@@ -234,10 +250,10 @@ export function ShareSheet({
                 onPress={() => setAspect(a.id)}
                 accessibilityRole="button"
                 accessibilityLabel={`Aspect ${a.label}, ${a.ratio}`}
-                style={[styles.aspectBtn, active && styles.aspectBtnActive]}
+                style={[styles.aspectBtn, { backgroundColor: P.surface, borderColor: active ? P.ink : P.glow }, active && styles.aspectBtnActive]}
               >
-                <Text style={[styles.aspectLabel, active && styles.aspectLabelActive]}>{a.label}</Text>
-                <Text style={[styles.aspectRatio, active && styles.aspectRatioActive]}>{a.ratio}</Text>
+                <Text style={[styles.aspectLabel, { color: P.ink }]}>{a.label}</Text>
+                <Text style={[styles.aspectRatio, { color: P.muted }]}>{a.ratio}</Text>
               </TouchableOpacity>
             );
           })}
@@ -246,7 +262,10 @@ export function ShareSheet({
         {/* Template carousel — swipe between card designs. flex: 1 so it
             takes all the vertical space the full-screen sheet now offers,
             instead of the fixed slot height the old bottom-sheet used. */}
-        <View style={[styles.carouselWrap, { flex: 1, justifyContent: 'center' }]}>
+        <View
+          style={[styles.carouselWrap, { flex: 1, justifyContent: 'center' }]}
+          onLayout={(e) => setBandH(e.nativeEvent.layout.height)}
+        >
           <FlatList
             ref={listRef}
             data={TEMPLATES.map((t) => t.id)}
@@ -257,21 +276,28 @@ export function ShareSheet({
             renderItem={renderCard}
             onViewableItemsChanged={onViewableItemsChanged}
             viewabilityConfig={viewabilityConfig}
-            snapToInterval={slotWidth}
+            snapToInterval={fit.slotWidth}
             decelerationRate="fast"
           />
         </View>
 
         <View style={styles.dots}>
-          {TEMPLATES.map((t) => (
-            <View
-              key={t.id}
-              style={[styles.dot, activeTemplate === t.id && styles.dotActive]}
-            />
-          ))}
+          {TEMPLATES.map((t) => {
+            const active = activeTemplate === t.id;
+            return (
+              <View
+                key={t.id}
+                style={[
+                  styles.dot,
+                  { backgroundColor: active ? P.ink : P.muted + '40' },
+                  active && styles.dotActive,
+                ]}
+              />
+            );
+          })}
         </View>
 
-        <Text style={styles.templateLabel}>
+        <Text style={[styles.templateLabel, { color: P.muted }]}>
           {TEMPLATES.find((t) => t.id === activeTemplate)?.label}
         </Text>
 
@@ -284,7 +310,7 @@ export function ShareSheet({
           accessibilityLabel="Share or save"
           style={[
             styles.shareBtn,
-            { marginBottom: Math.max(insets.bottom, 16) },
+            { marginBottom: Math.max(insets.bottom, 16), backgroundColor: P.ink },
             exporting && styles.shareBtnDisabled,
           ]}
         >
@@ -293,7 +319,7 @@ export function ShareSheet({
           ) : (
             <>
               <GlowIcon name="share" size={18} color={P.surface} stroke={1.7} />
-              <Text style={styles.shareBtnText}>Share or save</Text>
+              <Text style={[styles.shareBtnText, { color: P.surface }]}>Share or save</Text>
             </>
           )}
         </TouchableOpacity>
@@ -308,22 +334,23 @@ export function ShareSheet({
 
 function renderTemplate(
   id: TemplateId,
-  ctx: { day: DayEntry | null; arcSeries: number[]; patternHeadline?: string; patternBody?: string },
+  ctx: { day: DayEntry | null; arcSeries: number[]; patternHeadline?: string; patternBody?: string; aspect: CardAspect },
 ) {
   if (!ctx.day) return null;
   switch (id) {
-    case 'glow':      return <GlowCard day={ctx.day} />;
-    case 'structure': return <StructureCard day={ctx.day} />;
-    case 'streak':    return <StreakCard day={ctx.day} />;
+    case 'glow':      return <GlowCard day={ctx.day} aspect={ctx.aspect} />;
+    case 'structure': return <StructureCard day={ctx.day} aspect={ctx.aspect} />;
+    case 'streak':    return <StreakCard day={ctx.day} aspect={ctx.aspect} />;
     case 'pattern':
       return (
         <PatternCard
           day={ctx.day}
+          aspect={ctx.aspect}
           headline={ctx.patternHeadline ?? 'Your skin is finding its rhythm.'}
           body={ctx.patternBody ?? 'Three weeks in, evenness is up 11 points. Stay the course.'}
         />
       );
-    case 'arc':       return <ArcCard day={ctx.day} arcSeries={ctx.arcSeries} />;
+    case 'arc':       return <ArcCard day={ctx.day} arcSeries={ctx.arcSeries} aspect={ctx.aspect} />;
     default:          return null;
   }
 }
@@ -335,7 +362,6 @@ function renderTemplate(
 const styles = StyleSheet.create({
   fullSheet: {
     flex: 1,
-    backgroundColor: P.bg,
     paddingHorizontal: 16,
   },
   closeRow: {
@@ -346,7 +372,6 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: P.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -358,36 +383,34 @@ const styles = StyleSheet.create({
   aspectBtn: {
     flex: 1,
     paddingVertical: 12,
-    backgroundColor: P.surface,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: P.glow,
     alignItems: 'center',
   },
-  aspectBtnActive: { borderColor: P.ink, borderWidth: 1.5 },
-  aspectLabel: { fontFamily: FontFamily.sansBold, fontSize: 13, color: P.ink },
-  aspectLabelActive: { color: P.ink },
-  aspectRatio: { fontSize: 10, color: P.muted, marginTop: 2, fontFamily: FontFamily.sansMedium },
-  aspectRatioActive: { color: P.muted },
+  aspectBtnActive: { borderWidth: 1.5 },
+  aspectLabel: { fontFamily: FontFamily.sansBold, fontSize: 13 },
+  aspectRatio: { fontSize: 10, marginTop: 2, fontFamily: FontFamily.sansMedium },
   carouselWrap: { marginTop: 16 },
-  cardSlot: { paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' },
-  cardScale: { alignSelf: 'center' },
-  cardAuthored: { backgroundColor: P.bg, borderRadius: 0, overflow: 'hidden' },
+  cardSlot: { alignItems: 'center', justifyContent: 'center' },
+  // Reserves the scaled dims and clips the authored (larger) layout box.
+  cardWrap: { overflow: 'hidden', alignSelf: 'center' },
+  // Capture target — no transform lives here, so captureRef exports at the
+  // authored resolution regardless of the on-screen scale. The background is a
+  // fixed brand asset, so it stays baked at load time (card interior, not chrome).
+  cardAuthored: { backgroundColor: Glow.palette.bg, overflow: 'hidden' },
   dots: { flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 8 },
-  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: P.muted + '40' },
-  dotActive: { backgroundColor: P.ink, width: 18 },
+  dot: { width: 6, height: 6, borderRadius: 3 },
+  dotActive: { width: 18 },
   templateLabel: {
     marginTop: 10,
     textAlign: 'center',
     fontFamily: FontFamily.sansMedium,
     fontSize: 12,
-    color: P.muted,
     letterSpacing: 0.6,
   },
   shareBtn: {
     marginTop: 20,
     paddingVertical: 16,
-    backgroundColor: P.ink,
     borderRadius: 999,
     flexDirection: 'row',
     alignItems: 'center',
@@ -395,5 +418,5 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   shareBtnDisabled: { opacity: 0.6 },
-  shareBtnText: { fontFamily: FontFamily.sansBold, fontSize: 15, color: P.surface },
+  shareBtnText: { fontFamily: FontFamily.sansBold, fontSize: 15 },
 });

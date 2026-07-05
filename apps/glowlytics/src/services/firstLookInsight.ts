@@ -16,7 +16,7 @@ export function generateFirstLookInsight(
   if (withCycle.length >= 1) {
     const latest = withCycle[withCycle.length - 1];
     return {
-      headline: `Cycle day ${latest.cycle_day_estimated} — tracking started.`,
+      headline: `Cycle day ${latest.cycle_day_estimated}. Tracking started.`,
       detail:
         'Glowlytics will correlate your cycle with skin changes over the next few weeks. Patterns typically emerge after 2-3 cycles.',
       driver: 'cycle_setup',
@@ -48,7 +48,7 @@ export function generateFirstLookInsight(
     return {
       headline: `Your average HRV is ${avg} ms.`,
       detail:
-        'Heart rate variability reflects your stress and recovery — both affect skin. Higher HRV often correlates with clearer skin.',
+        'Heart rate variability reflects your stress and recovery. Both affect skin. Higher HRV often correlates with clearer skin.',
       driver: 'positive_percentile',
     };
   }

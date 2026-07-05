@@ -376,7 +376,7 @@ export default function CompleteSignUpScreen() {
               {unsupportedMissing.length > 0 ? (
                 <Text style={styles.helper}>
                   Note: this account also needs {unsupportedMissing.map(fieldLabel).join(', ')}.
-                  We can’t collect those here — please use email sign-up instead.
+                  We can’t collect those here. Please use email sign-up instead.
                 </Text>
               ) : null}
 

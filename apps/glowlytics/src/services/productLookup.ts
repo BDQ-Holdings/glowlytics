@@ -30,12 +30,14 @@ export interface ProductResult {
   brand?: string;
   ingredients: string[];
   source: string;
+  image_url?: string | null;
 }
 
 export interface SearchResult {
   name: string;
   brand?: string;
   ingredients: string[];
+  image_url?: string | null;
 }
 
 export interface PhotoIdentifyResult {
@@ -76,6 +78,22 @@ function parseObfIngredients(p: any): string[] {
   return [];
 }
 
+/**
+ * Best-effort product image from an Open Beauty Facts / Open Food Facts payload.
+ * OBF exposes several image fields; prefer the front-of-pack shot, then the
+ * generic display image, then the small thumbnail. Returns null when none read
+ * as a usable URL so downstream shelf rendering falls back to the tone gradient.
+ */
+function parseObfImage(p: unknown): string | null {
+  if (typeof p !== 'object' || p === null) return null;
+  const record = p as Record<string, unknown>;
+  for (const key of ['image_front_url', 'image_url', 'image_small_url'] as const) {
+    const value = record[key];
+    if (typeof value === 'string' && value.trim().length > 0) return value;
+  }
+  return null;
+}
+
 export async function lookupOpenBeautyFacts(barcode: string): Promise<ProductResult | null> {
   const data = await fetchThirdPartyJson<any>(
     `https://world.openbeautyfacts.org/api/v0/product/${encodeURIComponent(barcode)}.json`,
@@ -90,6 +108,7 @@ export async function lookupOpenBeautyFacts(barcode: string): Promise<ProductRes
   return {
     name: p.product_name,
     ingredients,
+    image_url: parseObfImage(p),
     source: 'Open Beauty Facts',
   };
 }
@@ -108,6 +127,7 @@ export async function lookupOpenFoodFacts(barcode: string): Promise<ProductResul
   return {
     name: p.product_name,
     ingredients,
+    image_url: parseObfImage(p),
     source: 'Open Food Facts',
   };
 }
@@ -156,6 +176,7 @@ export async function searchOpenBeautyFacts(query: string): Promise<SearchResult
     .map((p: any) => ({
       name: p.product_name,
       ingredients: parseObfIngredients(p),
+      image_url: parseObfImage(p),
     }));
 }
 
@@ -179,6 +200,7 @@ export async function lookupBarcode(barcode: string): Promise<ProductResult | nu
       name: backendResult.name,
       brand: backendResult.brands || undefined,
       ingredients,
+      image_url: backendResult.image_url ?? null,
       source: backendResult.source,
     };
   } catch {
@@ -262,6 +284,7 @@ export async function searchProductsMultiSource(
         ingredients: r.ingredients
           ? r.ingredients.split(',').map((s: string) => s.trim()).filter(Boolean)
           : [],
+        image_url: r.image_url ?? null,
       }));
     } catch (err) {
       // Caller cancelled — surface the cancellation up so the UI can ignore

@@ -77,11 +77,11 @@ const persistCaptureForAnalysis = async (sourceUri: string): Promise<string> => 
 const qualityIssueCopy = (issue: string): string => {
   switch (issue) {
     case 'too_dark':
-      return 'Too dark — move to brighter light.';
+      return 'Too dark. Move to brighter light.';
     case 'too_bright':
-      return 'Too bright — step away from direct light.';
+      return 'Too bright. Step away from direct light.';
     case 'low_contrast':
-      return 'Low contrast — face a steady light source.';
+      return 'Low contrast. Face a steady light source.';
     default:
       return issue;
   }
@@ -536,7 +536,7 @@ export default function CameraScreen() {
           <Text style={styles.permissionText}>
             {isPermanentlyDenied
               ? 'Camera access is turned off. Open Settings to enable it for Glowlytics, then return here.'
-              : 'A short check-in is how we read your skin. Take three breaths — we\'ll do the rest.'}
+              : 'A short check-in is how we read your skin. Take three breaths. We\'ll do the rest.'}
           </Text>
           {isPermanentlyDenied ? (
             <Button

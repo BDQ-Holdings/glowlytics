@@ -12,13 +12,13 @@
     "splash": {
       "image": "./assets/logo-emblem.png",
       "resizeMode": "contain",
-      "backgroundColor": "#FAFAF7"
+      "backgroundColor": "#F5EFE8"
     },
     "ios": {
       "supportsTablet": false,
       "requireFullScreen": true,
       "bundleIdentifier": "com.glowlytics.app",
-      "buildNumber": "22",
+      "buildNumber": "23",
       "usesAppleSignIn": true,
       "associatedDomains": [],
       "infoPlist": {

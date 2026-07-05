@@ -1,7 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useStore } from '../useStore';
 import { localDateStr } from '../../utils/localDate';
-import type { ConsideringItem } from '../../types';
+import * as api from '../../services/api';
+import type { ConsideringItem, ProductEntry } from '../../types';
 import {
   cancelAllAppNotifications,
   scheduleDailyReminder,
@@ -46,6 +47,19 @@ jest.mock('react-native-purchases', () => ({
 // Mock react-native-purchases-ui
 jest.mock('react-native-purchases-ui', () => ({
   PAYWALL_RESULT: {},
+}));
+
+// A-fix: the hydrate-merge test drives hydrateForUser, which reads the five
+// backend getters. Spread the real module so every other store method
+// (addProduct → syncOutbox, etc.) keeps its real behavior; stub only the
+// getters so the test controls what the "server" returns.
+jest.mock('../../services/api', () => ({
+  ...jest.requireActual('../../services/api'),
+  getUser: jest.fn(() => Promise.resolve(null)),
+  getProtocol: jest.fn(() => Promise.resolve(undefined)),
+  getProducts: jest.fn(() => Promise.resolve([])),
+  getDailyRecords: jest.fn(() => Promise.resolve(undefined)),
+  getModelOutputs: jest.fn(() => Promise.resolve(undefined)),
 }));
 
 const resetStore = () => {
@@ -261,6 +275,87 @@ describe('useStore', () => {
       const forced = useStore.getState().addProduct({ ...base, usage_schedule: 'PM' }, { allowDuplicate: true });
       expect(forced.status).toBe('added');
       expect(useStore.getState().products).toHaveLength(2);
+    });
+  });
+
+  describe('addProduct image_url persistence', () => {
+    beforeEach(() => {
+      useStore.getState().createUser({
+        age_range: '25-34',
+        period_applicable: 'no',
+      });
+    });
+
+    it('persists image_url from a barcode/search add onto the shelf entry', () => {
+      const result = useStore.getState().addProduct({
+        product_name: 'CeraVe Moisturizing Cream',
+        product_capture_method: 'barcode',
+        ingredients_list: ['Ceramide'],
+        usage_schedule: 'AM',
+        start_date: '2026-03-01',
+        image_url: 'https://img.example/cerave.png',
+      });
+
+      expect(result.status).toBe('added');
+      expect(useStore.getState().products[0].image_url).toBe('https://img.example/cerave.png');
+    });
+
+    it('keeps image_url null for an image-less (photo/manual) add', () => {
+      useStore.getState().addProduct({
+        product_name: 'Hand-typed serum',
+        product_capture_method: 'photo',
+        ingredients_list: [],
+        usage_schedule: 'PM',
+        start_date: '2026-03-02',
+        image_url: null,
+      });
+
+      expect(useStore.getState().products[0].image_url).toBeNull();
+    });
+  });
+
+  describe('hydrateForUser image_url survival (mergeEndedProducts)', () => {
+    const shelfProduct = (over: Partial<ProductEntry> = {}): ProductEntry => ({
+      user_product_id: 'prod_img_1',
+      user_id: 'user_A',
+      product_name: 'CeraVe Foaming Cleanser',
+      product_capture_method: 'barcode',
+      ingredients_list: ['Ceramides'],
+      usage_schedule: 'both',
+      start_date: '2026-03-01',
+      image_url: 'https://images.example/cerave-local.png',
+      ...over,
+    });
+
+    it('carries a local image_url onto an active server row the round-trip stripped', async () => {
+      const local = shelfProduct();
+      // Same active product, but the server hands it back imageless (an older
+      // backend deployment with no image_url column drops it on GET). Without
+      // the merge fix, hydrate overwrites the shelf and the thumbnail vanishes.
+      const server = shelfProduct({ image_url: null });
+
+      useStore.setState({ authedUserId: 'user_A', products: [local] });
+      jest.mocked(api.getProducts).mockResolvedValueOnce([server]);
+
+      await useStore.getState().hydrateForUser('user_A');
+
+      const [merged] = useStore.getState().products;
+      expect(merged.user_product_id).toBe('prod_img_1');
+      expect(merged.image_url).toBe('https://images.example/cerave-local.png');
+    });
+
+    it('prefers a fresh server image_url when the round-trip preserves one', async () => {
+      const local = shelfProduct();
+      const server = shelfProduct({ image_url: 'https://images.example/cerave-server.png' });
+
+      useStore.setState({ authedUserId: 'user_A', products: [local] });
+      jest.mocked(api.getProducts).mockResolvedValueOnce([server]);
+
+      await useStore.getState().hydrateForUser('user_A');
+
+      expect(useStore.getState().products[0].image_url).toBe(
+        'https://images.example/cerave-server.png',
+      );
     });
   });
   describe('removeProduct', () => {

@@ -57,7 +57,7 @@ export async function scheduleDailyReminder(hour: number, minute: number): Promi
     DAILY_SCAN_IDENTIFIER,
     { hour, minute },
     'Time for your skin scan',
-    'Take 30 seconds to track your progress.',
+    'Thirty seconds. Your streak is watching, politely.',
   );
 }
 
@@ -75,7 +75,7 @@ export async function scheduleRitualReminder(
     section === 'am' ? 'Morning ritual' : 'Evening ritual',
     section === 'am'
       ? 'A few small steps are waiting for your morning routine.'
-      : 'Wind down with your evening skin ritual.',
+      : 'The day can end now. The retinol goes first.',
   );
 }
 

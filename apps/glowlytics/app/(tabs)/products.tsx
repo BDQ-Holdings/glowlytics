@@ -2,12 +2,12 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlowIcon } from '../../src/components/glow/GlowIcons';
 import { FadeUp, BreathingGlow } from '../../src/components/glow/GlowPrimitives';
 import { AddProductSheet } from '../../src/components/AddProductSheet';
 import { FocusFade } from '../../src/components/FocusFade';
+import { ProductThumb } from '../../src/components/advisor/ProductThumb';
 import {
   BorderRadius,
   Colors,
@@ -125,7 +125,7 @@ export default function ShelfTab() {
             <Text style={[s.titleAccent, { color: palette.ink }]}>
               {products.length === 0 ? 'Empty' : spelledCount(workingCount || products.length)}
             </Text>
-            {products.length === 0 ? ' — start with one' : ' things working'}
+            {products.length === 0 ? '. Every shelf starts this way.' : ' things working'}
           </Text>
           <Text style={[s.subtitle, { color: palette.muted }]}>
             Tap any product to see how it shows up in your patterns.
@@ -198,11 +198,13 @@ export default function ShelfTab() {
                   }
                   style={[s.card, { backgroundColor: palette.surface, borderColor: palette.glow }]}
                 >
-                  <LinearGradient
-                    colors={[tone, palette.surface]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={[s.thumb, { borderColor: palette.glow }]}
+                  <ProductThumb
+                    imageUrl={product.image_url ?? null}
+                    tone={tone}
+                    w={56}
+                    h={72}
+                    r={12}
+                    palette={palette}
                   />
                   <View style={{ flex: 1, minWidth: 0 }}>
                     {!!product.brand && (
@@ -390,12 +392,6 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
-  },
-  thumb: {
-    width: 56,
-    height: 72,
-    borderRadius: 12,
-    borderWidth: 1,
   },
   brand: {
     fontFamily: FontFamily.sansMedium,

@@ -1,122 +1,77 @@
 import React, { useEffect } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@clerk/clerk-expo';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, RadialGradient, Stop, Circle } from 'react-native-svg';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
-  withRepeat,
   withTiming,
+  withDelay,
   Easing,
 } from 'react-native-reanimated';
-import { OnboardingTransition } from '../../src/components/OnboardingTransition';
 import { useStore } from '../../src/store/useStore';
-import { buildOnboardingFlow, screenToRoute } from '../../src/services/onboardingFlow';
+import { buildOnboardingFlow } from '../../src/services/onboardingFlow';
 import { trackEvent } from '../../src/services/analytics';
+import { Glow, FontFamily } from '../../src/constants/theme';
+import { GlowIcon } from '../../src/components/glow/GlowIcons';
+import { useOnboardingNavigation } from '../../src/hooks/useOnboardingNavigation';
 
-function WelcomeIllustration() {
-  const pulseScale = useSharedValue(0.95);
+/**
+ * Staggered fade-up entrance — translateY 16 → 0 with a fade, out-cubic easing,
+ * delayed per the Glow stagger cadence. Gated on the user's reduce-motion
+ * preference: when reduced, the final resting state renders immediately. Local
+ * to this bespoke cover (OnboardingTransition owns entrances elsewhere).
+ */
+function FadeUp({
+  index = 0,
+  children,
+  style,
+}: {
+  index?: number;
+  children: React.ReactNode;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const reduceMotion = useStore((s) => s.appearance?.reduceMotion);
+  const opacity = useSharedValue(reduceMotion ? 1 : 0);
+  const translateY = useSharedValue(reduceMotion ? 0 : 16);
 
   useEffect(() => {
-    pulseScale.value = withRepeat(
-      withTiming(1.06, { duration: 3000, easing: Easing.inOut(Easing.ease) }),
-      -1,
-      true,
-    );
-  }, []);
+    if (reduceMotion) {
+      opacity.value = 1;
+      translateY.value = 0;
+      return;
+    }
+    const delay = Glow.motion.stagger[Math.min(index, Glow.motion.stagger.length - 1)];
+    const easing = Easing.out(Easing.cubic);
+    opacity.value = withDelay(delay, withTiming(1, { duration: 600, easing }));
+    translateY.value = withDelay(delay, withTiming(0, { duration: 600, easing }));
+  }, [reduceMotion, index, opacity, translateY]);
 
-  const pulseStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: pulseScale.value }],
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+    transform: [{ translateY: translateY.value }],
   }));
 
-  return (
-    <Animated.View style={pulseStyle}>
-      <Svg width={240} height={200} viewBox="0 0 240 200">
-        <Defs>
-          {/* Central green-teal glow */}
-          <RadialGradient id="wGreen" cx="50%" cy="50%" r="50%">
-            <Stop offset="0%" stopColor="#34D399" stopOpacity={0.85} />
-            <Stop offset="45%" stopColor="#3A9E8F" stopOpacity={0.35} />
-            <Stop offset="100%" stopColor="#3A9E8F" stopOpacity={0} />
-          </RadialGradient>
-          {/* Top-left golden glow */}
-          <RadialGradient id="wYellow" cx="50%" cy="50%" r="50%">
-            <Stop offset="0%" stopColor="#F5C842" stopOpacity={0.8} />
-            <Stop offset="50%" stopColor="#F5A623" stopOpacity={0.25} />
-            <Stop offset="100%" stopColor="#F5A623" stopOpacity={0} />
-          </RadialGradient>
-          {/* Top-right rose glow */}
-          <RadialGradient id="wRed" cx="50%" cy="50%" r="50%">
-            <Stop offset="0%" stopColor="#EF4444" stopOpacity={0.7} />
-            <Stop offset="50%" stopColor="#E87B9A" stopOpacity={0.2} />
-            <Stop offset="100%" stopColor="#E87B9A" stopOpacity={0} />
-          </RadialGradient>
-          {/* Bottom-left purple glow */}
-          <RadialGradient id="wPurple" cx="50%" cy="50%" r="50%">
-            <Stop offset="0%" stopColor="#8B5CF6" stopOpacity={0.75} />
-            <Stop offset="50%" stopColor="#6366B5" stopOpacity={0.2} />
-            <Stop offset="100%" stopColor="#6366B5" stopOpacity={0} />
-          </RadialGradient>
-          {/* Bottom-right blue glow */}
-          <RadialGradient id="wBlue" cx="50%" cy="50%" r="50%">
-            <Stop offset="0%" stopColor="#3B82F6" stopOpacity={0.7} />
-            <Stop offset="50%" stopColor="#3B7FC4" stopOpacity={0.2} />
-            <Stop offset="100%" stopColor="#3B7FC4" stopOpacity={0} />
-          </RadialGradient>
-          {/* Core white convergence */}
-          <RadialGradient id="wCore" cx="50%" cy="50%" r="50%">
-            <Stop offset="0%" stopColor="#FFFFFF" stopOpacity={0.85} />
-            <Stop offset="25%" stopColor="#34D399" stopOpacity={0.5} />
-            <Stop offset="60%" stopColor="#3A9E8F" stopOpacity={0.15} />
-            <Stop offset="100%" stopColor="#3A9E8F" stopOpacity={0} />
-          </RadialGradient>
-        </Defs>
-
-        {/* Five color orbs arranged radially */}
-        <Circle cx={78} cy={58} r={52} fill="url(#wYellow)" />
-        <Circle cx={172} cy={55} r={46} fill="url(#wRed)" />
-        <Circle cx={62} cy={148} r={50} fill="url(#wPurple)" />
-        <Circle cx={180} cy={150} r={44} fill="url(#wBlue)" />
-
-        {/* Central green convergence — largest, on top */}
-        <Circle cx={120} cy={100} r={60} fill="url(#wGreen)" />
-
-        {/* Orbital rings — multi-color */}
-        <Circle cx={120} cy={100} r={55} fill="none" stroke="#F5C842" strokeWidth={1} strokeOpacity={0.35} />
-        <Circle cx={120} cy={100} r={42} fill="none" stroke="#8B5CF6" strokeWidth={1} strokeOpacity={0.3} />
-        <Circle cx={120} cy={100} r={30} fill="none" stroke="#3B82F6" strokeWidth={0.8} strokeOpacity={0.25} />
-        <Circle cx={120} cy={100} r={20} fill="none" stroke="#EF4444" strokeWidth={0.8} strokeOpacity={0.2} />
-
-        {/* Core bright convergence */}
-        <Circle cx={120} cy={100} r={16} fill="url(#wCore)" />
-        <Circle cx={120} cy={100} r={6} fill="#3A9E8F" fillOpacity={0.95} />
-
-        {/* Accent particles — each color */}
-        <Circle cx={42} cy={35} r={3.5} fill="#F5C842" fillOpacity={0.65} />
-        <Circle cx={200} cy={38} r={3} fill="#EF4444" fillOpacity={0.55} />
-        <Circle cx={38} cy={172} r={3} fill="#8B5CF6" fillOpacity={0.55} />
-        <Circle cx={204} cy={168} r={3.5} fill="#3B82F6" fillOpacity={0.55} />
-        <Circle cx={120} cy={24} r={2.5} fill="#34D399" fillOpacity={0.5} />
-        <Circle cx={120} cy={180} r={2.5} fill="#34D399" fillOpacity={0.4} />
-        <Circle cx={26} cy={100} r={2} fill="#F5A623" fillOpacity={0.35} />
-        <Circle cx={216} cy={100} r={2} fill="#E87B9A" fillOpacity={0.35} />
-
-        {/* Secondary particles */}
-        <Circle cx={65} cy={28} r={1.5} fill="#EF4444" fillOpacity={0.3} />
-        <Circle cx={178} cy={30} r={1.5} fill="#F5C842" fillOpacity={0.3} />
-        <Circle cx={30} cy={135} r={1.5} fill="#3B82F6" fillOpacity={0.25} />
-        <Circle cx={212} cy={140} r={1.5} fill="#8B5CF6" fillOpacity={0.25} />
-      </Svg>
-    </Animated.View>
-  );
+  return <Animated.View style={[style, animatedStyle]}>{children}</Animated.View>;
 }
 
 export default function Welcome() {
   const router = useRouter();
   const { userId } = useAuth();
+  const insets = useSafeAreaInsets();
   const createUser = useStore((s) => s.createUser);
   const setOnboardingFlow = useStore((s) => s.setOnboardingFlow);
-  const setOnboardingFlowIndex = useStore((s) => s.setOnboardingFlowIndex);
+  const { advance } = useOnboardingNavigation();
+  const P = Glow.palette;
 
   const handleStart = () => {
     trackEvent('onboarding_started');
@@ -124,20 +79,169 @@ export default function Welcome() {
     if (!existingUser || (userId && existingUser.user_id && existingUser.user_id !== userId)) {
       createUser({ user_id: userId ?? undefined });
     }
-    const flow = buildOnboardingFlow(existingUser?.sex, existingUser?.menstrual_status, existingUser?.health_connection?.cycle_detected);
+    const flow = buildOnboardingFlow(
+      existingUser?.sex,
+      existingUser?.menstrual_status,
+      existingUser?.health_connection?.cycle_detected,
+    );
     setOnboardingFlow(flow);
-    setOnboardingFlowIndex(1);
-    router.push(screenToRoute(flow[1]));
+    // Welcome IS flow[0]; hand off to the shared guarded advance() (double-tap
+    // safe, writes indexOf(target)) instead of pushing by hand, so the stored
+    // index can never disagree with the route.
+    advance();
+  };
+
+  const handleSignIn = () => {
+    router.push('/auth/sign-in');
   };
 
   return (
-    <OnboardingTransition
-      illustration={<WelcomeIllustration />}
-      heading="A few questions to make this yours."
-      subtext="Glowlytics adapts to your skin, your lifestyle, and your goals. This takes under a minute."
-      primaryLabel="Let's go"
-      primaryOnPress={handleStart}
-      showProgress={false}
-    />
+    <View style={[styles.root, { backgroundColor: P.bg }]}>
+      {/* Soft glow halo, upper third — radial P.glow fading to transparent */}
+      <View style={styles.haloWrap} pointerEvents="none">
+        <Svg width={360} height={360}>
+          <Defs>
+            <RadialGradient id="welcomeGlow" cx="50%" cy="50%" r="50%">
+              <Stop offset="0%" stopColor={P.glow} stopOpacity={0.85} />
+              <Stop offset="65%" stopColor={P.glow} stopOpacity={0} />
+            </RadialGradient>
+          </Defs>
+          <Circle cx={180} cy={180} r={180} fill="url(#welcomeGlow)" />
+        </Svg>
+      </View>
+
+      <View
+        style={[
+          styles.content,
+          { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 16 },
+        ]}
+      >
+        <FadeUp index={0}>
+          <Text style={[styles.wordmark, { color: P.ink }]}>
+            Glowl
+            <Text style={{ color: P.accent }}>y</Text>
+            tics
+          </Text>
+        </FadeUp>
+
+        <View style={styles.heroBlock}>
+          <FadeUp index={1}>
+            <Text style={[styles.eyebrow, { color: P.muted }]}>welcome</Text>
+          </FadeUp>
+          <FadeUp index={2}>
+            <Text style={[styles.headline, { color: P.ink }]}>
+              {'Your skin,\nin your own\nwords.'}
+            </Text>
+          </FadeUp>
+          <FadeUp index={3}>
+            <Text style={[styles.body, { color: P.muted }]}>
+              A glow companion that listens before it speaks. Six seconds a
+              morning. No streaks-bait, no scoring you against strangers.
+            </Text>
+          </FadeUp>
+        </View>
+
+        <View style={styles.spacer} />
+
+        <FadeUp index={4}>
+          <TouchableOpacity
+            style={[styles.beginBtn, { backgroundColor: P.ink }]}
+            activeOpacity={0.86}
+            onPress={handleStart}
+            accessibilityRole="button"
+            accessibilityLabel="Begin"
+          >
+            <Text style={[styles.beginLabel, { color: P.surface }]}>Begin</Text>
+            <GlowIcon name="arrow" size={18} color={P.surface} stroke={1.7} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.signInWrap}
+            activeOpacity={0.7}
+            onPress={handleSignIn}
+            accessibilityRole="link"
+            accessibilityLabel="Sign in"
+          >
+            <Text style={[styles.signInText, { color: P.muted }]}>
+              Already on the inside?{' '}
+              <Text style={[styles.signInLink, { color: P.ink }]}>Sign in</Text>
+            </Text>
+          </TouchableOpacity>
+        </FadeUp>
+      </View>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  root: { flex: 1 },
+  haloWrap: {
+    position: 'absolute',
+    top: '10%',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  content: {
+    flex: 1,
+    paddingHorizontal: 32,
+  },
+  wordmark: {
+    fontFamily: FontFamily.accent,
+    fontSize: 30,
+    letterSpacing: -0.5,
+  },
+  heroBlock: {
+    marginTop: 72,
+  },
+  spacer: {
+    flex: 1,
+  },
+  eyebrow: {
+    fontFamily: FontFamily.sans,
+    fontSize: 11,
+    letterSpacing: 1.6,
+    textTransform: 'uppercase',
+  },
+  headline: {
+    fontFamily: FontFamily.serifItalic,
+    fontSize: 52,
+    lineHeight: 55,
+    letterSpacing: -0.5,
+    marginTop: 10,
+  },
+  body: {
+    fontFamily: FontFamily.sans,
+    fontSize: 15,
+    lineHeight: 23,
+    marginTop: 18,
+    maxWidth: 300,
+  },
+  beginBtn: {
+    width: '100%',
+    borderRadius: 999,
+    paddingVertical: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  beginLabel: {
+    fontFamily: FontFamily.sansSemiBold,
+    fontSize: 15,
+  },
+  signInWrap: {
+    marginTop: 14,
+    alignItems: 'center',
+    paddingVertical: 6,
+  },
+  signInText: {
+    fontFamily: FontFamily.sans,
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  signInLink: {
+    fontFamily: FontFamily.sansSemiBold,
+    textDecorationLine: 'underline',
+  },
+});

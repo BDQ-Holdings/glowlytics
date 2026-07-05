@@ -47,7 +47,7 @@ const day: DayEntry = {
 };
 
 const mockState = {
-  modelOutputs: [],
+  modelOutputs: [] as Array<{ signal_scores: Record<string, number> }>,
   patterns: [
     {
       id: 'pattern-123',
@@ -86,5 +86,49 @@ describe('DayPage evidence CTA', () => {
       pathname: '/pattern/[id]',
       params: { id: 'pattern-123' },
     });
+  });
+});
+
+describe('DayPage facet tiles', () => {
+  beforeEach(() => mockedRouter.router.push.mockClear());
+
+  it.each([
+    ['Hydrated', '/signal/hydration'],
+    ['Calm', '/signal/inflammation'],
+    ['Even', '/signal/sun_damage'],
+    ['Firm', '/signal/structure'],
+  ])('opens the %s signal detail page when tapped', (label, route) => {
+    const { getByLabelText } = render(
+      <DayPage day={day} index={0} width={390} arcSeries={[80, 82]} />,
+    );
+
+    fireEvent.press(getByLabelText(`${label} no reading — details`));
+
+    expect(mockedRouter.router.push).toHaveBeenCalledWith(route);
+  });
+});
+
+describe('DayPage facet tile labels', () => {
+  const scores = { structure: 71, hydration: 64, inflammation: 82, sunDamage: 58, elasticity: 90 };
+
+  beforeEach(() => {
+    mockedRouter.router.push.mockClear();
+    mockState.modelOutputs = [{ signal_scores: scores }];
+  });
+
+  afterEach(() => {
+    mockState.modelOutputs = [];
+  });
+
+  it('folds the reading into the label and takes Even from sunDamage alone', () => {
+    const { getByLabelText } = render(
+      <DayPage day={day} index={0} width={390} arcSeries={[80, 82]} />,
+    );
+
+    // Even reads the raw sunDamage signal (58), NOT avg(sunDamage, elasticity) (74),
+    // and the value is folded into the accessibility label.
+    fireEvent.press(getByLabelText('Even 58 — details'));
+
+    expect(mockedRouter.router.push).toHaveBeenCalledWith('/signal/sun_damage');
   });
 });

@@ -107,6 +107,10 @@ interface AppState {
   // this against today's local date and shows /quote when stale.
   dailyQuoteSeenDate: string | null;
 
+  // Preferred first name from onboarding. Client-side only — used for reveal
+  // copy and notification previews, never synced to the backend profile.
+  preferredName: string | null;
+
   // Explicit permission for sending personal scan data to third-party AI.
   aiProcessingConsentGranted: boolean;
 
@@ -114,6 +118,7 @@ interface AppState {
   setOnboardingStep: (step: number) => void;
   setOnboardingFlow: (flow: OnboardingScreenName[]) => void;
   setOnboardingFlowIndex: (index: number) => void;
+  setPreferredName: (name: string | null) => void;
   reconcileAuthUserId: (authUserId: string) => Promise<void>;
   hydrateForUser: (authUserId: string) => Promise<void>;
   createUser: (data: Partial<UserProfile>) => void;
@@ -281,6 +286,7 @@ type PersistedAppState = Partial<
     | 'consideringList'
     | 'appearance'
     | 'dailyQuoteSeenDate'
+    | 'preferredName'
     | 'aiProcessingConsentGranted'
   >
 > & {
@@ -337,16 +343,24 @@ const productDuplicateKey = (product: Pick<ProductEntry, 'product_name' | 'brand
 // removeProduct soft-deletes locally (sets end_date) while the backend hard-
 // deletes, so a wholesale hydrate would erase ended products and degrade every
 // historical ritual to a "Previously used product" placeholder. Keep local
-// ended rows the server no longer knows about, and carry a local end_date onto
-// rows the server still returns.
+// ended rows the server no longer knows about, carry a local end_date onto rows
+// the server still returns, and reattach a local image_url when the server row
+// lacks one: product_catalog historically had no image_url column, so a signed-
+// in round-trip strips it and the shelf thumbnails vanish on the next launch.
+// Belt-and-suspenders alongside the backend column fix — always map over the
+// server rows (even with no ended rows) so active products keep their image.
 const mergeEndedProducts = (server: ProductEntry[], local: ProductEntry[]): ProductEntry[] => {
-  const localEnded = local.filter((p) => p.end_date);
-  if (localEnded.length === 0) return server;
+  const localById = new Map(local.map((p) => [p.user_product_id, p]));
   const serverIds = new Set(server.map((p) => p.user_product_id));
   const merged = server.map((p) => {
-    const endedLocal = localEnded.find((l) => l.user_product_id === p.user_product_id);
-    return endedLocal?.end_date ? { ...p, end_date: endedLocal.end_date } : p;
+    const localMatch = localById.get(p.user_product_id);
+    if (!localMatch) return p;
+    const carriedEndDate = localMatch.end_date ?? p.end_date;
+    const carriedImageUrl = p.image_url ?? localMatch.image_url;
+    if (carriedEndDate === p.end_date && carriedImageUrl === p.image_url) return p;
+    return { ...p, end_date: carriedEndDate, image_url: carriedImageUrl };
   });
+  const localEnded = local.filter((p) => p.end_date);
   return [...merged, ...localEnded.filter((p) => !serverIds.has(p.user_product_id))];
 };
 
@@ -441,12 +455,17 @@ export const useStore = create<AppState>((set, get) => ({
   appearance: { ...DEFAULT_APPEARANCE },
   openAddProductTrigger: 0,
   dailyQuoteSeenDate: null,
+  preferredName: null,
   aiProcessingConsentGranted: false,
 
 
   setOnboardingStep: (step) => set({ onboardingStep: step }),
   setOnboardingFlow: (flow) => set({ onboardingFlow: flow }),
   setOnboardingFlowIndex: (index) => set({ onboardingFlowIndex: index }),
+  setPreferredName: (name) => {
+    set({ preferredName: name });
+    debouncedPersist(() => get().persistData());
+  },
   reconcileAuthUserId: async (authUserId) => {
     if (!authUserId) return;
     const state = get();
@@ -1381,6 +1400,7 @@ export const useStore = create<AppState>((set, get) => ({
             ...(parsed.appearance ?? {}),
           },
           dailyQuoteSeenDate: typeof parsed.dailyQuoteSeenDate === 'string' ? parsed.dailyQuoteSeenDate : null,
+          preferredName: typeof parsed.preferredName === 'string' ? parsed.preferredName : null,
           aiProcessingConsentGranted: parsed.aiProcessingConsentGranted === true,
         });
 
@@ -1439,7 +1459,7 @@ export const useStore = create<AppState>((set, get) => ({
         subscription, notificationSettings, onboardingFlow, onboardingFlowIndex,
         healthDailyRecords, healthSyncStatus, patterns, firstLookInsight,
         patternNotifications, ritualCompletions, appearance, dailyQuoteSeenDate,
-        aiProcessingConsentGranted, consideringList,
+        preferredName, aiProcessingConsentGranted, consideringList,
       } = get();
       // Cap stored records to last 365 days to prevent AsyncStorage bloat
       const cutoff = new Date();
@@ -1463,7 +1483,7 @@ export const useStore = create<AppState>((set, get) => ({
         healthDailyRecords: cappedHealthRecords,
         healthSyncStatus, patterns, firstLookInsight, patternNotifications,
         ritualCompletions: cappedRitualCompletions,
-        appearance, dailyQuoteSeenDate, aiProcessingConsentGranted, consideringList,
+        appearance, dailyQuoteSeenDate, preferredName, aiProcessingConsentGranted, consideringList,
       };
       await AsyncStorage.setItem('glowlytics_data', await encryptJson(snapshot));
     } catch (e) {
@@ -1504,6 +1524,7 @@ export const useStore = create<AppState>((set, get) => ({
       ritualCompletions: {},
       appearance: { ...DEFAULT_APPEARANCE },
       dailyQuoteSeenDate: null,
+      preferredName: null,
       aiProcessingConsentGranted: false,
       consideringList: [],
     });

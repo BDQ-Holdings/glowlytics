@@ -464,7 +464,7 @@ export default function AccountScreen() {
           accessibilityLabel="Open notification settings"
         >
           <Feather name="bell" size={16} color={Colors.primary} />
-          <Text style={styles.modeButtonText}>Notifications — scan + ritual reminders</Text>
+          <Text style={styles.modeButtonText}>Notifications: scan + ritual reminders</Text>
           <Feather name="chevron-right" size={16} color={Colors.textMuted} />
         </TouchableOpacity>
       </View>

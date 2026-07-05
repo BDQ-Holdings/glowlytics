@@ -9,24 +9,26 @@ import {
   View,
   ViewStyle,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import {
-  BorderRadius,
-  Colors,
-  FontFamily,
-  FontSize,
-  Spacing,
-} from '../constants/theme';
+import { BorderRadius, FontFamily, FontSize, Glow, Spacing } from '../constants/theme';
+import { GlowIcon } from './glow/GlowIcons';
 
 interface Props {
   title: string;
   onPress: () => void;
-  variant?: 'primary' | 'secondary' | 'ghost';
+  /**
+   * primary — solid ink pill (the canonical CTA).
+   * glow — accent2 "shutter" CTA; reserved for the scan moment.
+   * secondary — transparent pill with a glow hairline.
+   * ghost — borderless quiet text button.
+   */
+  variant?: 'primary' | 'secondary' | 'ghost' | 'glow';
   disabled?: boolean;
   loading?: boolean;
   style?: StyleProp<ViewStyle>;
   small?: boolean;
   size?: 'sm' | 'md' | 'lg';
+  /** Trailing 18px arrow — use when the action advances a flow. */
+  showArrow?: boolean;
 }
 
 const sizeMap = {
@@ -56,39 +58,49 @@ export const Button: React.FC<Props> = ({
   style,
   small,
   size,
+  showArrow = false,
 }) => {
+  const P = Glow.palette;
   const resolvedSize = small ? 'sm' : size || 'md';
   const sizeConfig = sizeMap[resolvedSize];
-  const textColor = disabled
-    ? Colors.textMuted
-    : variant === 'primary'
-      ? Colors.textOnDark
-      : variant === 'ghost'
-        ? Colors.primaryLight
-        : Colors.text;
-
-  const content = (
-    <View
-      style={[
-        styles.content,
-        {
-          minHeight: sizeConfig.minHeight,
-          paddingHorizontal: sizeConfig.paddingHorizontal,
-        },
-      ]}
-    >
-      {loading ? (
-        <ActivityIndicator color={textColor} size="small" />
-      ) : (
-        <Text style={[styles.text, { color: textColor, fontSize: sizeConfig.fontSize }]}>
-          {title}
-        </Text>
-      )}
-    </View>
-  );
-
-  const isPrimary = variant === 'primary';
   const isDisabled = disabled || loading;
+
+  const textColor = disabled
+    ? P.muted
+    : variant === 'primary'
+      ? P.surface
+      : variant === 'ghost'
+        ? P.muted
+        : P.ink;
+
+  const shellColor: ViewStyle = disabled
+    ? { backgroundColor: P.glow + '55' }
+    : variant === 'primary'
+      ? { backgroundColor: P.ink }
+      : variant === 'glow'
+        ? { backgroundColor: P.accent2 }
+        : variant === 'secondary'
+          ? { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: P.glow }
+          : { backgroundColor: 'transparent' };
+
+  const glowShadow: StyleProp<ViewStyle> =
+    variant === 'glow' && !disabled
+      ? Platform.select({
+          ios: {
+            shadowColor: P.accent2,
+            shadowOpacity: 0.4,
+            shadowRadius: 32,
+            shadowOffset: { width: 0, height: 8 },
+          },
+          android: { elevation: 8 },
+          default: {
+            shadowColor: P.accent2,
+            shadowOpacity: 0.4,
+            shadowRadius: 32,
+            shadowOffset: { width: 0, height: 8 },
+          },
+        })
+      : undefined;
 
   return (
     <Pressable
@@ -99,35 +111,40 @@ export const Button: React.FC<Props> = ({
       accessibilityState={{ disabled: isDisabled, busy: loading }}
       style={({ pressed }) => [
         style,
-        isPrimary && !disabled && styles.primaryShadow,
+        glowShadow,
         pressed && !isDisabled && styles.pressed,
       ]}
     >
-      {isPrimary ? (
-        <LinearGradient
-          testID="button-primary-gradient"
-          colors={
-            disabled
-              ? [Colors.surfaceHighlight, Colors.surface]
-              : ['#3A9E8F', '#2B8C7E', '#258070']
-          }
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.shell}
-        >
-          {content}
-        </LinearGradient>
-      ) : (
+      <View testID={`button-shell-${variant}`} style={[styles.shell, shellColor]}>
         <View
           style={[
-            styles.shell,
-            variant === 'secondary' ? styles.secondaryShell : styles.ghostShell,
-            disabled && styles.disabledShell,
+            styles.content,
+            {
+              minHeight: sizeConfig.minHeight,
+              paddingHorizontal: sizeConfig.paddingHorizontal,
+            },
           ]}
         >
-          {content}
+          {loading ? (
+            <ActivityIndicator color={textColor} size="small" />
+          ) : (
+            <>
+              <Text
+                style={[
+                  styles.text,
+                  variant === 'ghost' && styles.ghostText,
+                  { color: textColor, fontSize: sizeConfig.fontSize },
+                ]}
+              >
+                {title}
+              </Text>
+              {showArrow && !disabled && (
+                <GlowIcon name="arrow" size={18} color={textColor} stroke={1.7} />
+              )}
+            </>
+          )}
         </View>
-      )}
+      </View>
     </Pressable>
   );
 };
@@ -137,50 +154,22 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.full,
     overflow: 'hidden',
   },
-  primaryShadow: {
-    borderRadius: BorderRadius.full,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#3A9E8F',
-        shadowOpacity: 0.35,
-        shadowRadius: 16,
-        shadowOffset: { width: 0, height: 8 },
-      },
-      android: {
-        elevation: 8,
-      },
-      default: {
-        shadowColor: '#3A9E8F',
-        shadowOpacity: 0.35,
-        shadowRadius: 16,
-        shadowOffset: { width: 0, height: 8 },
-      },
-    }),
-  },
-  secondaryShell: {
-    backgroundColor: Colors.glass,
-    borderWidth: 1,
-    borderColor: 'rgba(58, 158, 143, 0.15)',
-  },
-  ghostShell: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: Colors.borderStrong,
-  },
-  disabledShell: {
-    backgroundColor: Colors.surfaceHighlight,
-    borderColor: Colors.border,
-  },
   pressed: {
     opacity: 0.86,
     transform: [{ scale: 0.98 }],
   },
   content: {
+    flexDirection: 'row',
+    gap: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
   text: {
     fontFamily: FontFamily.sansSemiBold,
     letterSpacing: 0.3,
+  },
+  ghostText: {
+    fontFamily: FontFamily.sansMedium,
+    letterSpacing: 0.2,
   },
 });

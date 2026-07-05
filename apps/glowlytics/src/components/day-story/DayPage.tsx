@@ -19,10 +19,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { router } from 'expo-router';
-import { GlowIcon, GlowSpark } from '../glow/GlowIcons';
+import { GlowIcon, GlowSpark, type GlowIconName } from '../glow/GlowIcons';
 import { SectionHead, BreathingGlow } from '../glow/GlowPrimitives';
 import { FontFamily, Glow } from '../../constants/theme';
-import { GLOW_FACETS } from '../../constants/facets';
+import { GLOW_FACETS, FACET_SIGNAL_ROUTE, type GlowFacetKey } from '../../constants/facets';
 import { useStore } from '../../store/useStore';
 import { FacialStructure } from './FacialStructure';
 import { facetsForDay, headlineForDay, moodAdjective, type DayEntry } from './dayModel';
@@ -31,7 +31,7 @@ import { buildRitualSteps, ritualSectionForHour, ritualStepDone } from '../../se
 const P = Glow.palette;
 const FACET_ICON = Object.fromEntries(
   GLOW_FACETS.map((f) => [f.key, f.icon]),
-) as Record<string, string>;
+) as Record<GlowFacetKey, GlowIconName>;
 
 export interface DayPageProps {
   day: DayEntry;
@@ -181,11 +181,18 @@ export function DayPage({ day, index: _index, width, arcSeries, onScan, onOpenRi
         {GLOW_FACETS.map((f) => {
           const val = facets[f.key];
           return (
-            <View key={f.key} style={styles.facetTile}>
-              <GlowIcon name={FACET_ICON[f.key] as never} size={18} color={P.accent} stroke={1.7} />
+            <TouchableOpacity
+              key={f.key}
+              style={styles.facetTile}
+              activeOpacity={0.86}
+              accessibilityRole="button"
+              accessibilityLabel={`${f.label} ${val ?? 'no reading'} — details`}
+              onPress={() => router.push(`/signal/${FACET_SIGNAL_ROUTE[f.key]}`)}
+            >
+              <GlowIcon name={FACET_ICON[f.key]} size={18} color={P.accent} stroke={1.7} />
               <Text style={styles.facetLabel} numberOfLines={1}>{f.label}</Text>
               <Text style={styles.facetValue}>{val == null ? '—' : val}</Text>
-            </View>
+            </TouchableOpacity>
           );
         })}
       </View>

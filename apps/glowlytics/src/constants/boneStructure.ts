@@ -102,24 +102,24 @@ type HarmonyFindingCode =
 
 export const FINDING_COPY: Record<HarmonyFindingCode, { title: string; description: string }> = {
   canthal_tilt_negative:    { title: 'Downward eye tilt',         description: 'Your eye corners run flat or angle slightly down. Even a few degrees of upward tilt at the outer corner shifts the read toward alert and rested.' },
-  canthal_tilt_excess:      { title: 'Sharp upward eye tilt',     description: 'Your outer corners sit unusually high. The cosmesis sweet spot tends to land between 4° and 8° — yours is just past that.' },
+  canthal_tilt_excess:      { title: 'Sharp upward eye tilt',     description: 'Your outer corners sit unusually high. The cosmesis sweet spot tends to land between 4° and 8°; yours is just past that.' },
   scleral_show_inferior:    { title: 'Sclera visible under iris', description: 'A thin band of white shows below your iris at neutral gaze. This often reads as tired regardless of how you actually feel, and it’s among the most reversible items on this list.' },
   palpebral_fissure_narrow: { title: 'Narrow eye opening',        description: 'Your eye opening is taller relative to its width than is typical. Sometimes this is hereditary; sometimes it shifts with hydration and sleep.' },
-  ipd_atypical:             { title: 'Unusual pupil spacing',     description: 'Your pupils sit slightly outside the classical "rule of fifths" spacing. This is almost always genetic and benign — most people never notice it on themselves.' },
+  ipd_atypical:             { title: 'Unusual pupil spacing',     description: 'Your pupils sit slightly outside the classical "rule of fifths" spacing. This is almost always genetic and benign. Most people never notice it on themselves.' },
   gonial_angle_obtuse:      { title: 'Soft jaw angle',            description: 'The angle where your jaw turns up toward your ear is wider than typical, which softens the line between your face and neck. Masseter tone and weight composition can shift this read over months.' },
-  gonial_angle_acute:       { title: 'Sharp jaw angle',           description: 'Your jaw angle is sharper than typical — often the result of masseter hypertrophy from clenching or chewing habits. Frequently reversible with a different jaw-rest pattern.' },
+  gonial_angle_acute:       { title: 'Sharp jaw angle',           description: 'Your jaw angle is sharper than typical, often the result of masseter hypertrophy from clenching or chewing habits. Frequently reversible with a different jaw-rest pattern.' },
   lower_face_wide:          { title: 'Square lower face',         description: 'Your jaw width is high relative to your cheekbones, which gives a strong square read in the lower third. Often masseter-driven.' },
-  lower_face_narrow:        { title: 'Narrow lower face',         description: 'Your lower face is narrower than your cheekbones — an inverted-triangle profile. Common, and a matter of taste rather than concern.' },
+  lower_face_narrow:        { title: 'Narrow lower face',         description: 'Your lower face is narrower than your cheekbones, an inverted-triangle profile. Common, and a matter of taste rather than concern.' },
   chin_recessed:            { title: 'Set-back chin',             description: 'Your chin projects less forward than the rest of your face on profile. This is the single change with the biggest impact on side-view balance.' },
   chin_excess:              { title: 'Forward-set chin',          description: 'Your chin extends further forward than your nose and cheekbones, slightly imbalancing the side view.' },
   bitemporal_narrow:        { title: 'Narrow temples',            description: 'Your temples are narrower than typical relative to your cheekbones. Subtle, but it affects the soft S-curve from forehead to cheek (the "ogee").' },
-  bitemporal_wide:          { title: 'Wide temples',              description: 'Your temples sit wider than your cheekbones — an unusual proportion. Often a head-shape signature rather than something to change.' },
+  bitemporal_wide:          { title: 'Wide temples',              description: 'Your temples sit wider than your cheekbones, an unusual proportion. Often a head-shape signature rather than something to change.' },
   midface_flat:             { title: 'Flatter midface',           description: 'Your cheekbones sit closer to the plane of your central face than is typical. The cheekbone read often improves on its own as hydration and sleep recover.' },
   alar_wide:                { title: 'Wide nasal base',           description: 'The base of your nose is wider than about a quarter of your cheekbone width. Often a defining feature rather than a flaw.' },
-  nasolabial_acute:         { title: 'Tight nasolabial angle',    description: 'On profile, the line from your nose to your lip leans more vertical than typical — often associated with a slight tip droop.' },
-  nasolabial_obtuse:        { title: 'Open nasolabial angle',     description: 'On profile, your nasal column tips upward more than typical — sometimes called an over-rotated tip.' },
+  nasolabial_acute:         { title: 'Tight nasolabial angle',    description: 'On profile, the line from your nose to your lip leans more vertical than typical, often associated with a slight tip droop.' },
+  nasolabial_obtuse:        { title: 'Open nasolabial angle',     description: 'On profile, your nasal column tips upward more than typical, sometimes called an over-rotated tip.' },
   brow_low:                 { title: 'Low-set brow',              description: 'Your brow sits close to the bony rim above your eye. This can make the upper eye read heavy. Sleep and head-elevation often lift it visibly overnight.' },
-  brow_high:                { title: 'High brow position',        description: 'Your brow apex sits noticeably above the bony rim — usually a natural arch rather than anything to adjust.' },
+  brow_high:                { title: 'High brow position',        description: 'Your brow apex sits noticeably above the bony rim, usually a natural arch rather than anything to adjust.' },
   brow_apex_misplaced:      { title: 'Brow arch placement',       description: 'Your brow’s highest point sits inside the lateral third where the typical "open eye" arch lands. Shaping can shift this gently.' },
   thirds_uneven:            { title: 'Facial thirds differ',      description: 'The three vertical thirds of your face (hairline to brow, brow to nose, nose to chin) don’t come out equal. Mostly a perceptual quirk, but it’s what trained eyes notice first.' },
   fifths_uneven:            { title: 'Facial fifths differ',      description: 'One or more of the five vertical "fifths" across your face differs in width. Usually small enough that you spot it only when measured.' },
@@ -233,13 +233,13 @@ export const DOMAIN_INTERPRETATION: Record<
 > = {
   symmetry: {
     label: 'Symmetry',
-    below: 'your facial thirds and left–right mirror-match diverge more than the balanced range.',
-    inRange: 'your proportions and left–right match sit in a balanced range.',
+    below: 'your facial thirds and left-right mirror-match diverge more than the balanced range.',
+    inRange: 'your proportions and left-right match sit in a balanced range.',
     pending: 'not enough data yet to read your symmetry.',
   },
   periorbital: {
     label: 'Eye region',
-    below: 'your eye framing — tilt, aperture and lid position — reads heavier than the balanced range.',
+    below: 'your eye framing (tilt, aperture and lid position) reads heavier than the balanced range.',
     inRange: 'your eye region reads open and rested.',
     pending: 'not enough data yet to read your eye region.',
   },
@@ -273,8 +273,8 @@ export const DOMAIN_INTERPRETATION: Record<
  *  metric's own hint so every metric is still interpretable. */
 export const METRIC_INTERPRETATION: Partial<Record<BoneMetricKey, { below: string; inRange: string }>> = {
   gonial_angle: {
-    below: 'your jaw angle is softer than the balanced range, blurring the jaw–neck line.',
-    inRange: 'your jaw angle sits in a balanced range, giving a clean jaw–neck line.',
+    below: 'your jaw angle is softer than the balanced range, blurring the jaw-neck line.',
+    inRange: 'your jaw angle sits in a balanced range, giving a clean jaw-neck line.',
   },
   chin_projection: {
     below: 'your chin projects less forward than balanced, which flattens the side profile.',

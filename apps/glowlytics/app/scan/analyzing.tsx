@@ -181,15 +181,15 @@ const STAGES: Stage[] = [
 
 // Status messages — specific to the 3-layer analysis pipeline
 const STAGE_MESSAGES = [
-  'Measuring skin signals...',
-  'Mapping dermal structure...',
-  'Checking hydration levels...',
-  'Detecting inflammation markers...',
-  'Scanning for lesions...',
-  'Cross-checking clinical guidance...',
-  'Building your analysis...',
-  'Scoring your signals...',
-  'Preparing your results...',
+  'Measuring skin signals',
+  'Mapping dermal structure',
+  'Checking hydration levels',
+  'Detecting inflammation markers',
+  'Scanning for lesions',
+  'Cross-checking clinical guidance',
+  'Building your analysis',
+  'Scoring your signals',
+  'Almost there. Good reads take a moment.',
 ];
 
 const messageForStage = (stage: number): string =>

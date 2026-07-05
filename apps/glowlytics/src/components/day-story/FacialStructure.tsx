@@ -19,6 +19,7 @@ import { GlowIcon } from '../glow/GlowIcons';
 import { SectionHead } from '../glow/GlowPrimitives';
 import { FontFamily, Glow } from '../../constants/theme';
 import { useStore } from '../../store/useStore';
+import { useTrueDepthSupported } from '../../hooks/useTrueDepthSupported';
 import type { BoneStructureResult } from '../../types';
 
 const P = Glow.palette;
@@ -361,6 +362,9 @@ function readingFromBone(bone: BoneStructureResult | undefined | null): Reading 
 
 export function FacialStructure({ compact = false, onShare }: FacialStructureProps) {
   const modelOutputs = useStore((s) => s.modelOutputs);
+  // Suppress the "scan on a Face ID device" badge on TrueDepth devices — the
+  // user is already on one, so the CTA would be nonsense there.
+  const trueDepthSupported = useTrueDepthSupported();
 
   // Use the latest output that carries a bone-structure result — most scans
   // won't (it's a separate analysis path). Capture BOTH the reading shown and
@@ -437,7 +441,7 @@ export function FacialStructure({ compact = false, onShare }: FacialStructurePro
                 <Text style={styles.heroSub}>
                   {reading.cheekbone.toLowerCase()} cheekbones · {reading.jawline.toLowerCase()}
                 </Text>
-                {reading.estimated && (
+                {reading.estimated && !trueDepthSupported && (
                   <View style={styles.estimateBadge}>
                     <Text style={styles.estimateBadgeText}>
                       Estimated from a reference model — scan on a Face ID device for your own measurements

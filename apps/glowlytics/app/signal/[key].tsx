@@ -26,7 +26,17 @@ import {
 } from '../../src/services/skinInsights';
 import type { CompositeSignals } from '../../src/services/skinInsights';
 
-type SignalKey = 'hydration' | 'elasticity' | 'inflammation' | 'sun_damage' | 'structure';
+const SIGNAL_ROUTE_KEYS = ['hydration', 'elasticity', 'inflammation', 'sun_damage', 'structure'] as const;
+
+type SignalKey = (typeof SIGNAL_ROUTE_KEYS)[number];
+
+/**
+ * Whether a raw route param names a signal this detail page can render.
+ * Narrows `unknown` so callers can treat the value as a `SignalKey`.
+ */
+export function isValidSignalRouteKey(key: unknown): key is SignalKey {
+  return typeof key === 'string' && (SIGNAL_ROUTE_KEYS as readonly string[]).includes(key);
+}
 
 const signalProperty = (key: SignalKey): keyof CompositeSignals => toSignalKey(key);
 
@@ -101,12 +111,17 @@ const formatShortDate = (dateStr: string) => {
 };
 
 export default function SignalDetailScreen() {
-  const { key } = useLocalSearchParams<{ key: string }>();
+  const { key } = useLocalSearchParams<{ key?: string | string[] }>();
   const router = useRouter();
   const palette = Glow.palette;
   const insets = useSafeAreaInsets();
 
-  const signalKey = (key || 'structure') as SignalKey;
+  const rawKey = Array.isArray(key) ? key[0] : key;
+  const validKey = isValidSignalRouteKey(rawKey);
+  // Fall back to a real key so the data hooks below stay well-typed and never
+  // index a lookup with an unknown value. Invalid keys never reach this data —
+  // they short-circuit to the "not tracked" state after every hook has run.
+  const signalKey: SignalKey = validKey ? rawKey : 'structure';
   const facetLabel = FACET_LABEL[signalKey];
   const hint = FACET_HINT[signalKey];
   const icon = FACET_ICON[signalKey];
@@ -207,6 +222,42 @@ export default function SignalDetailScreen() {
     if (!recs || recs.length === 0) return [];
     return recs.filter((r) => r.signal === signalProperty(signalKey) || r.signal === 'general');
   }, [latestOutput?.rag_recommendations, signalKey]);
+
+  if (!validKey) {
+    return (
+      <View style={{ flex: 1, backgroundColor: palette.bg, paddingTop: insets.top + Spacing.xl }}>
+        <FadeUp index={0}>
+          <View style={s.headerRow}>
+            <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <GlowIcon name="back" size={22} color={palette.ink} stroke={1.8} />
+            </TouchableOpacity>
+            <Text style={[s.eyebrow, { color: palette.muted }]}>SIGNAL · DETAIL</Text>
+            <View style={{ width: 22 }} />
+          </View>
+        </FadeUp>
+        <FadeUp index={1}>
+          <View style={s.section}>
+            <View style={[s.emptyCard, { backgroundColor: palette.surface, borderColor: palette.glow }]}>
+              <Text style={[s.emptyTitle, { color: palette.ink }]}>Not a signal we track</Text>
+              <Text style={[s.emptyBody, { color: palette.muted }]}>
+                This link points to a reading that isn&apos;t one of your Glow signals. Head back and tap a facet from your day.
+              </Text>
+              <TouchableOpacity
+                onPress={() => router.back()}
+                accessibilityRole="button"
+                accessibilityLabel="Go back"
+                activeOpacity={0.86}
+                style={[s.backPill, { backgroundColor: palette.ink }]}
+              >
+                <GlowIcon name="back" size={16} color={palette.surface} stroke={1.8} />
+                <Text style={[s.backPillText, { color: palette.surface }]}>Back</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </FadeUp>
+      </View>
+    );
+  }
 
   return (
     <ScrollView
@@ -310,7 +361,12 @@ export default function SignalDetailScreen() {
               <View style={[s.card, { backgroundColor: palette.surface, borderColor: palette.glow }]}>
                 {WEIGHT_FACTORS[signalKey].map((factor, i) => {
                   const rawValue = factorValues[factor.sourceField];
-                  const displayVal = rawValue != null ? Math.round(rawValue) : null;
+                  // Guard non-finite too: partial daily records can carry NaN
+                  // scanner indices — hide the number rather than print "NaN".
+                  const displayVal =
+                    typeof rawValue === 'number' && Number.isFinite(rawValue)
+                      ? Math.round(rawValue)
+                      : null;
                   return (
                     <View
                       key={factor.label}
@@ -701,5 +757,19 @@ const s = StyleSheet.create({
     fontSize: 11,
     marginTop: 8,
     textDecorationLine: 'underline',
+  },
+  backPill: {
+    marginTop: 16,
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 13,
+    paddingHorizontal: 18,
+    borderRadius: 999,
+  },
+  backPillText: {
+    fontFamily: FontFamily.sansBold,
+    fontSize: 14,
   },
 });

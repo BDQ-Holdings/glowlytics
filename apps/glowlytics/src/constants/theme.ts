@@ -119,8 +119,12 @@ export const FontFamily = {
   sansMedium: 'Switzer-Medium',
   sansSemiBold: 'Switzer-Bold',
   sansBold: 'Switzer-Bold',
-  serif: 'Switzer-Regular',
-  serifBold: 'Switzer-Bold',
+  // Instrument Serif — the design's editorial voice. Italic carries every
+  // editorial moment (headlines, feelings, observations). Never bold — the
+  // serifBold alias intentionally maps to regular weight.
+  serif: 'InstrumentSerif-Regular',
+  serifItalic: 'InstrumentSerif-Italic',
+  serifBold: 'InstrumentSerif-Regular',
   // Glow accent — used as the italic-feeling display accent for one-word
   // emphases ("radiant", "Five", "still"). Mirrors the design's `<em>` slots.
   accent: 'DancingScript',
@@ -159,6 +163,42 @@ export const Shadows = {
       shadowOpacity: 1,
       shadowRadius: 20,
       shadowOffset: { width: 0, height: 4 },
+    },
+  }),
+  /** Handoff elevation tier — resting cards that need lift without a hairline. */
+  subtle: Platform.select({
+    ios: {
+      shadowColor: '#2A1F2D',
+      shadowOpacity: 0.05,
+      shadowRadius: 12,
+      shadowOffset: { width: 0, height: 4 },
+    },
+    android: {
+      elevation: 3,
+    },
+    default: {
+      shadowColor: '#2A1F2D',
+      shadowOpacity: 0.05,
+      shadowRadius: 12,
+      shadowOffset: { width: 0, height: 4 },
+    },
+  }),
+  /** Handoff elevation tier — hero/floating surfaces. Never stack with a border. */
+  lifted: Platform.select({
+    ios: {
+      shadowColor: '#2A1F2D',
+      shadowOpacity: 0.1,
+      shadowRadius: 32,
+      shadowOffset: { width: 0, height: 12 },
+    },
+    android: {
+      elevation: 8,
+    },
+    default: {
+      shadowColor: '#2A1F2D',
+      shadowOpacity: 0.1,
+      shadowRadius: 32,
+      shadowOffset: { width: 0, height: 12 },
     },
   }),
 };

@@ -108,7 +108,7 @@ function buildPracticalLeverCopy(signals: Record<keyof typeof SIGNAL_LABELS, num
     sunDamage: 'daily SPF moves it fastest',
     elasticity: 'steady SPF and retinoid support help most',
   };
-  return `Biggest near-term lever: ${SIGNAL_LABELS[lowest.key].toLowerCase()} — ${actions[lowest.key]}.`;
+  return `Biggest near-term lever: ${SIGNAL_LABELS[lowest.key].toLowerCase()}. ${actions[lowest.key]}.`;
 }
 
 const clampScore = (value: number): number => Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0));
@@ -579,7 +579,7 @@ export default function Results({ hideBottomAction: hideBottomActionProp }: { hi
             </Text>
             {practicalLever ? <Text style={styles.practicalNextStep}>{practicalLever}</Text> : null}
             {showQuickReadCue ? (
-              <Text style={styles.quickReadCue}>Quick read — full analysis unavailable this scan.</Text>
+              <Text style={styles.quickReadCue}>Quick read: full analysis unavailable this scan.</Text>
             ) : null}
           </Animated.View>
         </StoryPage>

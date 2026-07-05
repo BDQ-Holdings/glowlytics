@@ -3,10 +3,12 @@ import type { BiologicalSex, MenstrualStatus, OnboardingScreenName } from '../ty
 /**
  * Builds the onboarding screen flow based on user answers.
  *
- * Flow order:
- *   welcome → age-range → sex → skin-goal → health-permission
+ * Flow order (per the Glowlytics onboarding hand-off, adapted to keep the
+ * app's functional asks — age/sex/cycle inputs, paywall — in the flow):
+ *   welcome → how-it-works → name → age-range → sex → skin-goal → products
+ *     → privacy → health-permission
  *     → [menstrual → cycle-details]? (female AND !healthSyncedCycleDetected)
- *     → scan-reminder → preview → paywall
+ *     → scan-reminder → preview → paywall → done
  *
  * The third argument `healthSyncedCycleDetected` is set by the health-permission
  * screen after granting HealthKit access. When true AND user is female, the manual
@@ -20,9 +22,13 @@ export function buildOnboardingFlow(
 ): OnboardingScreenName[] {
   const flow: OnboardingScreenName[] = [
     'welcome',
+    'how-it-works',
+    'name',
     'age-range',
     'sex',
     'skin-goal',
+    'products',
+    'privacy',
     'health-permission',
   ];
 
@@ -34,7 +40,7 @@ export function buildOnboardingFlow(
     }
   }
 
-  flow.push('scan-reminder', 'preview', 'paywall');
+  flow.push('scan-reminder', 'preview', 'paywall', 'done');
 
   return flow;
 }
@@ -46,10 +52,10 @@ export function buildOnboardingFlow(
 export const LONGEST_ONBOARDING_FLOW_LENGTH = buildOnboardingFlow('female', 'regular').length;
 
 /**
- * Progress UI excludes welcome and paywall while keeping a stable denominator
- * across shorter/longer paths.
+ * Progress UI excludes welcome, paywall, and the done end-card while keeping
+ * a stable denominator across shorter/longer paths.
  */
-export const ONBOARDING_PROGRESS_DOT_COUNT = Math.max(LONGEST_ONBOARDING_FLOW_LENGTH - 2, 1);
+export const ONBOARDING_PROGRESS_DOT_COUNT = Math.max(LONGEST_ONBOARDING_FLOW_LENGTH - 3, 1);
 
 /**
  * Maps an OnboardingScreenName to the Expo Router path.

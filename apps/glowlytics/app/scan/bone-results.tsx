@@ -50,6 +50,7 @@ import {
 import { buildCanonicalMesh } from '../../src/services/canonicalFaceMesh';
 import { CANONICAL_FACE_VERTEX_SLOTS } from '../../src/services/canonicalFaceGeometry';
 import { useStore } from '../../src/store/useStore';
+import { useTrueDepthSupported } from '../../src/hooks/useTrueDepthSupported';
 import { BorderRadius, Colors, FontFamily, FontSize, Glow, Spacing } from '../../src/constants/theme';
 
 function readBoneHonestyFields(value: unknown): {
@@ -96,6 +97,9 @@ export default function BoneResults() {
   const boneHonesty = readBoneHonestyFields(bone);
   const boneEstimate = boneHonesty.estimate;
   const boneConfidence = boneHonesty.confidence;
+  // On a TrueDepth / Face ID device the "scan on a Face ID device" CTA is
+  // nonsense — the user is already on one — so we suppress the estimate pill there.
+  const trueDepthSupported = useTrueDepthSupported();
 
   // Stable insets ref so useMemo doesn't re-fire on every render
   const insetsTop = insets.top;
@@ -220,10 +224,10 @@ export default function BoneResults() {
         previousScore={previousBone?.harmony ?? null}
         driver={buildDriverReadout(bone)}
       />
-      {boneEstimate && (
+      {boneEstimate && !trueDepthSupported && (
         <View style={styles.estimatePill}>
           <Text style={styles.estimatePillText}>
-            Estimated from a reference model — scan on a Face ID device for your own measurements
+            Estimated from a reference model. Scan on a Face ID device for your own measurements
           </Text>
         </View>
       )}
@@ -254,7 +258,7 @@ export default function BoneResults() {
           {(() => {
             const driver = buildDriverReadout(bone);
             return driver
-              ? `Your biggest opportunity right now is ${driver.label} at ${driver.scoreText} — ${driver.meaning}`
+              ? `Your biggest opportunity right now is ${driver.label} at ${driver.scoreText}: ${driver.meaning}`
               : 'A regular hexagon means your six domains are balanced. The further a corner pulls in, the more that domain is dragging.';
           })()}
         </Text>
@@ -371,7 +375,7 @@ export default function BoneResults() {
         const topCopy = FINDING_COPY[top.findingCode];
         return driver ? (
           <Text style={styles.pageSubtitle}>
-            Most of your opportunity sits in {driver.label.toLowerCase()}{topCopy ? ` — starting with “${topCopy.title}”.` : '.'}
+            Most of your opportunity sits in {driver.label.toLowerCase()}{topCopy ? `, starting with “${topCopy.title}”.` : '.'}
           </Text>
         ) : null;
       })()}
@@ -413,7 +417,7 @@ export default function BoneResults() {
         </ScrollView>
       ) : (
         <Text style={styles.findingsEmpty}>
-          Every domain landed inside its healthy range on this scan. Keep going — the more scans you log, the clearer trends become.
+          Every domain landed in range. Structurally, an uneventful week. The good kind.
         </Text>
       )}
     </StoryPage>
@@ -427,7 +431,7 @@ export default function BoneResults() {
       <Text style={styles.pageEyebrow}>What you can do</Text>
       <Text style={styles.pageTitle}>Three tiers, in order</Text>
       <Text style={styles.pageSubtitle}>
-        Start with lifestyle. Add pharma if you want more lift. Procedural is permanent — only with a board-certified specialist.
+        Start with lifestyle. Add pharma if you want more lift. Procedural is permanent, and only with a board-certified specialist.
       </Text>
       <Animated.View entering={FadeInDown.duration(400).delay(150)} style={styles.interventionWrap}>
         <InterventionDrawer bundle={bone.interventions} />

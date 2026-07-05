@@ -40,6 +40,11 @@ jest.mock('../../../store/useStore', () => ({
   useStore: (selector: (state: unknown) => unknown) => selector(mockState),
 }));
 
+const mockTrueDepthSupported = jest.fn<boolean, []>(() => false);
+jest.mock('../../../hooks/useTrueDepthSupported', () => ({
+  useTrueDepthSupported: () => mockTrueDepthSupported(),
+}));
+
 // Mutable so each test can seed the model-output history the card reads.
 const mockState: { modelOutputs: unknown[] } = { modelOutputs: [] };
 
@@ -47,6 +52,9 @@ describe('FacialStructure — clickable card', () => {
   beforeEach(() => {
     mockedRouter.router.push.mockClear();
     mockState.modelOutputs = [];
+    // Default: non-TrueDepth device (native module unlinked) — the estimate
+    // badge's "scan on a Face ID device" CTA is meaningful there.
+    mockTrueDepthSupported.mockReturnValue(false);
   });
 
   it('uses facial_index for the face ratio cell and marks fallback thirds as estimated', () => {
@@ -116,5 +124,33 @@ describe('FacialStructure — clickable card', () => {
 
     expect(onShare).toHaveBeenCalledTimes(1);
     expect(mockedRouter.router.push).not.toHaveBeenCalled();
+  });
+
+  it('hides the estimate badge on a TrueDepth device (user is already on a Face ID device)', () => {
+    mockTrueDepthSupported.mockReturnValue(true);
+    mockState.modelOutputs = [
+      {
+        output_id: 'o1',
+        daily_id: 'day-with-bone',
+        bone_structure: {
+          status: 'ok',
+          estimate: true,
+          harmony: 82,
+          domain_scores: { symmetry: 91 },
+          scored_metrics: { zygomatic_projection: 82, gonial_angle: 62 },
+          metrics: {
+            facial_index: { value: 1.61 },
+            ipd_ratio: { value: 2.08 },
+          },
+          dominant_driver: 'midface',
+        },
+      },
+    ];
+
+    const { getByText, queryByText } = render(<FacialStructure onShare={jest.fn()} />);
+
+    // The read still renders; only the "scan on a Face ID device" CTA is gone.
+    expect(getByText('FACE RATIO')).toBeTruthy();
+    expect(queryByText(/Estimated from a reference model/i)).toBeNull();
   });
 });

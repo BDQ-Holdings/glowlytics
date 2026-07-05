@@ -54,7 +54,7 @@ export default function RitualScreen() {
     total === 0
       ? 'Build your shelf.'
       : remaining === 0
-        ? 'Complete.'
+        ? 'Complete. Consistency looks good on you.'
         : `${remaining} small thing${remaining > 1 ? 's' : ''} left.`;
 
   const ringDetail =

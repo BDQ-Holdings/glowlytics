@@ -139,8 +139,8 @@ export default function MetricAssessmentDetail() {
     return (
       <AtmosphereScreen scroll={false} contentContainerStyle={styles.invalidLayout}>
         <View style={styles.invalidState}>
-          <Text style={styles.invalidTitle}>Unknown metric</Text>
-          <Text style={styles.invalidCopy}>This assessment route is invalid.</Text>
+          <Text style={styles.invalidTitle}>Not a metric we measure</Text>
+          <Text style={styles.invalidCopy}>That link points somewhere we don{'\u2019'}t track. Head back and pick a real one.</Text>
         </View>
         <Button title="Back" onPress={() => router.replace('/skin-metrics')} />
       </AtmosphereScreen>

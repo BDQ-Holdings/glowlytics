@@ -70,7 +70,7 @@ export default function SkinProfileScreen() {
 
       <Intro>
         Your scan focus drives what every scan measures and how your routine is
-        scored. <IntroAccent>Pick one main focus — you can change it anytime.</IntroAccent>
+        scored. <IntroAccent>Pick one main focus. You can change it anytime.</IntroAccent>
       </Intro>
 
       <SectionLabel>Scan focus</SectionLabel>

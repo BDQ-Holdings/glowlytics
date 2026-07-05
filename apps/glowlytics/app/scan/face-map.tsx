@@ -31,8 +31,8 @@ type FacetRow = {
 function noteForScore(label: string, score: number): string {
   if (score >= 85) return `${label} looking peak`;
   if (score >= 75) return `${label} holding strong`;
-  if (score >= 60) return `${label} steady — keep an eye on it`;
-  if (score >= 40) return `${label} drifting — small changes will help`;
+  if (score >= 60) return `${label} steady. Keep an eye on it`;
+  if (score >= 40) return `${label} drifting. Small changes will help`;
   return `${label} needs attention`;
 }
 
@@ -218,8 +218,6 @@ export default function FaceMapScreen() {
           entering={FadeInUp.duration(700).easing(Easing.out(Easing.cubic))}
           style={styles.heroCard}
         >
-          <View style={styles.heroGlow} pointerEvents="none" />
-
           <View style={styles.heroRow}>
             <View style={{ flex: 1 }}>
               <Text style={styles.eyebrow}>Today's read</Text>
@@ -358,16 +356,7 @@ const styles = StyleSheet.create({
     borderColor: P.glow,
     overflow: 'hidden',
   },
-  heroGlow: {
-    position: 'absolute',
-    top: -50,
-    right: -50,
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    backgroundColor: P.glow,
-    opacity: 0.6,
-  },
+  // (corner glow blob removed: unanchored decoration, brand pass 2026-07)
   heroRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',

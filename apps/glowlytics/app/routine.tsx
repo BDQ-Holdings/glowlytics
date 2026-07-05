@@ -139,7 +139,7 @@ function groupBySchedule(data: ProductDatum[]): Map<ScheduleGroup, ProductDatum[
 function buildInsight(data: ProductDatum[], routineScore: number): string | null {
   if (data.length === 0) return null;
   if (routineScore >= 75) return 'This routine is doing real work for your goal.';
-  if (routineScore >= 55) return 'Mostly on point — a swap or two could lift the rest.';
+  if (routineScore >= 55) return 'Mostly on point. A swap or two could lift the rest.';
   if (routineScore >= 35) return 'A few products are along for the ride. See if they earn their slot.';
   return 'Most of this stack isn\u2019t helping the goal you set. Time to edit.';
 }

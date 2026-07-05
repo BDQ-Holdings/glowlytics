@@ -24,7 +24,7 @@ export async function maybeSendFirstPatternUnlockNotification(
     await Notifications.scheduleNotificationAsync({
       content: {
         title: 'Your patterns are ready',
-        body: `Glowlytics found ${newPatterns.filter((p) => !p.isPredicted).length} things in your skin this month. Tap to see them.`,
+        body: `Your skin kept notes this month. ${newPatterns.filter((p) => !p.isPredicted).length} of them. Tap to read.`,
         data: { deepLink: '/(tabs)/today' },
       },
       trigger: null, // fire immediately

@@ -229,7 +229,7 @@ function IntentPicker({ palette, insetsTop, onStart, onCancel }: IntentPickerPro
             <Text style={[styles.introAccent, { color: palette.accent }]}>what are you after?</Text>
           </Text>
           <Text style={[styles.introSub, { color: palette.ink + 'B3' }]}>
-            I&apos;ll read every scan through this lens — and against your skin&apos;s patterns.
+            I&apos;ll read every scan through this lens, and against your skin&apos;s patterns.
           </Text>
         </View>
       </FadeUp>
@@ -313,7 +313,7 @@ function IntentPicker({ palette, insetsTop, onStart, onCancel }: IntentPickerPro
           <GlowIcon name="camera" size={18} color={ready ? palette.surface : palette.muted} stroke={1.8} />
           <Text style={[styles.startText, { color: ready ? palette.surface : palette.muted }]}>Start scanning</Text>
         </TouchableOpacity>
-        <Text style={[styles.startNote, { color: palette.muted }]}>I only advise — nothing gets bought here.</Text>
+        <Text style={[styles.startNote, { color: palette.muted }]}>I only advise. Nothing gets bought here.</Text>
       </View>
     </ScrollView>
   );
@@ -556,7 +556,7 @@ export default function ShopAdvisorScreen(): React.ReactElement {
         const result = await shoppingScan(input);
         if (!result.identified) {
           lastBarcodeRef.current = null;
-          ping("Couldn't read that one — try the barcode or a clearer label.");
+          ping("Couldn't read that one. Try the barcode or a clearer label.");
           return;
         }
         trackEvent('shop_verdict', { method, verdict: result.verdict, score: result.score });
@@ -565,10 +565,10 @@ export default function ShopAdvisorScreen(): React.ReactElement {
       } catch (err) {
         lastBarcodeRef.current = null;
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        if (isApiError(err, 413)) ping('That photo is too large — try a tighter crop.');
-        else if (isApiError(err, 400)) ping("Couldn't read that — try the barcode.");
-        else if (isApiError(err, 0)) ping('That took a little long — give it another scan.');
-        else ping('Scan failed — please try again.');
+        if (isApiError(err, 413)) ping('That photo is too large. Try a tighter crop.');
+        else if (isApiError(err, 400)) ping("Couldn't read that. Try the barcode.");
+        else if (isApiError(err, 0)) ping('That took a little long. Give it another scan.');
+        else ping('Scan failed. Please try again.');
       } finally {
         setScanning(false);
         processingRef.current = false;

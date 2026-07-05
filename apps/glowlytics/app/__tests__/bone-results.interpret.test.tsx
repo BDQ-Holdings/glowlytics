@@ -48,6 +48,10 @@ jest.mock('../../src/components/HarmonyScoreReveal', () => ({ HarmonyScoreReveal
 jest.mock('../../src/components/InterventionDrawer', () => ({ InterventionDrawer: mockStub('InterventionDrawer') }));
 jest.mock('../../src/components/StoryCarousel', () => ({ StoryPage: mockStub('StoryPage'), ProgressDots: mockStub('ProgressDots') }));
 jest.mock('../../src/store/useStore', () => ({ useStore: jest.fn() }));
+const mockTrueDepthSupported = jest.fn<boolean, []>(() => false);
+jest.mock('../../src/hooks/useTrueDepthSupported', () => ({
+  useTrueDepthSupported: () => mockTrueDepthSupported(),
+}));
 
 const BoneResults = require('../scan/bone-results').default as React.ComponentType;
 import { useStore } from '../../src/store/useStore';
@@ -83,6 +87,9 @@ beforeEach(() => {
   mockedUseStore.mockReset();
   mockedUseStore.mockImplementation((sel: (s: { modelOutputs: unknown[] }) => unknown) =>
     sel({ modelOutputs: [{ daily_id: 'd1', bone_structure: bone }] }));
+  // Default to a non-TrueDepth device (module unlinked) — the "scan on a Face
+  // ID device" CTA is meaningful there.
+  mockTrueDepthSupported.mockReturnValue(false);
 });
 
 describe('BoneResults — interpretable readouts', () => {
@@ -103,5 +110,15 @@ describe('BoneResults — interpretable readouts', () => {
     expect(getByText(/Reduced-confidence read/i)).toBeTruthy();
     expect(getByText('Mouth-to-nose width')).toBeTruthy();
     expect(getAllByText('Not measured this scan').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('hides the estimate pill on a TrueDepth device (user is already on a Face ID device)', () => {
+    mockTrueDepthSupported.mockReturnValue(true);
+    const { queryByText } = render(<BoneResults />);
+
+    // The "scan on a Face ID device" CTA is nonsense here → suppressed.
+    expect(queryByText(/Estimated from a reference model/i)).toBeNull();
+    // Confidence is orthogonal to capability and must still surface.
+    expect(queryByText(/Reduced-confidence read/i)).toBeTruthy();
   });
 });

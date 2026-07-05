@@ -1,12 +1,14 @@
 import React from 'react';
-import { View } from 'react-native';
-import { Colors } from '../src/constants/theme';
+import { View, useColorScheme } from 'react-native';
+import { Glow, GlowPalettesDark } from '../src/constants/theme';
 
 /**
  * Bridge screen — shown for a single frame while AuthRedirector
- * navigates to auth/onboarding/tabs. Matches the splash background
- * for a seamless transition.
+ * navigates to auth/onboarding/tabs. Matches the scheme-aware dusk splash
+ * background so the one-frame bridge is seamless in both light and dark.
  */
 export default function Index() {
-  return <View style={{ flex: 1, backgroundColor: Colors.background }} />;
+  const scheme = useColorScheme();
+  const bg = scheme === 'dark' ? GlowPalettesDark.dusk.bg : Glow.palette.bg;
+  return <View style={{ flex: 1, backgroundColor: bg }} />;
 }

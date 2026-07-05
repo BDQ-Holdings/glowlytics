@@ -45,9 +45,9 @@ function verdictForScore(label: string, score: number, deltaVs7d: number | null)
 
   if (score >= 85) return { mood: `Glowing${direction}`, quote: `${label} read is peak today.` };
   if (score >= 75) return { mood: `Holding${direction}`,  quote: `${label} is comfortably in your healthy band.` };
-  if (score >= 60) return { mood: `Watching${direction}`, quote: `${label} is steady — small habits will keep it there.` };
-  if (score >= 40) return { mood: `Drifting${direction}`, quote: `${label} dipped — there is room for a meaningful change.` };
-  return { mood: `Tender${direction}`, quote: `${label} needs attention — protect, soothe, repeat.` };
+  if (score >= 60) return { mood: `Watching${direction}`, quote: `${label} is steady. Small habits will keep it there.` };
+  if (score >= 40) return { mood: `Drifting${direction}`, quote: `${label} dipped. There is room for a meaningful change.` };
+  return { mood: `Tender${direction}`, quote: `${label} needs attention: protect, soothe, repeat.` };
 }
 
 // Findings synthesised from the current score band + recent trend. Every
@@ -74,13 +74,13 @@ function findingsForBand(
   return [
     {
       lead: 'Current reading',
-      body: `${score}/100 — ${label.toLowerCase()} ${score >= 75 ? 'in the healthy band' : score >= 60 ? 'in the watching band' : 'below your healthy band'}.`,
+      body: `${score}/100, ${label.toLowerCase()} ${score >= 75 ? 'in the healthy band' : score >= 60 ? 'in the watching band' : 'below your healthy band'}.`,
       tag: stateTag,
     },
     {
       lead: '7-day trend',
       body: baselineDelta == null
-        ? 'Not enough history yet — keep scanning daily to build a trendline.'
+        ? 'Not enough history yet. Keep scanning daily to build a trendline.'
         : `Last 7 days average ${recentAvg.toFixed(0)}, prior baseline ${baseline!.toFixed(0)} (${baselineDelta >= 0 ? '+' : ''}${baselineDelta.toFixed(0)}).`,
       tag: trendTag,
     },
@@ -276,7 +276,7 @@ export default function ZoneDetailScreen() {
           <View style={styles.trendHead}>
             <Text style={styles.trendLabel}>Trend · {trend.length} scan{trend.length === 1 ? '' : 's'}</Text>
             <Text style={styles.trendRange}>
-              {Math.min(...trend)} — {Math.max(...trend)}
+              {Math.min(...trend)}–{Math.max(...trend)}
             </Text>
           </View>
           <TrendSparkline data={trend} />
