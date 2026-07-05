@@ -855,7 +855,7 @@ describe('useStore', () => {
       await useStore.getState().persistData();
 
       const [, snapshot] = mockSetItem.mock.calls.at(-1);
-      expect(JSON.parse(snapshot).schemaVersion).toBe(3);
+      expect(JSON.parse(snapshot).schemaVersion).toBe(4);
     });
 
     it('rehydrates a legacy blob without schemaVersion (implicit v1)', async () => {

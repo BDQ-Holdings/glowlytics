@@ -31,7 +31,7 @@ export type AppearancePaletteId = 'dusk' | 'meadow' | 'rose' | 'auto';
 export type AppearanceMode = 'light' | 'dark' | 'auto';
 
 /**
- * Alternate iOS app icon. `og-dusk` is the bundle's primary icon (no native
+ * Alternate iOS app icon. `og-rose` is the bundle's primary icon (no native
  * swap needed). The other six map to the names in
  * `app.json > plugins > expo-alternate-app-icons`.
  */

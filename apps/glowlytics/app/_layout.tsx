@@ -51,11 +51,11 @@ if (env.SENTRY_DSN) {
   });
 }
 
-// Hold the native (cream/dusk) splash ourselves. expo-router auto-hides it the
+// Hold the native rose splash ourselves. expo-router auto-hides it the
 // moment the Stack mounts, which used to expose the blank font-gate view and
 // the black JS splash beneath it. We keep it up until fonts + critical init +
 // Clerk (or its timeout) have all settled, then hide it exactly once so the
-// next thing the user sees is the target screen — no cream↔black flips.
+// next thing the user sees is the target screen — no rose↔black flips.
 SplashScreen.preventAutoHideAsync();
 
 // Brief floor on the splash so iOS's launch image cross-fade into our React
@@ -70,17 +70,17 @@ const CRITICAL_INIT_TIMEOUT_MS = 6000;
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 // ─── Glowlytics Splash ───────────────────────────────────────────
-// Branded under-layer + safety net beneath the native splash: dusk background,
+// Branded under-layer + safety net beneath the native splash: rose background,
 // logo emblem fading in. Shown if the native splash is ever absent (Expo Go, or
-// a frame between control handoffs) so the user never sees black or a bare cream flash.
+// a frame between control handoffs) so the user never sees black or a bare rose flash.
 function GlowSplash() {
   // Follow the system scheme so this branded under-layer matches the native
   // splash in both modes. The native splash now ships light + dark variants via
-  // the expo-splash-screen plugin in app.json (dark #15101A, light #F5EFE8,
+  // the expo-splash-screen plugin in app.json (dark #1A1213, light #F6ECEB,
   // imageWidth 96), so this JS layer visually matches it and only covers the
   // handoff gap (#D).
   const scheme = useColorScheme();
-  const P = scheme === 'dark' ? GlowPalettesDark.dusk : Glow.palette;
+  const P = scheme === 'dark' ? GlowPalettesDark.rose : Glow.palette;
   const logoOpacity = useSharedValue(0);
 
   useEffect(() => {
@@ -457,7 +457,7 @@ function ClerkGatedApp() {
   // Hand off from the native splash exactly once: this component only mounts
   // after RootLayout's font gate, so fonts are already loaded; we wait for
   // critical init (appReady) and Clerk (or its timeout) before hiding, so the
-  // native cream/dusk splash covers the whole cold-start gap.
+  // native rose splash covers the whole cold-start gap.
   const splashHiddenRef = useRef(false);
   useEffect(() => {
     if (splashHiddenRef.current) return;

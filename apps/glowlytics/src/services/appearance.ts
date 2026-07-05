@@ -24,12 +24,12 @@ import { trackEvent } from './analytics';
 // ---------------------------------------------------------------------------
 
 export const DEFAULT_APPEARANCE: AppearancePreferences = {
-  palette: 'dusk',
+  palette: 'rose',
   mode: 'light',
   textSize: 0.4,
   serifItalics: true,
   reduceMotion: false,
-  icon: 'og-dusk',
+  icon: 'og-rose',
 };
 
 // ---------------------------------------------------------------------------
@@ -56,14 +56,14 @@ export function appearanceTextScaleFactor(textSize: number): number {
 
 /**
  * Map our store key to the `name` registered in the `expo-alternate-app-icons`
- * plugin entry in `app.json`. `og-dusk` is the bundle primary — we pass
- * `null` to the native API to reset to it.
+ * plugin entry in `app.json`. `og-rose` is the bundle primary — we pass
+ * `null` to the native API to reset to it; `og-dusk` is now the `OgDusk` alternate.
  */
 const ICON_NATIVE_NAME: Record<AppearanceIconKey, string | null> = {
-  'og-dusk':     null,
+  'og-dusk':     'OgDusk',
   'og-sunset':   'OgSunset',
   'og-meadow':   'OgMeadow',
-  'og-rose':     'OgRose',
+  'og-rose':     null,
   'og-plum':     'OgPlum',
   'lowercase-g': 'Lowercase',
   'cursive-g':   'Cursive',
@@ -138,20 +138,20 @@ export async function applyAppIcon(target: AppearanceIconKey): Promise<boolean> 
 
 /**
  * Read the icon currently active on the device and translate back to our
- * `AppearanceIconKey`. Returns `og-dusk` for any unrecognised native name
+ * `AppearanceIconKey`. Returns `og-rose` for any unrecognised native name
  * (matches the "primary icon" convention).
  */
 export function currentNativeIcon(): AppearanceIconKey {
   const mod = loadModule();
-  if (!mod) return 'og-dusk';
+  if (!mod) return 'og-rose';
   try {
     const native = mod.getAppIconName();
-    if (!native) return 'og-dusk';
+    if (!native) return 'og-rose';
     const entry = (Object.entries(ICON_NATIVE_NAME) as Array<[AppearanceIconKey, string | null]>)
       .find(([, n]) => n === native);
-    return entry?.[0] ?? 'og-dusk';
+    return entry?.[0] ?? 'og-rose';
   } catch {
-    return 'og-dusk';
+    return 'og-rose';
   }
 }
 
@@ -163,13 +163,13 @@ type ConcretePalette = 'dusk' | 'meadow' | 'rose';
 type ConcreteMode = 'light' | 'dark';
 
 /** Resolve the user-facing palette intent to one of the three concrete keys.
- *  `auto` follows the system color scheme: dark → dusk-dark, light → dusk-light.
+ *  `auto` resolves to the rose family for both light and dark mode.
  *  This is a UX choice — we don't auto-switch palette family by environment. */
 export function resolvePaletteId(
   palette: AppearancePaletteId,
   _systemScheme: 'light' | 'dark' | null | undefined,
 ): ConcretePalette {
-  if (palette === 'auto') return 'dusk';
+  if (palette === 'auto') return 'rose';
   return palette;
 }
 

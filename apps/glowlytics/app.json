@@ -4,7 +4,7 @@
     "slug": "Glowlytics",
     "version": "1.2.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/app-icons/og-rose.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "scheme": "glowlytics",
@@ -97,8 +97,8 @@
             "ios": "./assets/app-icons/og-meadow.png"
           },
           {
-            "name": "OgRose",
-            "ios": "./assets/app-icons/og-rose.png"
+            "name": "OgDusk",
+            "ios": "./assets/app-icons/og-dusk.png"
           },
           {
             "name": "OgPlum",
@@ -126,10 +126,10 @@
         {
           "image": "./assets/logo-emblem.png",
           "imageWidth": 96,
-          "backgroundColor": "#F5EFE8",
+          "backgroundColor": "#F6ECEB",
           "dark": {
             "image": "./assets/logo-emblem.png",
-            "backgroundColor": "#15101A"
+            "backgroundColor": "#1A1213"
           }
         }
       ]

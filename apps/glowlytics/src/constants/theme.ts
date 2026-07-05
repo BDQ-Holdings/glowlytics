@@ -215,7 +215,7 @@ export const Motion = {
 /**
  * Glow design language — palette + motion tokens for the redesign.
  *
- * Three palettes (Dusk default) keep the new "glow companion" tone consistent;
+ * Three palettes (Rose default) keep the new "glow companion" tone consistent;
  * `Glow.motion` mirrors the calm staggered cadence (150/280/380/480ms) and
  * 3.2s breathing glow specified in the design hand-off.
  */
@@ -244,7 +244,7 @@ export const GlowPalettesDark: Record<'dusk' | 'meadow' | 'rose', GlowPalette> =
 };
 
 export const Glow = {
-  palette: GlowPalettes.dusk,
+  palette: GlowPalettes.rose,
   motion: {
     stagger: [0, 150, 280, 380, 480, 580, 680, 780] as const,
     fadeUp: 700,

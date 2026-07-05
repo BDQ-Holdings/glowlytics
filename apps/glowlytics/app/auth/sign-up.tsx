@@ -694,7 +694,7 @@ export default function SignUpScreen() {
           <View style={styles.brandContainer}>
             <Animated.View style={orbStyle}>
               <Image
-                source={require('../../assets/icon.png')}
+                source={require('../../assets/app-icons/og-rose.png')}
                 style={styles.logoImage}
                 resizeMode="contain"
               />

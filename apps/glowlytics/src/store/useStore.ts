@@ -306,7 +306,12 @@ const asPersistedAppState = (value: unknown): PersistedAppState | null => {
 // moved to per-identifier cancels — loadPersistedData runs a one-time
 // cancel-all + reschedule for blobs older than v3 (side effect lives there
 // because migratePersisted is pure/sync).
-const SCHEMA_VERSION = 3;
+// v4: rose became the default brand; persisted appearance.palette 'dusk' →
+// 'rose' and appearance.icon 'og-dusk' → 'og-rose' (old values were the
+// implicit defaults everyone carried; without this, updated installs would
+// auto-swap to the new OgDusk alternate icon and fire the iOS icon-change
+// alert at launch).
+const SCHEMA_VERSION = 4;
 
 const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   notifications_enabled: false,
@@ -371,11 +376,27 @@ const mergeEndedProducts = (server: ProductEntry[], local: ProductEntry[]): Prod
 // All shapes through v2 are identical (v2 only introduced the version stamp),
 // and unknown/future versions pass through untouched -- loadPersistedData's
 // per-field defaults keep rehydration tolerant either way.
-const migratePersisted = (
+export const migratePersisted = (
   parsed: PersistedAppState,
   fromVersion: number,
 ): PersistedAppState => {
-  if (fromVersion < SCHEMA_VERSION) return parsed;
+  if (fromVersion >= SCHEMA_VERSION) return parsed;
+
+  if (fromVersion < 4 && parsed.appearance) {
+    const palette = parsed.appearance.palette === 'dusk' ? 'rose' : parsed.appearance.palette;
+    const icon = parsed.appearance.icon === 'og-dusk' ? 'og-rose' : parsed.appearance.icon;
+    if (palette !== parsed.appearance.palette || icon !== parsed.appearance.icon) {
+      return {
+        ...parsed,
+        appearance: {
+          ...parsed.appearance,
+          palette,
+          icon,
+        },
+      };
+    }
+  }
+
   return parsed;
 };
 
