@@ -11,6 +11,73 @@ process.env.CLERK_ISSUER_URL = '';
 
 const mockCreate = jest.fn();
 
+const mockDefaultCuratedProducts = [
+  {
+    name: 'PanOxyl Acne Foaming Wash 10%',
+    brand: 'PanOxyl',
+    barcode: '011822307246',
+    ingredients: ['Benzoyl Peroxide 10%', 'Water', 'Glycerin'],
+    category: 'cleanser',
+  },
+  {
+    name: 'Byoma Moisturizing Gel Cream',
+    brand: 'Byoma',
+    barcode: '5060734580010',
+    ingredients: ['Water', 'Glycerin', 'Ceramide NP'],
+    category: 'moisturizer',
+  },
+  {
+    name: 'CeraVe Foaming Facial Cleanser',
+    brand: 'CeraVe',
+    barcode: '301871371054',
+    ingredients: ['Water', 'Glycerin', 'Niacinamide'],
+    category: 'cleanser',
+  },
+  {
+    name: 'CeraVe Moisturizing Cream',
+    brand: 'CeraVe',
+    barcode: '3606000537663',
+    ingredients: ['Water', 'Glycerin', 'Ceramide NP', 'Hyaluronic Acid'],
+    category: 'moisturizer',
+  },
+];
+let mockCuratedProducts = [];
+
+const mockNormalizeCurated = (value) => value.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+const mockCloneCuratedDefaults = () => mockDefaultCuratedProducts.map((product) => ({
+  ...product,
+  ingredients: [...product.ingredients],
+}));
+const mockSearchCuratedProducts = jest.fn((query) => {
+  if (!query || query.length < 2) return [];
+  const tokens = mockNormalizeCurated(query).split(' ').filter(Boolean);
+  return mockCuratedProducts.filter((product) => {
+    const combined = `${mockNormalizeCurated(product.name)} ${mockNormalizeCurated(product.brand)}`;
+    return tokens.every((token) => combined.includes(token));
+  });
+});
+const mockLookupCuratedBarcode = jest.fn((barcode) => mockCuratedProducts.find((product) => product.barcode === barcode) || null);
+const mockEnrichIngredients = jest.fn((productName, existingIngredients) => {
+  if (existingIngredients && existingIngredients.length >= 3) return existingIngredients;
+  const nameNorm = mockNormalizeCurated(productName || '');
+  const match = mockCuratedProducts.find((product) => {
+    const curatedNorm = mockNormalizeCurated(product.name);
+    return curatedNorm === nameNorm || curatedNorm.includes(nameNorm) || nameNorm.includes(curatedNorm);
+  });
+  return match && match.ingredients.length > (existingIngredients || []).length
+    ? match.ingredients
+    : (existingIngredients || []);
+});
+
+jest.mock('../curated-products', () => ({
+  get CURATED_PRODUCTS() {
+    return mockCuratedProducts;
+  },
+  searchCuratedProducts: mockSearchCuratedProducts,
+  lookupCuratedBarcode: mockLookupCuratedBarcode,
+  enrichIngredients: mockEnrichIngredients,
+}));
+
 jest.mock('openai', () => {
   return jest.fn().mockImplementation(() => ({
     chat: {
@@ -50,6 +117,7 @@ const dbInit = require('../db-init');
 beforeEach(() => {
   jest.clearAllMocks();
   global.fetch = mockFetch;
+  mockCuratedProducts = mockCloneCuratedDefaults();
   app._resetRateLimiters();
 });
 
@@ -74,6 +142,45 @@ describe('GET /api/products/search', () => {
     expect(res.body[0].name.toLowerCase()).toContain('panoxyl');
     expect(res.body[0].source).toBe('curated');
     expect(res.body[0].ingredients).toBeTruthy();
+  });
+
+  it('passes curated image_url through and preserves null when absent', async () => {
+    mockCuratedProducts = [
+      {
+        name: 'Fixture Dew Serum',
+        brand: 'Fixture',
+        ingredients: ['Water', 'Glycerin'],
+        image_url: 'https://cdn.example.test/fixture-dew-serum.jpg',
+        category: 'serum',
+      },
+      {
+        name: 'Fixture Plain Cream',
+        brand: 'Fixture',
+        ingredients: ['Water', 'Ceramide NP'],
+        category: 'moisturizer',
+      },
+    ];
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ products: [] }),
+    });
+
+    const res = await request(app)
+      .get('/api/products/search?q=fixture')
+      .expect(200);
+
+    expect(res.body).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        name: 'Fixture Dew Serum',
+        image_url: 'https://cdn.example.test/fixture-dew-serum.jpg',
+        source: 'curated',
+      }),
+      expect.objectContaining({
+        name: 'Fixture Plain Cream',
+        image_url: null,
+        source: 'curated',
+      }),
+    ]));
   });
 
   it('returns curated results for "byoma"', async () => {
@@ -157,6 +264,31 @@ describe('GET /api/products/lookup/:barcode', () => {
     expect(res.body.name).toContain('CeraVe');
     expect(res.body.source).toBe('curated');
     expect(res.body.ingredients).toBeTruthy();
+  });
+
+  it('passes curated barcode image_url through', async () => {
+    mockCuratedProducts = [
+      {
+        name: 'Barcode Image Cleanser',
+        brand: 'Fixture',
+        barcode: '123456789012',
+        ingredients: ['Water', 'Glycerin'],
+        image_url: 'https://cdn.example.test/barcode-image-cleanser.jpg',
+        category: 'cleanser',
+      },
+    ];
+
+    const res = await request(app)
+      .get('/api/products/lookup/123456789012')
+      .expect(200);
+
+    expect(res.body).toMatchObject({
+      name: 'Barcode Image Cleanser',
+      brands: 'Fixture',
+      ingredients: 'Water, Glycerin',
+      image_url: 'https://cdn.example.test/barcode-image-cleanser.jpg',
+      source: 'curated',
+    });
   });
 
   it('falls back to external APIs for unknown barcode', async () => {
@@ -257,6 +389,42 @@ describe('POST /api/products/identify-photo', () => {
 
     // Curated DB has more ingredients — should enrich
     expect(res.body.ingredients.length).toBeGreaterThan(1);
+  });
+
+  it('borrows curated image_url for GPT-4o photo identifications without an image', async () => {
+    mockCuratedProducts = [
+      {
+        name: 'Photo Image Serum',
+        brand: 'Fixture',
+        ingredients: ['Water', 'Glycerin', 'Niacinamide'],
+        image_url: 'https://cdn.example.test/photo-image-serum.jpg',
+        category: 'serum',
+      },
+    ];
+    mockCreate.mockResolvedValueOnce({
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            identified: true,
+            name: 'Photo Image Serum',
+            brand: 'Fixture',
+            ingredients: ['Water'],
+            confidence: 'high',
+          }),
+        },
+      }],
+    });
+
+    const res = await request(app)
+      .post('/api/products/identify-photo')
+      .send({ image_base64: 'dGVzdA==' })
+      .expect(200);
+
+    expect(res.body).toMatchObject({
+      identified: true,
+      name: 'Photo Image Serum',
+      image_url: 'https://cdn.example.test/photo-image-serum.jpg',
+    });
   });
 
   it('handles GPT-4o response wrapped in code fences', async () => {

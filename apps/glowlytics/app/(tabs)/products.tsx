@@ -20,6 +20,7 @@ import { useStore } from '../../src/store/useStore';
 import { trackEvent } from '../../src/services/analytics';
 import { computeProductEffectiveness } from '../../src/services/ingredientDB';
 import { activeProducts } from '../../src/services/ritual';
+import { backfillProductImages } from '../../src/services/productImageBackfill';
 import {
   buildOverallSkinInsight,
   getLatestDailyForOutput,
@@ -55,6 +56,10 @@ export default function ShelfTab() {
   const addProductTrigger = useStore((s) => s.openAddProductTrigger);
   const consideringCount = useStore((s) => s.consideringList.length);
   const lastSeenTrigger = useRef(addProductTrigger);
+
+  useEffect(() => {
+    backfillProductImages().catch(() => {});
+  }, []);
 
   // Open the AddProductSheet whenever the cross-component trigger increments
   // (the tab-bar camera FAB calls `requestAddProduct()` from the Shelf tab).

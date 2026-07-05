@@ -425,7 +425,7 @@ async function identifyByBarcode(barcode) {
       name: curated.name,
       brand: curated.brand,
       ingredients: curated.ingredients,
-      image_url: null,
+      image_url: curated.image_url || null,
       source: 'curated',
     };
   }
@@ -536,7 +536,7 @@ app.get('/api/products/search', detectRateLimit, async (req, res) => {
     name: p.name,
     brands: p.brand,
     ingredients: p.ingredients.join(', '),
-    image_url: null,
+    image_url: p.image_url || null,
     source: 'curated',
   }));
 
@@ -906,11 +906,17 @@ async function identifyByPhoto(image_base64) {
     return { identified: false, error: 'Could not identify product' };
   }
 
-  // Enrich/verify ingredients from curated DB
+  // Enrich/verify ingredients and images from curated DB
   const curatedMatch = searchCuratedProducts(parsed.name);
-  if (curatedMatch.length > 0 && curatedMatch[0].ingredients.length > (parsed.ingredients || []).length) {
-    parsed.ingredients = curatedMatch[0].ingredients;
-    parsed.brand = parsed.brand || curatedMatch[0].brand;
+  if (curatedMatch.length > 0) {
+    const curatedProduct = curatedMatch[0];
+    if (curatedProduct.ingredients.length > (parsed.ingredients || []).length) {
+      parsed.ingredients = curatedProduct.ingredients;
+      parsed.brand = parsed.brand || curatedProduct.brand;
+    }
+    if (!parsed.image_url && curatedProduct.image_url) {
+      parsed.image_url = curatedProduct.image_url;
+    }
   }
 
   return {
@@ -919,6 +925,7 @@ async function identifyByPhoto(image_base64) {
     brand: parsed.brand || '',
     ingredients: parsed.ingredients || [],
     confidence: parsed.confidence || 'med',
+    image_url: parsed.image_url || null,
     source: 'gpt4o_vision',
   };
 }

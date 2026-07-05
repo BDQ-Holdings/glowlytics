@@ -180,6 +180,80 @@ export async function searchOpenBeautyFacts(query: string): Promise<SearchResult
     }));
 }
 
+function normalizeLookupText(value: string): string {
+  const withoutAccents = value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+  return withoutAccents
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+function significantLookupTokens(value: string): string[] {
+  const normalized = normalizeLookupText(value);
+  return normalized.split(' ').filter((token) => token.length >= 3);
+}
+
+const stringField = (value: unknown, key: string): string | null => {
+  if (!value || typeof value !== 'object' || !(key in value)) return null;
+  const field = (value as Record<string, unknown>)[key];
+  return typeof field === 'string' ? field : null;
+};
+
+const candidateBrands = (candidate: unknown): string => {
+  const brands = stringField(candidate, 'brands');
+  if (brands) return brands;
+  if (!candidate || typeof candidate !== 'object' || !('brands_tags' in candidate)) return '';
+  const tags = candidate.brands_tags;
+  if (!Array.isArray(tags)) return '';
+  return tags.filter((tag): tag is string => typeof tag === 'string').join(' ');
+};
+
+const candidateProducts = (payload: unknown): unknown[] => {
+  if (!payload || typeof payload !== 'object' || !('products' in payload)) return [];
+  return Array.isArray(payload.products) ? payload.products : [];
+};
+
+const isConfidentImageMatch = (candidate: unknown, name: string, brand?: string | null): boolean => {
+  const candidateName = stringField(candidate, 'product_name');
+  if (!candidateName) return false;
+
+  const normalizedBrand = brand ? normalizeLookupText(brand) : '';
+  if (normalizedBrand) {
+    const normalizedCandidateBrands = normalizeLookupText(candidateBrands(candidate));
+    if (!normalizedCandidateBrands.includes(normalizedBrand)) return false;
+  }
+
+  const brandTokens = new Set(significantLookupTokens(brand ?? ''));
+  const expectedTokens = significantLookupTokens(name).filter((token) => !brandTokens.has(token));
+  if (expectedTokens.length === 0) return false;
+
+  const normalizedCandidateName = normalizeLookupText(candidateName);
+  const matched = expectedTokens.filter((token) => normalizedCandidateName.includes(token)).length;
+  return matched === expectedTokens.length || matched / expectedTokens.length >= 0.7;
+};
+
+export async function lookupProductImage(name: string, brand?: string | null): Promise<string | null> {
+  const query = [brand, name].map((part) => part?.trim()).filter(Boolean).join(' ');
+  if (!query) return null;
+
+  try {
+    const data = await fetchThirdPartyJson<unknown>(
+      `https://world.openbeautyfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&json=1&page_size=5`,
+      'open_beauty_facts_image_backfill',
+    );
+    for (const candidate of candidateProducts(data)) {
+      if (!isConfidentImageMatch(candidate, name, brand)) continue;
+      const image = parseObfImage(candidate);
+      if (image) return image;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 // ---- Waterfall lookup ----
 
 const lookupSources = [

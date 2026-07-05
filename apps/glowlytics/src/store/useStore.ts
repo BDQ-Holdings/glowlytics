@@ -130,6 +130,7 @@ interface AppState {
     options?: { allowDuplicate?: boolean },
   ) => { status: 'added'; product: ProductEntry } | { status: 'duplicate'; duplicate: ProductEntry } | { status: 'ignored' };
   removeProduct: (id: string) => void;
+  setProductImage: (id: string, imageUrl: string) => void;
   addDailyRecord: (record: Omit<DailyRecord, 'daily_id' | 'user_id'>) => DailyRecord;
   addModelOutput: (output: Omit<ModelOutput, 'output_id'>) => void;
   attachBoneStructure: (dailyId: string, bone: NonNullable<ModelOutput['bone_structure']>) => void;
@@ -740,6 +741,18 @@ export const useStore = create<AppState>((set, get) => ({
     }));
     debouncedPersist(() => get().persistData());
     syncToBackend('remove product', () => api.deleteProduct(id));
+  },
+
+  setProductImage: (id, imageUrl) => {
+    const product = get().products.find((p) => p.user_product_id === id);
+    if (!product || product.image_url === imageUrl) return;
+
+    set((s) => ({
+      products: s.products.map((p) =>
+        p.user_product_id === id ? { ...p, image_url: imageUrl } : p,
+      ),
+    }));
+    debouncedPersist(() => get().persistData());
   },
 
   addDailyRecord: (record) => {
