@@ -66,7 +66,6 @@
     "react-native-vision-camera-face-detector": "^1.9.1",
     "react-native-web": "^0.21.0",
     "react-native-worklets-core": "^1.6.3",
-    "uuid": "^13.0.0",
     "zustand": "^5.0.11"
   },
   "devDependencies": {

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID as uuidv4 } from 'expo-crypto';
 import type {
   UserProfile, ScanProtocol, ProductEntry, DailyRecord,
   ModelOutput, PrimaryGoal, ScanRegion, HealthConnectionState,

@@ -5,7 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
 import * as FileSystemLegacy from 'expo-file-system/legacy';
 import Svg, { Path } from 'react-native-svg';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID as uuidv4 } from 'expo-crypto';
 import Animated, {
   type SharedValue,
   useSharedValue,
