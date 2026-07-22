@@ -10,6 +10,3 @@ binding = "WAITLIST_DB"
 database_name = "glowlytics-waitlist"
 database_id = "9d731b31-0832-45ef-b268-89d3c75c5c86"
 
-[[kv_namespaces]]
-binding = "RATE_LIMIT_KV"
-id = "c15f82ad6bce4cbdad02a049d94d7afb"

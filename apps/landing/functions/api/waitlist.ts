@@ -14,17 +14,20 @@
  * Storage: Cloudflare D1 (binding `WAITLIST_DB`). Table created via the
  * companion migration in functions/api/_schema.sql.
  *
- * Abuse: per-IP/day write cap via Cloudflare KV (binding `RATE_LIMIT_KV`);
- * rejects writes if the binding or KV service is unavailable.
+ * Abuse: atomic per-IP/day write cap in D1; missing configuration or storage
+ * failures reject writes.
  */
+
+import { rateLimited } from "./_rate-limit";
+
+export { rateLimited };
 
 export interface Env {
   WAITLIST_DB: D1Database;
+  TRACK_SALT?: string;
   GLOWLYTICS_CUTOVER_AT?: string;
   NEXT_PUBLIC_POSTHOG_API_KEY?: string;
   NEXT_PUBLIC_POSTHOG_HOST?: string;
-  // Optional for isolated tests, but production requests fail closed when absent.
-  RATE_LIMIT_KV?: KVNamespace;
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -280,41 +283,6 @@ export function bucketCount(n: number): number {
   return Math.floor(n / 50) * 50;
 }
 
-let rateLimitWarned = false;
-
-/**
- * Per-IP/day abuse cap backed by Cloudflare KV, keyed on cf-connecting-ip + UTC
- * day. Increments a counter and returns true once the day's count reaches
- * `maxPerDay`. Missing or unavailable KV fails closed.
- */
-export async function rateLimited(
-  env: Env,
-  request: Request,
-  bucket: string,
-  maxPerDay: number,
-): Promise<boolean> {
-  const kv = env.RATE_LIMIT_KV;
-  if (!kv) {
-    if (!rateLimitWarned) {
-      rateLimitWarned = true;
-      console.error("RATE_LIMIT_KV unbound — rejecting public writes.");
-    }
-    return true;
-  }
-  const ip = request.headers.get("cf-connecting-ip") || "0.0.0.0";
-  const day = new Date().toISOString().slice(0, 10);
-  const key = `rl:${bucket}:${day}:${ip}`;
-  try {
-    const current = parseInt((await kv.get(key)) || "0", 10) || 0;
-    if (current >= maxPerDay) return true;
-    // ~25h TTL so the counter outlives the UTC day boundary, then self-expires.
-    await kv.put(key, String(current + 1), { expirationTtl: 90000 });
-    return false;
-  } catch (error) {
-    console.error("RATE_LIMIT_KV unavailable — rejecting public write.", error);
-    return true;
-  }
-}
 
 export const onRequestOptions: PagesFunction<Env> = async () =>
   new Response(null, { status: 204, headers: corsHeaders });

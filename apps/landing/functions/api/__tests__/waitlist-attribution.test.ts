@@ -65,6 +65,13 @@ function envWithDb(
   const remainingRows = [...firstRows];
   const db = {
     prepare(sql: string): Prepared {
+      if (sql.includes("rate_limit_counters")) {
+        return {
+          bind() {
+            return { first: async () => ({ request_count: 1 }) };
+          },
+        };
+      }
       return {
         bind(...values: unknown[]) {
           calls.push({ sql, values });
@@ -79,10 +86,7 @@ function envWithDb(
   return {
     env: {
       WAITLIST_DB: db,
-      RATE_LIMIT_KV: {
-        get: async () => null,
-        put: async () => undefined,
-      },
+      TRACK_SALT: "secret-salt",
       ...(cutover === null ? {} : { GLOWLYTICS_CUTOVER_AT: cutover }),
       NEXT_PUBLIC_POSTHOG_API_KEY: "phc_test",
       NEXT_PUBLIC_POSTHOG_HOST: "https://us.i.posthog.com",
@@ -94,7 +98,7 @@ function envWithDb(
 const post = (body: unknown) =>
   new Request("https://glowlytics.ai/api/waitlist", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "cf-connecting-ip": "1.2.3.4" },
     body: JSON.stringify(body),
   });
 
