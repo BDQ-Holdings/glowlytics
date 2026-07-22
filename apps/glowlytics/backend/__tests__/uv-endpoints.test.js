@@ -607,10 +607,13 @@ describe('GET /api/uv/report/:token', () => {
 describe('POST /api/users — lead -> customer conversion hook', () => {
   const realFetch = global.fetch;
   const validBody = { age_range: '25-34', location_coarse: 'US-CA' };
+  let waitlistLookupFetch;
 
   beforeEach(() => {
     process.env.CLERK_SECRET_KEY = 'sk_test_dummy';
     process.env.GLOWLYTICS_CUTOVER_AT = '2026-07-20T00:00:00.000Z';
+    process.env.GLOWLYTICS_WAITLIST_LOOKUP_URL = 'https://glowlytics.ai/api/waitlist-lookup';
+    process.env.GLOWLYTICS_WAITLIST_LOOKUP_TOKEN = 'waitlist-read-token';
     posthog.captureAccountCreated.mockReset();
     posthog.captureAccountCreated.mockResolvedValue(undefined);
     uvQueries.markCustomer.mockReset();
@@ -620,13 +623,26 @@ describe('POST /api/users — lead -> customer conversion hook', () => {
     loops.sendEvent.mockReset();
     loops.sendEvent.mockResolvedValue({ skipped: true });
     seedProfiles([]);
-    // Clerk user lookup returns a primary email.
-    global.fetch = jest.fn().mockResolvedValue({
+    waitlistLookupFetch = jest.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({
-        email_addresses: [{ id: 'idn_1', email_address: 'lead@example.com' }],
-        primary_email_address_id: 'idn_1',
-      }),
+      status: 200,
+      json: async () => ({ matched: false }),
+    });
+    global.fetch = jest.fn(async (url, options) => {
+      if (String(url).startsWith('https://api.clerk.com/')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            email_addresses: [{ id: 'idn_1', email_address: 'lead@example.com' }],
+            primary_email_address_id: 'idn_1',
+          }),
+        };
+      }
+      if (String(url) === process.env.GLOWLYTICS_WAITLIST_LOOKUP_URL) {
+        return waitlistLookupFetch(url, options);
+      }
+      throw new Error(`unexpected fetch: ${url}`);
     });
   });
 
@@ -634,6 +650,8 @@ describe('POST /api/users — lead -> customer conversion hook', () => {
     global.fetch = realFetch;
     delete process.env.CLERK_SECRET_KEY;
     delete process.env.GLOWLYTICS_CUTOVER_AT;
+    delete process.env.GLOWLYTICS_WAITLIST_LOOKUP_URL;
+    delete process.env.GLOWLYTICS_WAITLIST_LOOKUP_TOKEN;
   });
 
   test('first transition: markCustomer returns a row -> fires became_customer, 201', async () => {
@@ -724,6 +742,81 @@ describe('POST /api/users — lead -> customer conversion hook', () => {
     }));
   });
 
+  test('D1-only landing waitlist lead links its browser identity to the canonical account', async () => {
+    waitlistLookupFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        matched: true,
+        lead: {
+          posthog_distinct_id: 'landing-browser-1',
+          acquisition_source: 'facebook',
+          acquisition_medium: 'paid_social',
+          attribution_model: 'first_touch',
+          attribution_quality: 'utm',
+          historical_backfill: 0,
+          form_placement: 'hero',
+          utm_source: 'facebook',
+          utm_medium: 'paid_social',
+          utm_campaign: 'launch',
+          utm_term: null,
+          utm_content: null,
+          google_click_id_present: 0,
+          referrer_host: 'facebook.com',
+          landing_path: '/',
+        },
+      }),
+    });
+
+    const res = await request(app).post('/api/users').send(validBody);
+
+    expect(res.status).toBe(201);
+    expect(uvQueries.markCustomer).toHaveBeenCalledWith(expect.anything(), {
+      email: 'lead@example.com',
+      clerk_user_id: 'dev-user',
+    });
+    expect(waitlistLookupFetch).toHaveBeenCalledWith(
+      'https://glowlytics.ai/api/waitlist-lookup',
+      expect.objectContaining({
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer waitlist-read-token',
+          'Content-Type': 'application/json',
+        },
+      })
+    );
+    expect(JSON.parse(waitlistLookupFetch.mock.calls[0][1].body)).toEqual({
+      email: 'lead@example.com',
+    });
+    expect(posthog.captureAccountCreated).toHaveBeenCalledWith(expect.objectContaining({
+      userId: 'dev-user',
+      properties: expect.objectContaining({
+        distinct_id: 'glowlytics:user:dev-user',
+        $anon_distinct_id: 'landing-browser-1',
+        waitlist_match: true,
+        waitlist_bypassed: false,
+        acquisition_source: 'facebook',
+      }),
+    }));
+    expect(JSON.stringify(posthog.captureAccountCreated.mock.calls[0][0])).not.toMatch(
+      /lead@example\.com|waitlist-read-token/
+    );
+  });
+
+  test('D1 lookup failure leaves account reconciliation pending instead of inventing a bypass', async () => {
+    waitlistLookupFetch.mockRejectedValueOnce(new Error('Cloudflare unavailable'));
+
+    const res = await request(app).post('/api/users').send(validBody);
+
+    expect(res.status).toBe(201);
+    expect(posthog.captureAccountCreated).not.toHaveBeenCalled();
+    expect(profileState('dev-user')).toEqual(expect.objectContaining({
+      posthog_account_created_status: 'reconciliation_pending',
+      posthog_account_created_uuid: null,
+      posthog_account_created_waitlist_match: null,
+      posthog_account_created_retry_after: expect.any(String),
+    }));
+  });
   test('server account_created telemetry drops dirty persisted form placement values', async () => {
     uvQueries.markCustomer.mockResolvedValue({
       acquisition_source: 'google',

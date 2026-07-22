@@ -3,7 +3,7 @@
   "artifact_mode": "final",
   "live_send_enabled": false,
   "artifact_root": "data/posthog-backfill/glowlytics",
-  "artifact_dir": "/Users/mustafaboorenie/cornell-hackathon/apps/glowlytics/backend/data/posthog-backfill/glowlytics/lane-b-20260719123000Z-final",
+  "artifact_dir": "data/posthog-backfill/glowlytics/lane-b-20260719123000Z-final",
   "artifact_run_id": "lane-b-20260719123000Z-final",
   "cutover_at": "2026-07-19T12:30:00.000Z",
   "source_cutoff_at": "2026-07-19T12:30:00.000Z",

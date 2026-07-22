@@ -483,7 +483,7 @@ async function buildDryRun({
     artifact_mode: mode,
     live_send_enabled: false,
     artifact_root: artifactRoot,
-    artifact_dir: artifactDir,
+    artifact_dir: path.join(artifactRoot, runId),
     artifact_run_id: runId,
     cutover_at: normalizedCutoverAt,
     source_cutoff_at: normalizedCutoverAt,

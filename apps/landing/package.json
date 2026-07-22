@@ -20,7 +20,7 @@
     "seo:report": "node --import ./scripts/seo-engine/node_modules/tsx/dist/loader.mjs ./scripts/seo-engine/src/report.ts",
     "seo:test": "node --import ./scripts/seo-engine/node_modules/tsx/dist/loader.mjs --test ./scripts/seo-engine/src/lib/__tests__/*.test.ts",
     "test:first-touch": "node --import ./scripts/seo-engine/node_modules/tsx/dist/loader.mjs --test ./lib/__tests__/posthogAttribution.test.ts ./components/__tests__/PostHogAttribution.config.test.ts",
-    "test:attribution": "node --import ./scripts/seo-engine/node_modules/tsx/dist/loader.mjs --test ./lib/__tests__/posthogAttribution.test.ts ./functions/api/__tests__/waitlist-attribution.test.ts ./components/__tests__/WaitlistForm.attribution.test.ts"
+    "test:attribution": "node --import ./scripts/seo-engine/node_modules/tsx/dist/loader.mjs --test ./lib/__tests__/posthogAttribution.test.ts ./functions/api/__tests__/waitlist-attribution.test.ts ./functions/api/__tests__/waitlist-lookup.test.ts ./components/__tests__/WaitlistForm.attribution.test.ts"
   },
   "keywords": [],
   "author": "",

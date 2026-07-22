@@ -1931,6 +1931,38 @@ app.post('/api/vision/bone-structure', analyzeRateLimit, async (req, res) => {
 // account event is emitted only after Clerk email lookup and UV reconciliation
 // are conclusive; unavailable dependencies leave durable pending state for the
 // bounded retry worker.
+async function findLandingWaitlistLeadByEmail(email) {
+  const lookupUrl = process.env.GLOWLYTICS_WAITLIST_LOOKUP_URL;
+  const lookupToken = process.env.GLOWLYTICS_WAITLIST_LOOKUP_TOKEN;
+  if (!lookupUrl || !lookupToken) {
+    return { status: 'unavailable' };
+  }
+
+  try {
+    const response = await fetch(lookupUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${lookupToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email }),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) {
+      throw new Error(`landing waitlist lookup failed with status ${response.status}`);
+    }
+    const payload = await response.json();
+    if (payload?.matched === false) return { status: 'unmatched' };
+    if (payload?.matched === true && payload.lead && typeof payload.lead === 'object') {
+      return { status: 'matched', lead: payload.lead };
+    }
+    throw new Error('landing waitlist lookup returned an invalid response');
+  } catch (err) {
+    log.warn('[waitlist] landing lookup failed:', err?.message || err);
+    return { status: 'unavailable' };
+  }
+}
+
 async function convertUvLeadToCustomer(userId) {
   try {
     if (!process.env.CLERK_SECRET_KEY) {
@@ -1963,7 +1995,7 @@ async function convertUvLeadToCustomer(userId) {
       }
       return { status: 'matched', lead: row };
     }
-    return { status: 'unmatched' };
+    return await findLandingWaitlistLeadByEmail(email);
   } catch (err) {
     log.warn('[uv] lead->customer conversion failed:', err?.message || err);
     return { status: 'unavailable' };

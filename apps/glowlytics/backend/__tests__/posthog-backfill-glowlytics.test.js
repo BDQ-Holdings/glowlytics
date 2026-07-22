@@ -1,4 +1,5 @@
 const fs = require('fs');
+const crypto = require('crypto');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
@@ -43,6 +44,7 @@ function artifactText(artifactDir) {
 function expectNoSensitiveMaterial(text) {
   expect(text).not.toMatch(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
   expect(text).not.toMatch(/phc_|POSTHOG_API_KEY|sent_at|Bearer|secret|api_key=|token=|access_token|refresh_token/i);
+  expect(text).not.toMatch(/\/(?:Users|home)\//);
 }
 
 function d1Rows(count = 4) {
@@ -119,7 +121,7 @@ async function buildFixtureRun(dir, overrides = {}) {
     railwayWaitlistJson: railwayWaitlistFile,
     railwayProfilesJson: profilesFile,
     railwayUvLeadsJson: uvFile,
-    artifactRoot: dir,
+    artifactRoot: overrides.artifactRoot || dir,
     artifactRunId: overrides.artifactRunId || 'test-run',
     artifactMode: overrides.artifactMode || 'rehearsal',
     cutoverAt: overrides.cutoverAt || CUTOVER_AT,
@@ -148,7 +150,8 @@ test('dry run writes 4 D1 waitlist, 36 Railway waitlist, and 142 Railway profile
   process.env.POSTHOG_API_KEY = 'phc_live_key_must_not_leak';
   global.fetch = jest.fn();
 
-  const summary = await buildFixtureRun(dir);
+  const logicalArtifactRoot = path.relative(process.cwd(), dir);
+  const summary = await buildFixtureRun(dir, { artifactRoot: logicalArtifactRoot });
 
   const artifactDir = path.join(dir, 'test-run');
   const batch = readJson(path.join(artifactDir, 'batch.json'));
@@ -184,13 +187,39 @@ test('dry run writes 4 D1 waitlist, 36 Railway waitlist, and 142 Railway profile
   }
   for (const text of Object.values(artifactText(artifactDir))) expectNoSensitiveMaterial(text);
   expect(global.fetch).not.toHaveBeenCalled();
-  expect(summary.artifact_dir).toBe(artifactDir);
+  expect(summary.artifact_dir).toBe(path.join(logicalArtifactRoot, 'test-run'));
+  expect(path.isAbsolute(summary.artifact_dir)).toBe(false);
   expect(summary.cutover_at).toBe(CUTOVER_AT);
   expect(summary.source_cutoff_at).toBe(CUTOVER_AT);
   expect(summary.cutover_source).toBe('unit-test-cutover');
   expect(summary.approved_baseline).toEqual({ d1_waitlist: 4, railway_waitlist: 36, total_waitlist: 40, railway_profiles: 142, uv_matches: 0 });
   expect(summary.coverage_check).toMatch(/reviewed reconciliation/);
   expect(deriveArtifactRunId(CUTOVER_AT)).toBe('lane-b-20260720120000Z');
+});
+
+test('committed final artifacts are portable, private, and checksum-valid', () => {
+  const artifactDir = path.join(
+    __dirname,
+    '..',
+    'data',
+    'posthog-backfill',
+    'glowlytics',
+    'lane-b-20260719123000Z-final'
+  );
+  const texts = artifactText(artifactDir);
+  const summary = JSON.parse(texts['summary.json']);
+  const checksums = JSON.parse(texts['checksums.json']);
+
+  expect(summary.artifact_dir).toBe(
+    'data/posthog-backfill/glowlytics/lane-b-20260719123000Z-final'
+  );
+  expect(path.isAbsolute(summary.artifact_dir)).toBe(false);
+  for (const text of Object.values(texts)) expectNoSensitiveMaterial(text);
+  for (const [file, expected] of Object.entries(checksums.files)) {
+    const bytes = Buffer.from(texts[file], 'utf8');
+    expect(expected.bytes).toBe(bytes.length);
+    expect(expected.sha256).toBe(crypto.createHash('sha256').update(bytes).digest('hex'));
+  }
 });
 
 test('repeated identical inputs produce byte-identical artifacts', async () => {
