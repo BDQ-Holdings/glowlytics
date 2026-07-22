@@ -232,6 +232,107 @@ const migrationV6 = `
 ALTER TABLE uv_scans ADD COLUMN IF NOT EXISTS claim_token TEXT;
 `;
 
+// Migration v7: Railway UV attribution storage and retry-safe server-owned
+// PostHog account_created delivery metadata. DDL only: ownership marking is a
+// separate bounded gate so re-running startup cannot consume forward rows.
+const migrationV7 = `
+ALTER TABLE uv_leads ADD COLUMN IF NOT EXISTS posthog_distinct_id TEXT;
+ALTER TABLE uv_leads ADD COLUMN IF NOT EXISTS acquisition_source TEXT;
+ALTER TABLE uv_leads ADD COLUMN IF NOT EXISTS acquisition_medium TEXT;
+ALTER TABLE uv_leads ADD COLUMN IF NOT EXISTS attribution_model TEXT;
+ALTER TABLE uv_leads ADD COLUMN IF NOT EXISTS attribution_quality TEXT;
+ALTER TABLE uv_leads ADD COLUMN IF NOT EXISTS utm_source TEXT;
+ALTER TABLE uv_leads ADD COLUMN IF NOT EXISTS utm_medium TEXT;
+ALTER TABLE uv_leads ADD COLUMN IF NOT EXISTS utm_campaign TEXT;
+ALTER TABLE uv_leads ADD COLUMN IF NOT EXISTS utm_term TEXT;
+ALTER TABLE uv_leads ADD COLUMN IF NOT EXISTS utm_content TEXT;
+ALTER TABLE uv_leads ADD COLUMN IF NOT EXISTS google_click_id_present BOOLEAN DEFAULT FALSE;
+ALTER TABLE uv_leads ADD COLUMN IF NOT EXISTS referrer_host TEXT;
+ALTER TABLE uv_leads ADD COLUMN IF NOT EXISTS landing_path TEXT;
+ALTER TABLE uv_leads ADD COLUMN IF NOT EXISTS form_placement TEXT;
+
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS posthog_account_created_uuid UUID;
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS posthog_account_created_timestamp TIMESTAMPTZ;
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS posthog_account_created_sent_at TIMESTAMPTZ;
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS posthog_account_created_status TEXT NOT NULL DEFAULT 'reconciliation_pending';
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS posthog_account_created_properties JSONB;
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS posthog_account_created_waitlist_match BOOLEAN;
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS posthog_account_created_delivery_claimed_at TIMESTAMPTZ;
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS posthog_account_created_retry_after TIMESTAMPTZ;
+
+CREATE INDEX IF NOT EXISTS idx_uv_leads_posthog_distinct_id ON uv_leads(posthog_distinct_id);
+CREATE INDEX IF NOT EXISTS idx_uv_leads_acquisition_source ON uv_leads(acquisition_source);
+CREATE INDEX IF NOT EXISTS idx_user_profiles_posthog_account_created_pending
+  ON user_profiles(posthog_account_created_status, posthog_account_created_retry_after, created_at)
+  WHERE posthog_account_created_status IN ('reconciliation_pending', 'pending_delivery');
+`;
+
+const POSTHOG_ATTRIBUTION_COLUMNS = {
+  uv_leads: [
+    'created_at',
+    'posthog_distinct_id',
+    'acquisition_source',
+    'acquisition_medium',
+    'attribution_model',
+    'attribution_quality',
+    'utm_source',
+    'utm_medium',
+    'utm_campaign',
+    'utm_term',
+    'utm_content',
+    'google_click_id_present',
+    'referrer_host',
+    'landing_path',
+    'form_placement',
+  ],
+  user_profiles: [
+    'created_at',
+    'posthog_account_created_uuid',
+    'posthog_account_created_timestamp',
+    'posthog_account_created_sent_at',
+    'posthog_account_created_status',
+    'posthog_account_created_properties',
+    'posthog_account_created_waitlist_match',
+    'posthog_account_created_delivery_claimed_at',
+    'posthog_account_created_retry_after',
+  ],
+};
+
+async function verifyPostHogAttributionSchema(externalPool) {
+  const tableNames = Object.keys(POSTHOG_ATTRIBUTION_COLUMNS);
+  const { rows } = await externalPool.query(
+    `SELECT table_name, column_name
+       FROM information_schema.columns
+      WHERE table_schema = current_schema()
+        AND table_name = ANY($1::text[])`,
+    [tableNames]
+  );
+  const present = new Set(rows.map((row) => `${row.table_name}.${row.column_name}`));
+  const missing = [];
+  for (const [table, columns] of Object.entries(POSTHOG_ATTRIBUTION_COLUMNS)) {
+    for (const column of columns) {
+      if (!present.has(`${table}.${column}`)) missing.push(`${table}.${column}`);
+    }
+  }
+  if (missing.length) {
+    throw new Error(`PostHog attribution schema verification failed; missing columns: ${missing.join(', ')}`);
+  }
+}
+
+async function markPreCutoverProfilesHistorical(externalPool, cutoverAt) {
+  const cutoverMs = Date.parse(cutoverAt || '');
+  if (!Number.isFinite(cutoverMs)) throw new Error('GLOWLYTICS_CUTOVER_AT missing or invalid');
+  await externalPool.query(
+    `UPDATE user_profiles
+        SET posthog_account_created_sent_at = COALESCE(posthog_account_created_sent_at, NOW()),
+            posthog_account_created_status = 'historical_backfill_owned'
+      WHERE created_at < ($1::timestamptz AT TIME ZONE 'UTC')
+        AND posthog_account_created_status = 'reconciliation_pending'
+        AND posthog_account_created_uuid IS NULL`,
+    [new Date(cutoverMs).toISOString()]
+  );
+}
+
 /**
  * Initialize schema using a provided pool (does NOT close it).
  * Runs CREATE TABLE IF NOT EXISTS + ALTER TABLE for migrations.
@@ -268,6 +369,9 @@ async function initSchema(externalPool) {
   } catch (err) {
     console.warn('[db-init] Migration v6 warning (may be harmless):', err.message);
   }
+  await externalPool.query(migrationV7);
+  await verifyPostHogAttributionSchema(externalPool);
+  await markPreCutoverProfilesHistorical(externalPool, process.env.GLOWLYTICS_CUTOVER_AT);
 }
 
 // Standalone execution: `node db-init.js`
@@ -291,4 +395,4 @@ if (require.main === module) {
   })();
 }
 
-module.exports = { schema, initSchema, migrationV5, migrationV6 };
+module.exports = { schema, initSchema, migrationV5, migrationV6, migrationV7, markPreCutoverProfilesHistorical, verifyPostHogAttributionSchema };

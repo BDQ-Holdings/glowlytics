@@ -5,6 +5,7 @@ interface EnvConfig {
   API_BASE_URL: string;
   REVENUECAT_API_KEY: string;
   POSTHOG_API_KEY: string;
+  POSTHOG_HOST: string;
   ENABLE_APPLE_OAUTH: boolean;
   ENABLE_GOOGLE_OAUTH: boolean;
   SENTRY_DSN: string;
@@ -66,6 +67,7 @@ export const env: EnvConfig = {
     process.env.EXPO_PUBLIC_REVENUECAT_API_KEY ?? '',
   POSTHOG_API_KEY:
     process.env.EXPO_PUBLIC_POSTHOG_API_KEY ?? '',
+  POSTHOG_HOST: process.env.EXPO_PUBLIC_POSTHOG_HOST ?? 'https://us.i.posthog.com',
   // Defaults true: rendering is also gated on Clerk's supportedFirstFactors at runtime,
   // so an unset env var won't surface a button the Clerk instance doesn't actually support.
   // Apple Guideline 4.8 requires Sign in with Apple whenever a third-party sign-in is offered.

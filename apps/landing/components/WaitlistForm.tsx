@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import posthog from "posthog-js";
 
 import { PAGEVIEW_SESSION_KEY } from "./PageViewBeacon";
-
+import { getCurrentFirstTouch, getPostHogDistinctId } from "./PostHogAttribution";
 type Status = "idle" | "loading" | "success" | "error";
 
 interface Props {
@@ -23,6 +24,127 @@ interface Props {
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+type AcquisitionSource =
+  | "instagram"
+  | "tiktok"
+  | "facebook"
+  | "google"
+  | "other_search"
+  | "ai_search"
+  | "direct"
+  | "referral"
+  | "unknown";
+type AttributionQuality = "utm" | "referrer" | "unknown" | "backfilled";
+type FormPlacement = "hero" | "footer" | "modal" | "pricing" | "mobile_onboarding" | "unknown";
+
+export type WaitlistAttributionPayload = {
+  posthog_distinct_id: string | null;
+  acquisition_source: AcquisitionSource;
+  acquisition_medium: string;
+  attribution_model: "first_touch";
+  attribution_quality: AttributionQuality;
+  historical_backfill: false;
+  form_placement: FormPlacement;
+  utm_source?: string | null;
+  utm_medium?: string | null;
+  utm_campaign?: string | null;
+  utm_term?: string | null;
+  utm_content?: string | null;
+  google_click_id_present: boolean;
+  referrer_host?: string | null;
+  landing_path?: string | null;
+};
+
+type WaitlistAttribution = WaitlistAttributionPayload & { product: "glowlytics" };
+
+type WaitlistSubmittedProperties = {
+  product: "glowlytics";
+  acquisition_source: AcquisitionSource;
+  acquisition_medium: string;
+  attribution_model: "first_touch";
+  attribution_quality: AttributionQuality;
+  historical_backfill: false;
+  form_placement: FormPlacement;
+  utm_source: string | null;
+  utm_medium: string | null;
+  utm_campaign: string | null;
+  utm_term: string | null;
+  utm_content: string | null;
+  google_click_id_present: boolean;
+  referrer_host: string | null;
+  landing_path: string | null;
+};
+
+const FORM_PLACEMENT_ALIASES: Record<string, FormPlacement> = {
+  hero: "hero",
+  footer: "footer",
+  "final-cta": "footer",
+  "blog-newsletter": "footer",
+  modal: "modal",
+  pricing: "pricing",
+  mobile_onboarding: "mobile_onboarding",
+  "uv-scan-web": "unknown",
+  unknown: "unknown",
+};
+
+export function normalizeFormPlacement(value: unknown): FormPlacement {
+  return typeof value === "string" ? FORM_PLACEMENT_ALIASES[value] || "unknown" : "unknown";
+}
+
+export function shouldCaptureWaitlistSubmitted(body: unknown): boolean {
+  return Boolean(
+    body &&
+      typeof body === "object" &&
+      (body as { ok?: unknown }).ok === true &&
+      (body as { created?: unknown }).created === true &&
+      (body as { tracking_enabled?: unknown }).tracking_enabled === true,
+  );
+}
+
+function buildWaitlistAttribution(formPlacement: string): WaitlistAttribution {
+  const firstTouch = getCurrentFirstTouch();
+  return {
+    product: "glowlytics",
+    acquisition_source: firstTouch?.acquisition_source || "unknown",
+    acquisition_medium: firstTouch?.acquisition_medium || "unknown",
+    attribution_model: "first_touch",
+    attribution_quality: firstTouch?.attribution_quality || "unknown",
+    historical_backfill: false,
+    form_placement: normalizeFormPlacement(formPlacement),
+    posthog_distinct_id: getPostHogDistinctId(),
+    utm_source: firstTouch?.utm_source ?? null,
+    utm_medium: firstTouch?.utm_medium ?? null,
+    utm_campaign: firstTouch?.utm_campaign ?? null,
+    utm_term: firstTouch?.utm_term ?? null,
+    utm_content: firstTouch?.utm_content ?? null,
+    google_click_id_present: firstTouch?.google_click_id_present ?? false,
+    referrer_host: firstTouch?.referrer_host ?? null,
+    landing_path: firstTouch?.landing_path ?? null,
+  };
+}
+
+export function buildWaitlistSubmittedProperties(
+  attribution: WaitlistAttributionPayload & { product?: unknown },
+): WaitlistSubmittedProperties {
+  return {
+    product: "glowlytics",
+    acquisition_source: attribution.acquisition_source,
+    acquisition_medium: attribution.acquisition_medium,
+    attribution_model: "first_touch",
+    attribution_quality: attribution.attribution_quality,
+    historical_backfill: false,
+    form_placement: attribution.form_placement,
+    utm_source: attribution.utm_source ?? null,
+    utm_medium: attribution.utm_medium ?? null,
+    utm_campaign: attribution.utm_campaign ?? null,
+    utm_term: attribution.utm_term ?? null,
+    utm_content: attribution.utm_content ?? null,
+    google_click_id_present: attribution.google_click_id_present ?? false,
+    referrer_host: attribution.referrer_host ?? null,
+    landing_path: attribution.landing_path ?? null,
+  };
+}
 /**
  * Reads the article-attribution snapshot left by <PageViewBeacon>, if any.
  * Returns an empty object on the server, in private mode, or when the visitor
@@ -85,6 +207,7 @@ export default function WaitlistForm({
       setError(null);
 
       try {
+        const attribution = buildWaitlistAttribution(source);
         const res = await fetch("/api/waitlist", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -92,17 +215,20 @@ export default function WaitlistForm({
             email: trimmed,
             source,
             ...readAttribution(),
+            ...attribution,
           }),
         });
-        const body = (await res.json().catch(() => ({}))) as {
+        const body = (await res.json().catch(() => null)) as {
           ok?: boolean;
+          created?: boolean;
+          tracking_enabled?: boolean;
           alreadyOnList?: boolean;
           error?: string;
-        };
+        } | null;
 
-        if (!res.ok || !body.ok) {
+        if (!res.ok || !body?.ok) {
           setError(
-            body.error === "invalid email"
+            body?.error === "invalid email"
               ? "That email doesn’t look right."
               : "Something’s off on our end. Try again in a moment?",
           );
@@ -110,7 +236,11 @@ export default function WaitlistForm({
           return;
         }
 
-        setAlreadyOnList(Boolean(body.alreadyOnList));
+        if (shouldCaptureWaitlistSubmitted(body)) {
+          posthog.capture("waitlist_submitted", buildWaitlistSubmittedProperties(attribution));
+        }
+
+        setAlreadyOnList(body.created === false || Boolean(body.alreadyOnList));
         setStatus("success");
       } catch {
         setError("We couldn’t reach the waitlist. Check your connection and try again?");

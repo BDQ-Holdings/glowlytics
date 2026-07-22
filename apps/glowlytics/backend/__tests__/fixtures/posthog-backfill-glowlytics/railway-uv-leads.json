@@ -1,0 +1,12 @@
+[
+  {
+    "id": "uv_0001",
+    "clerk_user_id": "user_0001",
+    "created_at": "2026-06-01T11:00:00.000Z",
+    "source": "hero",
+    "acquisition_source": "google",
+    "acquisition_medium": "paid_search",
+    "attribution_quality": "utm",
+    "landing_path": "/uv-scan"
+  }
+]

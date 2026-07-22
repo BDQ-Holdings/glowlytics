@@ -21,6 +21,7 @@ const uvScan = require('./uv-scan');
 const loops = require('./loops');
 const uvReport = require('./uv-report');
 const uvQueries = require('./queries/uv');
+const posthog = require('./posthog');
 const { attachPoolErrorHandler } = require('./pg-resilience');
 const { getPool } = require('./db-pool');
 
@@ -655,6 +656,59 @@ const UV_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 // static default is acceptable; set IP_HASH_SECRET in production for a real key.
 const IP_HASH_DEFAULT_SECRET = 'glowlytics-uv-ip-hash-v1';
 
+const FORM_PLACEMENT_ALIASES = new Map([
+  ['hero', 'hero'],
+  ['footer', 'footer'],
+  ['final-cta', 'footer'],
+  ['blog-newsletter', 'footer'],
+  ['modal', 'modal'],
+  ['pricing', 'pricing'],
+  ['mobile_onboarding', 'mobile_onboarding'],
+  ['uv-scan-web', 'unknown'],
+  ['unknown', 'unknown'],
+]);
+const ACQUISITION_SOURCES = new Set(['instagram', 'tiktok', 'facebook', 'google', 'other_search', 'ai_search', 'direct', 'referral', 'unknown']);
+const ATTRIBUTION_QUALITIES = new Set(['utm', 'referrer', 'unknown', 'backfilled']);
+const UV_LEAD_SOURCES = new Set(['uv-scan-web', 'landing', 'test']);
+const SENSITIVE_VALUE_RE = /([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})|((api[_-]?key|api|secret|password|credential|bearer|access|refresh|id)?[_-]?token=?)|\b(api[_-]?key|secret|password|credential|bearer)\b|((gclid|gbraid|wbraid)=?)/i;
+
+function marketingField(value, max = 256) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim().slice(0, max);
+  return trimmed && !SENSITIVE_VALUE_RE.test(trimmed) ? trimmed : null;
+}
+
+function normalizeUvLeadSource(value) {
+  if (typeof value !== 'string') return 'uv-scan-web';
+  const trimmed = value.trim();
+  return UV_LEAD_SOURCES.has(trimmed) ? trimmed : 'uv-scan-web';
+}
+
+function normalizeFormPlacement(value) {
+  return typeof value === 'string' ? FORM_PLACEMENT_ALIASES.get(value) || 'unknown' : 'unknown';
+}
+
+function normalizeHost(value) {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  try {
+    const parsed = new URL(value.includes('://') ? value : `https://${value}`);
+    return parsed.hostname.toLowerCase().slice(0, 256) || null;
+  } catch {
+    return /^[a-z0-9.-]+$/i.test(value) && !value.includes('@') ? value.toLowerCase().slice(0, 256) : null;
+  }
+}
+
+function normalizePath(value) {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  try {
+    const parsed = value.startsWith('/') ? new URL(value, 'https://glowlytics.ai') : new URL(value);
+    return (parsed.pathname || '/').slice(0, 256);
+  } catch {
+    const path = value.split(/[?#]/, 1)[0];
+    return path.startsWith('/') ? path.slice(0, 256) : null;
+  }
+}
+
 // jsonb columns come back as parsed objects from pg, but a value read as text
 // (or returned by a stubbed pool in tests) can arrive as a JSON string —
 // normalise before handing it to consumers.
@@ -733,7 +787,12 @@ app.post('/api/uv/analyze', analyzeRateLimit, async (req, res) => {
 // Capture a lead's email in exchange for the PDF report; idempotent on email.
 app.post('/api/uv/lead', detectRateLimit, async (req, res) => {
   try {
-    const { email: rawEmail, scan_id, source, claim_token } = req.body || {};
+    const {
+      email: rawEmail, scan_id, source, claim_token,
+      posthog_distinct_id, acquisition_source, acquisition_medium,
+      attribution_quality, utm_source, utm_medium, utm_campaign, utm_term, utm_content,
+      google_click_id_present, referrer_host, landing_path, form_placement,
+    } = req.body || {};
     const email = typeof rawEmail === 'string' ? rawEmail.toLowerCase().trim() : rawEmail;
     if (!email || typeof email !== 'string' || !UV_EMAIL_RE.test(email)) {
       return res.status(400).json({ error: 'invalid email' });
@@ -762,12 +821,29 @@ app.post('/api/uv/lead', detectRateLimit, async (req, res) => {
     if (scan.claimed && (!existingLead || existingLead.scan_id !== scan_id)) {
       return res.status(409).json({ error: 'scan already claimed' });
     }
+    const safeSource = normalizeUvLeadSource(source);
+    const safeAcquisitionSource = ACQUISITION_SOURCES.has(acquisition_source) ? acquisition_source : 'unknown';
+    const safeAttributionQuality = ATTRIBUTION_QUALITIES.has(attribution_quality) ? attribution_quality : 'unknown';
     const lead = await uvQueries.upsertLead(pool, {
       id: uuidv4(),
       email,
       report_token: uuidv4().replace(/-/g, ''),
       scan_id,
-      source: source || 'uv-scan-web',
+      source: safeSource,
+      posthog_distinct_id: marketingField(posthog_distinct_id, 256),
+      acquisition_source: safeAcquisitionSource,
+      acquisition_medium: marketingField(acquisition_medium, 64) || 'unknown',
+      attribution_model: 'first_touch',
+      attribution_quality: safeAttributionQuality,
+      utm_source: marketingField(utm_source, 128)?.toLowerCase() || null,
+      utm_medium: marketingField(utm_medium, 128)?.toLowerCase() || null,
+      utm_campaign: marketingField(utm_campaign, 256),
+      utm_term: marketingField(utm_term, 256),
+      utm_content: marketingField(utm_content, 256),
+      google_click_id_present: google_click_id_present === true,
+      referrer_host: normalizeHost(referrer_host),
+      landing_path: normalizePath(landing_path),
+      form_placement: normalizeFormPlacement(form_placement),
     });
     await uvQueries.claimScan(pool, scan_id);
 
@@ -778,7 +854,7 @@ app.post('/api/uv/lead', detectRateLimit, async (req, res) => {
       const asymmetry = uvParseJson(scan.asymmetry) || {};
       await loops.sendEvent(email, 'uv_report_requested', {
         contactProperties: {
-          source: source || 'uv-scan-web',
+          source: safeSource,
           uvSunDamageScore: overall.sunDamageScore,
           uvSeverity: overall.severity,
           uvAsymmetryScore: asymmetry.score,
@@ -1851,41 +1927,247 @@ app.post('/api/vision/bone-structure', analyzeRateLimit, async (req, res) => {
 
 // ==================== USER PROFILES ====================
 
-// Best-effort lead -> customer promotion fired from POST /api/users. Resolves
-// the new user's email STRICTLY from the Clerk-verified primary email (B4): an
-// attacker-supplied req.body.email must never bind another person's uv_lead to
-// this account. When CLERK_SECRET_KEY is unset we cannot verify ownership, so we
-// skip the conversion entirely rather than trust the request body. Flips a
-// matching uv_leads row to 'customer' exactly once and fires the Loops
-// `became_customer` event on that first transition. NEVER throws — user creation
-// must never be blocked by this marketing side effect.
+// Lead -> customer promotion and server-owned account_created delivery. The
+// account event is emitted only after Clerk email lookup and UV reconciliation
+// are conclusive; unavailable dependencies leave durable pending state for the
+// bounded retry worker.
 async function convertUvLeadToCustomer(userId) {
   try {
-    if (!process.env.CLERK_SECRET_KEY) return;
+    if (!process.env.CLERK_SECRET_KEY) {
+      return { status: 'unavailable' };
+    }
     const clerkApiBase = process.env.CLERK_API_BASE || 'https://api.clerk.com';
-    const url = `${clerkApiBase}/v1/users/${encodeURIComponent(userId)}`;
-    const clerkRes = await fetch(url, {
+    const clerkRes = await fetch(`${clerkApiBase}/v1/users/${encodeURIComponent(userId)}`, {
       headers: { Authorization: `Bearer ${process.env.CLERK_SECRET_KEY}` },
       signal: AbortSignal.timeout(5000),
     });
-    if (!clerkRes.ok) return;
+    if (!clerkRes.ok) return { status: 'unavailable' };
     const data = await clerkRes.json();
     const rawEmail =
-      data.email_addresses?.find((e) => e.id === data.primary_email_address_id)?.email_address ||
+      data.email_addresses?.find((entry) => entry.id === data.primary_email_address_id)?.email_address ||
       data.email_addresses?.[0]?.email_address ||
       null;
-    if (!rawEmail) return;
+    if (!rawEmail) return { status: 'unavailable' };
     const email = rawEmail.toLowerCase().trim();
-    const row = await uvQueries.markCustomer(pool, { email, clerk_user_id: userId });
+    const transitionedLead = await uvQueries.markCustomer(pool, { email, clerk_user_id: userId });
+    const row = transitionedLead || await uvQueries.findCustomerLead(pool, userId);
     if (row) {
-      await loops.sendEvent(email, 'became_customer', {
-        contactProperties: { clerkUserId: userId },
-      });
+      if (transitionedLead) {
+        try {
+          await loops.sendEvent(email, 'became_customer', {
+            contactProperties: { clerkUserId: userId },
+          });
+        } catch (loopsErr) {
+          log.warn('[uv] became_customer marketing event failed:', loopsErr?.message || loopsErr);
+        }
+      }
+      return { status: 'matched', lead: row };
     }
+    return { status: 'unmatched' };
   } catch (err) {
     log.warn('[uv] lead->customer conversion failed:', err?.message || err);
+    return { status: 'unavailable' };
   }
 }
+
+const RETRYABLE_ACCOUNT_STATUSES = ['reconciliation_pending', 'pending_delivery'];
+
+async function loadAccountCreatedDelivery(userId, cutoverAt) {
+  const { rows } = await pool.query(
+    `SELECT user_id, created_at,
+            created_at >= ($2::timestamptz AT TIME ZONE 'UTC') AS forward_owned,
+            posthog_account_created_status AS status,
+            posthog_account_created_uuid AS uuid,
+            posthog_account_created_timestamp AS timestamp,
+            posthog_account_created_properties AS properties,
+            posthog_account_created_waitlist_match AS waitlist_match,
+            posthog_account_created_delivery_claimed_at AS delivery_claimed_at
+       FROM user_profiles
+      WHERE user_id = $1`,
+    [userId, cutoverAt]
+  );
+  return rows[0] || null;
+}
+
+async function markRuntimePreCutoverProfileHistorical(userId, cutoverAt) {
+  await pool.query(
+    `UPDATE user_profiles
+        SET posthog_account_created_sent_at = COALESCE(posthog_account_created_sent_at, NOW()),
+            posthog_account_created_status = 'historical_backfill_owned'
+      WHERE user_id = $1
+        AND created_at < ($2::timestamptz AT TIME ZONE 'UTC')
+        AND posthog_account_created_status = 'reconciliation_pending'
+        AND posthog_account_created_uuid IS NULL`,
+    [userId, cutoverAt]
+  );
+}
+
+async function reserveAccountCreatedDelivery(userId, attribution, matchStatus) {
+  if (!['matched', 'unmatched'].includes(matchStatus)) {
+    throw new Error('account_created delivery requires conclusive waitlist reconciliation');
+  }
+  const waitlistMatch = matchStatus === 'matched';
+  const uuid = posthog.accountCreatedUuid(userId);
+  const cutoverAt = process.env.GLOWLYTICS_CUTOVER_AT;
+  if (!cutoverAt) throw new Error('GLOWLYTICS_CUTOVER_AT missing');
+  const properties = {
+    distinct_id: posthog.canonicalGlowlyticsUserId(userId),
+    ...posthog.accountAttributionProperties(attribution, waitlistMatch),
+  };
+  const { rows } = await pool.query(
+    `UPDATE user_profiles
+        SET posthog_account_created_uuid = $2::uuid,
+            posthog_account_created_timestamp = created_at,
+            posthog_account_created_properties = $4::jsonb,
+            posthog_account_created_waitlist_match = $5::boolean,
+            posthog_account_created_delivery_claimed_at = NULL,
+            posthog_account_created_retry_after = NULL,
+            posthog_account_created_status = 'pending_delivery'
+      WHERE user_id = $1
+        AND created_at >= ($3::timestamptz AT TIME ZONE 'UTC')
+        AND posthog_account_created_status = 'reconciliation_pending'
+        AND posthog_account_created_uuid IS NULL
+      RETURNING posthog_account_created_uuid AS uuid,
+                posthog_account_created_timestamp AS timestamp,
+                posthog_account_created_properties AS properties,
+                posthog_account_created_waitlist_match AS waitlist_match,
+                posthog_account_created_status AS status`,
+    [userId, uuid, cutoverAt, JSON.stringify(properties), waitlistMatch]
+  );
+  return rows[0] || null;
+}
+
+async function markAccountCreatedSent(userId, uuid) {
+  await pool.query(
+    `UPDATE user_profiles
+        SET posthog_account_created_sent_at = NOW(),
+            posthog_account_created_delivery_claimed_at = NULL,
+            posthog_account_created_retry_after = NULL,
+            posthog_account_created_status = 'delivered'
+      WHERE user_id = $1
+        AND posthog_account_created_uuid = $2::uuid
+        AND posthog_account_created_status = 'pending_delivery'`,
+    [userId, uuid]
+  );
+}
+
+async function claimAccountCreatedDelivery(userId, uuid, leaseMs = 300_000) {
+  const { rows } = await pool.query(
+    `UPDATE user_profiles
+        SET posthog_account_created_delivery_claimed_at = NOW()
+      WHERE user_id = $1
+        AND posthog_account_created_uuid = $2::uuid
+        AND posthog_account_created_status = 'pending_delivery'
+        AND (
+          posthog_account_created_delivery_claimed_at IS NULL
+          OR posthog_account_created_delivery_claimed_at < NOW() - ($3::int * INTERVAL '1 millisecond')
+        )
+      RETURNING posthog_account_created_uuid AS uuid,
+                posthog_account_created_timestamp AS timestamp,
+                posthog_account_created_properties AS properties,
+                posthog_account_created_waitlist_match AS waitlist_match,
+                posthog_account_created_status AS status,
+                posthog_account_created_delivery_claimed_at AS delivery_claimed_at`,
+    [userId, uuid, leaseMs]
+  );
+  return rows[0] || null;
+}
+
+async function releaseAccountCreatedDeliveryClaim(userId, uuid) {
+  await pool.query(
+    `UPDATE user_profiles
+        SET posthog_account_created_delivery_claimed_at = NULL,
+            posthog_account_created_retry_after = NULL
+      WHERE user_id = $1
+        AND posthog_account_created_uuid = $2::uuid
+        AND posthog_account_created_status = 'pending_delivery'`,
+    [userId, uuid]
+  );
+}
+
+async function deferUnavailableAccountReconciliation(userId) {
+  await pool.query(
+    `UPDATE user_profiles
+        SET posthog_account_created_retry_after = NOW() + INTERVAL '60 seconds'
+      WHERE user_id = $1
+        AND posthog_account_created_status = 'reconciliation_pending'
+        AND posthog_account_created_uuid IS NULL`,
+    [userId]
+  );
+}
+
+async function sendReservedAccountCreated(userId, delivery) {
+  const claimed = await claimAccountCreatedDelivery(userId, delivery.uuid);
+  if (!claimed) return false;
+  const timestamp = new Date(claimed.timestamp).toISOString();
+  try {
+    await posthog.captureAccountCreated({
+      userId,
+      uuid: claimed.uuid,
+      timestamp,
+      properties: claimed.properties,
+    });
+  } catch (err) {
+    await releaseAccountCreatedDeliveryClaim(userId, claimed.uuid).catch((releaseErr) => {
+      log.warn('[posthog] account_created claim release failed:', releaseErr?.message || releaseErr);
+    });
+    throw err;
+  }
+  await markAccountCreatedSent(userId, claimed.uuid);
+  return true;
+}
+
+async function reconcileAndDeliverAccountCreated(userId) {
+  const cutoverMs = Date.parse(process.env.GLOWLYTICS_CUTOVER_AT || '');
+  if (!Number.isFinite(cutoverMs)) throw new Error('GLOWLYTICS_CUTOVER_AT missing or invalid');
+  const cutoverAt = new Date(cutoverMs).toISOString();
+  const current = await loadAccountCreatedDelivery(userId, cutoverAt);
+  if (!current || !RETRYABLE_ACCOUNT_STATUSES.includes(current.status)) return;
+  if (!current.forward_owned) {
+    await markRuntimePreCutoverProfileHistorical(userId, cutoverAt);
+    return;
+  }
+  if (current.status === 'pending_delivery') {
+    await sendReservedAccountCreated(userId, current);
+    return;
+  }
+  const reconciliation = await convertUvLeadToCustomer(userId);
+  if (reconciliation.status === 'unavailable') {
+    await deferUnavailableAccountReconciliation(userId);
+    return;
+  }
+  const delivery = await reserveAccountCreatedDelivery(
+    userId,
+    reconciliation.status === 'matched' ? reconciliation.lead : undefined,
+    reconciliation.status
+  );
+  if (delivery) await sendReservedAccountCreated(userId, delivery);
+}
+
+async function retryPendingAccountCreatedDeliveries({ limit = 100 } = {}) {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 500) throw new Error('invalid retry limit');
+  const { rows } = await pool.query(
+    `SELECT user_id
+       FROM user_profiles
+      WHERE posthog_account_created_status IN ('reconciliation_pending', 'pending_delivery')
+        AND (posthog_account_created_retry_after IS NULL OR posthog_account_created_retry_after <= NOW())
+      ORDER BY CASE WHEN posthog_account_created_status = 'pending_delivery' THEN 0 ELSE 1 END,
+               COALESCE(posthog_account_created_retry_after, created_at),
+               created_at,
+               user_id
+      LIMIT $1`,
+    [limit]
+  );
+  for (const { user_id: userId } of rows) {
+    try {
+      await reconcileAndDeliverAccountCreated(userId);
+    } catch (err) {
+      log.warn('[posthog] pending account_created retry failed:', err?.message || err);
+    }
+  }
+}
+
+app._retryPendingAccountCreatedDeliveries = retryPendingAccountCreatedDeliveries;
 
 app.post('/api/users', async (req, res) => {
   try {
@@ -1907,6 +2189,11 @@ app.post('/api/users', async (req, res) => {
       smoker_status, drink_baseline_frequency,
     } = req.body;
 
+    const cutoverMs = Date.parse(process.env.GLOWLYTICS_CUTOVER_AT || '');
+    if (!Number.isFinite(cutoverMs)) {
+      return res.status(500).json({ error: 'cutover_not_configured' });
+    }
+
     const result = await pool.query(
       `INSERT INTO user_profiles
        (user_id, age_range, location_coarse, period_applicable, period_last_start_date,
@@ -1917,12 +2204,17 @@ app.post('/api/users', async (req, res) => {
        period_last_start_date, cycle_length_days || 28,
        smoker_status, drink_baseline_frequency]
     );
-    await convertUvLeadToCustomer(userId).catch(() => {});
+    await reconcileAndDeliverAccountCreated(userId)
+      .catch((err) => log.warn('[posthog] account_created attempt failed:', err?.message || err));
     res.status(201).json(result.rows[0]);
   } catch (err) {
     // Issue #4: Handle duplicate user_id (idempotent creation)
     if (err.code === '23505') {
-      await convertUvLeadToCustomer((req.auth && req.auth.userId) || null).catch(() => {});
+      const duplicateUserId = (req.auth && req.auth.userId) || null;
+      if (duplicateUserId) {
+        await reconcileAndDeliverAccountCreated(duplicateUserId)
+          .catch((retryErr) => log.warn('[posthog] duplicate account_created retry failed:', retryErr?.message || retryErr));
+      }
       return res.status(409).json({ error: 'User profile already exists' });
     }
     res.status(500).json({ error: safeErrorMessage(err) });

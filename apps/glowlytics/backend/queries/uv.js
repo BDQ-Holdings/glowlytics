@@ -50,19 +50,28 @@ async function claimScan(pool, id) {
   return rows[0] || null;
 }
 
-// Idempotent on email: a repeat submission for the same email keeps its
-// original report_token AND its original scan_id (both omitted from the UPDATE
-// SET). Pinning scan_id is the B1 IDOR fix — an existing lead can never be
-// re-pointed to a different scan, so report URLs stay stable and a known
-// scan_id alone cannot hijack another email's lead. Only `source` is refreshed.
-async function upsertLead(pool, { id, email, report_token, scan_id, source }) {
+// Idempotent on email: a repeat submission keeps the first-touch attribution
+// tuple, report_token, and scan_id. Only source can be refreshed.
+async function upsertLead(pool, {
+  id, email, report_token, scan_id, source,
+  posthog_distinct_id, acquisition_source, acquisition_medium, attribution_model,
+  attribution_quality, utm_source, utm_medium, utm_campaign, utm_term, utm_content,
+  google_click_id_present, referrer_host, landing_path, form_placement,
+}) {
   const { rows } = await pool.query(
-    `INSERT INTO uv_leads (id, email, report_token, scan_id, source)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO uv_leads
+       (id, email, report_token, scan_id, source, posthog_distinct_id,
+        acquisition_source, acquisition_medium, attribution_model, attribution_quality,
+        utm_source, utm_medium, utm_campaign, utm_term, utm_content,
+        google_click_id_present, referrer_host, landing_path, form_placement)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
      ON CONFLICT (email) DO UPDATE SET
        source = COALESCE(EXCLUDED.source, uv_leads.source)
      RETURNING *`,
-    [id, email, report_token, scan_id, source]
+    [id, email, report_token, scan_id, source, posthog_distinct_id || null,
+     acquisition_source || null, acquisition_medium || null, attribution_model || null, attribution_quality || null,
+     utm_source || null, utm_medium || null, utm_campaign || null, utm_term || null, utm_content || null,
+     Boolean(google_click_id_present), referrer_host || null, landing_path || null, form_placement || null]
   );
   return rows[0];
 }
@@ -97,6 +106,18 @@ async function markCustomer(pool, { email, clerk_user_id }) {
   return rows[0] || null;
 }
 
+async function findCustomerLead(pool, userId) {
+  const { rows } = await pool.query(
+    `SELECT *
+       FROM uv_leads
+      WHERE clerk_user_id = $1
+      ORDER BY created_at, id
+      LIMIT 1`,
+    [userId]
+  );
+  return rows[0] || null;
+}
+
 module.exports = {
   pool,
   insertScan,
@@ -106,4 +127,5 @@ module.exports = {
   getLeadByEmail,
   getLeadByToken,
   markCustomer,
+  findCustomerLead,
 };

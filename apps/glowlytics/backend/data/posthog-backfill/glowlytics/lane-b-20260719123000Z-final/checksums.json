@@ -1,0 +1,22 @@
+{
+  "schema_version": "glowlytics-posthog-backfill-v1",
+  "algorithm": "sha256",
+  "files": {
+    "manifest.jsonl": {
+      "sha256": "76e1091e8b6b21dee4688d2c23cd93006167937481d582af9bd1766ec84877c2",
+      "bytes": 180194
+    },
+    "rejects.jsonl": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "batch.json": {
+      "sha256": "f69f87dce198ff744eccd0fa79b15a449ff703275ef51e3fc9a83c162981ad2d",
+      "bytes": 141927
+    },
+    "summary.json": {
+      "sha256": "6b03f6212667094538a3d0c8738230c53879c8b9f26b03e5ec1abd744fb4ecf5",
+      "bytes": 3583
+    }
+  }
+}

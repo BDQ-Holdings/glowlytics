@@ -1,0 +1,11 @@
+[
+  {
+    "id": 1,
+    "created_at": "2026-06-01T10:30:00.000Z",
+    "source": "landing",
+    "acquisition_source": "direct",
+    "acquisition_medium": "unknown",
+    "attribution_quality": "backfilled",
+    "landing_path": "/"
+  }
+]

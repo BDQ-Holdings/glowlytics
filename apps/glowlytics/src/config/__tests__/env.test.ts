@@ -28,6 +28,7 @@ const loadEnv = (apiBaseUrl: string): typeof EnvModule => {
 describe('env API base URL — MOB-04 HTTPS enforcement', () => {
   const ORIGINAL_API = process.env.EXPO_PUBLIC_API_BASE_URL;
   const ORIGINAL_CLERK = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
+  const ORIGINAL_POSTHOG_HOST = process.env.EXPO_PUBLIC_POSTHOG_HOST;
 
   beforeEach(() => {
     // A fake test Clerk key keeps the unrelated "missing key" branch quiet without
@@ -44,6 +45,8 @@ describe('env API base URL — MOB-04 HTTPS enforcement', () => {
     else process.env.EXPO_PUBLIC_API_BASE_URL = ORIGINAL_API;
     if (ORIGINAL_CLERK === undefined) delete process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
     else process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY = ORIGINAL_CLERK;
+    if (ORIGINAL_POSTHOG_HOST === undefined) delete process.env.EXPO_PUBLIC_POSTHOG_HOST;
+    else process.env.EXPO_PUBLIC_POSTHOG_HOST = ORIGINAL_POSTHOG_HOST;
   });
 
   it('throws in a production build when the API base URL is not https', () => {
@@ -69,6 +72,14 @@ describe('env API base URL — MOB-04 HTTPS enforcement', () => {
     withDev(true, () => {
       const env = loadEnv('http://localhost:3001');
       expect(env.env.API_BASE_URL).toBe('http://localhost:3001');
+    });
+  });
+
+  it('defaults PostHog host to the US ingestion host', () => {
+    withDev(true, () => {
+      delete process.env.EXPO_PUBLIC_POSTHOG_HOST;
+      const env = loadEnv('http://localhost:3001');
+      expect(env.env.POSTHOG_HOST).toBe('https://us.i.posthog.com');
     });
   });
 });

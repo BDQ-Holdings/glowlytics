@@ -2,21 +2,34 @@ import PostHog from 'posthog-react-native';
 import { env } from '../config/env';
 
 let posthog: PostHog | null = null;
+let initPromise: Promise<boolean> | null = null;
 
-export async function initAnalytics(): Promise<void> {
-  if (!env.POSTHOG_API_KEY) return;
-  posthog = new PostHog(env.POSTHOG_API_KEY, {
-    host: 'https://us.i.posthog.com',
-    enableSessionReplay: false,
-  });
+export function canonicalGlowlyticsUserId(userId: string): string {
+  return `glowlytics:user:${userId}`;
 }
 
-export function identifyUser(
-  userId: string,
-  traits?: Record<string, string | number | boolean | null>,
-): void {
-  if (!posthog) return;
-  posthog.identify(userId, traits);
+export async function initAnalytics(): Promise<boolean> {
+  if (posthog) return true;
+  if (!env.POSTHOG_API_KEY) return false;
+  initPromise ||= Promise.resolve().then(() => {
+    posthog = new PostHog(env.POSTHOG_API_KEY, {
+      host: env.POSTHOG_HOST,
+      enableSessionReplay: false,
+    });
+    return true;
+  });
+  return initPromise;
+}
+
+export function identifyGlowlyticsUser(userId: string): boolean {
+  if (!posthog) return false;
+  posthog.identify(canonicalGlowlyticsUserId(userId), { product: 'glowlytics' });
+  return true;
+}
+
+export function identifyUser(userId: string): void {
+  if (userId === 'anonymous') return;
+  identifyGlowlyticsUser(userId);
 }
 
 export function trackEvent(
@@ -24,7 +37,7 @@ export function trackEvent(
   properties?: Record<string, string | number | boolean | null>,
 ): void {
   if (!posthog) return;
-  posthog.capture(event, properties);
+  posthog.capture(event, { product: 'glowlytics', ...(properties || {}) });
 }
 
 export function trackScreen(
@@ -32,7 +45,7 @@ export function trackScreen(
   properties?: Record<string, string | number | boolean | null>,
 ): void {
   if (!posthog) return;
-  posthog.screen(name, properties);
+  posthog.screen(name, { product: 'glowlytics', ...(properties || {}) });
 }
 
 export function resetAnalytics(): void {
