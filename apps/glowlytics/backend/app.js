@@ -1930,6 +1930,30 @@ app.post('/api/vision/bone-structure', analyzeRateLimit, async (req, res) => {
 // account event is emitted only after Clerk email lookup and UV reconciliation
 // are conclusive; unavailable dependencies leave durable pending state for the
 // bounded retry worker.
+async function findRailwayWaitlistLeadByEmail(email) {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, source
+         FROM waitlist
+        WHERE lower(email) = $1
+        LIMIT 1`,
+      [email]
+    );
+    const row = rows[0];
+    const id = typeof row?.id === 'string' ? row.id.trim().toLowerCase() : '';
+    if (!id) return { status: 'unmatched' };
+    return {
+      status: 'matched',
+      lead: {
+        source_identity: `glowlytics:lead:railway_waitlist:${id}`,
+      },
+    };
+  } catch (err) {
+    log.warn('[waitlist] Railway lookup failed:', err?.message || err);
+    return { status: 'unavailable' };
+  }
+}
+
 async function findLandingWaitlistLeadByEmail(email) {
   const lookupUrl = process.env.GLOWLYTICS_WAITLIST_LOOKUP_URL;
   const lookupToken = process.env.GLOWLYTICS_WAITLIST_LOOKUP_TOKEN;
@@ -1960,6 +1984,17 @@ async function findLandingWaitlistLeadByEmail(email) {
     log.warn('[waitlist] landing lookup failed:', err?.message || err);
     return { status: 'unavailable' };
   }
+}
+
+async function findWaitlistLeadByEmail(email) {
+  const railwayLead = await findRailwayWaitlistLeadByEmail(email);
+  const landingLead = await findLandingWaitlistLeadByEmail(email);
+  if (landingLead.status === 'matched') return landingLead;
+  if (railwayLead.status === 'matched') return railwayLead;
+  if (landingLead.status === 'unavailable' || railwayLead.status === 'unavailable') {
+    return { status: 'unavailable' };
+  }
+  return { status: 'unmatched' };
 }
 
 async function convertUvLeadToCustomer(userId) {
@@ -2004,7 +2039,7 @@ async function convertUvLeadToCustomer(userId) {
         },
       };
     }
-    return await findLandingWaitlistLeadByEmail(email);
+    return await findWaitlistLeadByEmail(email);
   } catch (err) {
     log.warn('[uv] lead->customer conversion failed:', err?.message || err);
     return { status: 'unavailable' };

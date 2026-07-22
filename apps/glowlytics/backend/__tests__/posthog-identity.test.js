@@ -28,6 +28,16 @@ describe('PostHog source lead identity promotion', () => {
     ).not.toHaveProperty('waitlist_source_identity');
   });
 
+  test('accepts only source-owned Railway waitlist identities', () => {
+    const sourceIdentity = 'glowlytics:lead:railway_waitlist:66fd1965-6388-4071-9e50-382223698678';
+    expect(
+      posthog.accountAttributionProperties({ source_identity: sourceIdentity }, true)
+    ).toEqual(expect.objectContaining({ waitlist_source_identity: sourceIdentity }));
+    expect(
+      posthog.accountAttributionProperties({ source_identity: 'glowlytics:lead:railway_waitlist:not-a-uuid' }, true)
+    ).not.toHaveProperty('waitlist_source_identity');
+  });
+
   test('aliases a validated source-owned lead ID to the canonical account before account_created', async () => {
     const userId = 'user-1';
     const distinctId = posthog.canonicalGlowlyticsUserId(userId);

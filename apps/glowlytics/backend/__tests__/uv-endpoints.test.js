@@ -77,6 +77,7 @@ function uvError(code, message, extra = {}) {
 
 const profileCreatedAt = new Date('2026-07-21T00:00:00.000Z');
 let profiles = new Map();
+let railwayWaitlistLead = null;
 
 function normalizeProfile(row) {
   return {
@@ -112,6 +113,12 @@ function deliveryRow(row, cutoverAt = process.env.GLOWLYTICS_CUTOVER_AT) {
 function seedProfiles(rows = []) {
   profiles = new Map(rows.map((row) => [row.user_id, normalizeProfile(row)]));
   mockQuery.mockImplementation(async (sql, params = []) => {
+    if (/SELECT id, source\s+FROM waitlist/.test(sql)) {
+      return {
+        rows: railwayWaitlistLead ? [railwayWaitlistLead] : [],
+        rowCount: railwayWaitlistLead ? 1 : 0,
+      };
+    }
     if (/INSERT INTO user_profiles/.test(sql)) {
       const userId = params[0];
       if (profiles.has(userId)) {
@@ -623,6 +630,7 @@ describe('POST /api/users — lead -> customer conversion hook', () => {
     uvQueries.findCustomerLead.mockResolvedValue(null);
     loops.sendEvent.mockReset();
     loops.sendEvent.mockResolvedValue({ skipped: true });
+    railwayWaitlistLead = null;
     seedProfiles([]);
     waitlistLookupFetch = jest.fn().mockResolvedValue({
       ok: true,
@@ -806,6 +814,45 @@ describe('POST /api/users — lead -> customer conversion hook', () => {
     expect(JSON.stringify(posthog.captureAccountCreated.mock.calls[0][0])).not.toMatch(
       /lead@example\.com|waitlist-read-token/
     );
+  });
+
+  test('Railway waitlist lead promotes a source-owned identity when D1 has no match', async () => {
+    const railwayWaitlistId = '66fd1965-6388-4071-9e50-382223698678';
+    railwayWaitlistLead = { id: railwayWaitlistId, source: 'landing' };
+
+    const res = await request(app).post('/api/users').send(validBody);
+
+    expect(res.status).toBe(201);
+    expect(posthog.captureAccountCreated).toHaveBeenCalledWith(expect.objectContaining({
+      userId: 'dev-user',
+      properties: expect.objectContaining({
+        distinct_id: 'glowlytics:user:dev-user',
+        waitlist_match: true,
+        waitlist_bypassed: false,
+        waitlist_source_identity: `glowlytics:lead:railway_waitlist:${railwayWaitlistId}`,
+      }),
+    }));
+    expect(JSON.stringify(posthog.captureAccountCreated.mock.calls[0][0])).not.toMatch(
+      /lead@example\.com|posthog_distinct_id/
+    );
+  });
+
+  test('Railway waitlist match remains conclusive while the independent D1 source is unavailable', async () => {
+    const railwayWaitlistId = '66fd1965-6388-4071-9e50-382223698678';
+    railwayWaitlistLead = { id: railwayWaitlistId, source: 'landing' };
+    waitlistLookupFetch.mockRejectedValueOnce(new Error('Cloudflare unavailable'));
+
+    const res = await request(app).post('/api/users').send(validBody);
+
+    expect(res.status).toBe(201);
+    expect(posthog.captureAccountCreated).toHaveBeenCalledWith(expect.objectContaining({
+      properties: expect.objectContaining({
+        waitlist_match: true,
+        waitlist_bypassed: false,
+        waitlist_source_identity: `glowlytics:lead:railway_waitlist:${railwayWaitlistId}`,
+      }),
+    }));
+    expect(profileState('dev-user').posthog_account_created_status).toBe('delivered');
   });
 
   test('D1 lookup failure leaves account reconciliation pending instead of inventing a bypass', async () => {
