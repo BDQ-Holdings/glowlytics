@@ -82,6 +82,36 @@ app.get('/health', (req, res) => {
     models: signalModels.loadedModels?.() ?? undefined,
   });
 });
+function isForwardPostHogEvent(timestamp) {
+  const cutoverMs = Date.parse(process.env.GLOWLYTICS_CUTOVER_AT || '');
+  const eventMs = Date.parse(timestamp);
+  if (!Number.isFinite(cutoverMs)) {
+    throw new Error('GLOWLYTICS_CUTOVER_AT missing or invalid');
+  }
+  if (!Number.isFinite(eventMs)) {
+    throw new Error('source row created_at missing or invalid');
+  }
+  return eventMs >= cutoverMs;
+}
+
+function publicWaitlistAttribution(body = {}) {
+  return {
+    acquisition_source: body.acquisition_source,
+    acquisition_medium: body.acquisition_medium,
+    attribution_quality: body.attribution_quality,
+    utm_source: body.utm_source,
+    utm_medium: body.utm_medium,
+    utm_campaign: body.utm_campaign,
+    utm_term: body.utm_term,
+    utm_content: body.utm_content,
+    google_click_id_present: body.google_click_id_present,
+    referrer_host: body.referrer_host,
+    landing_path: body.landing_path,
+    form_placement: body.form_placement,
+    posthog_session_id: body.posthog_session_id,
+  };
+}
+
 
 // ==================== WAITLIST (public, no auth) ====================
 
@@ -92,10 +122,23 @@ app.post('/api/waitlist', detectRateLimit, async (req, res) => {
     return res.status(400).json({ error: 'Valid email required' });
   }
   try {
-    await pool.query(
-      'INSERT INTO waitlist (email, source) VALUES ($1, $2) ON CONFLICT (email) DO NOTHING',
+    const result = await pool.query(
+      `INSERT INTO waitlist (email, source)
+       VALUES ($1, $2)
+       ON CONFLICT (email) DO UPDATE SET source = waitlist.source
+       RETURNING id, source, created_at`,
       [email.toLowerCase().trim(), req.body.source || 'landing']
     );
+    const row = result.rows[0];
+    if (!row) throw new Error('waitlist upsert returned no row');
+    if (isForwardPostHogEvent(row.created_at)) {
+      await posthog.captureWaitlistSubmitted({
+        sourceKey: 'railway_waitlist',
+        sourceIdentity: `glowlytics:lead:railway:${row.id}`,
+        timestamp: row.created_at,
+        attribution: publicWaitlistAttribution(req.body),
+      });
+    }
     res.json({ ok: true });
   } catch (err) {
     log.error('Waitlist insert error:', err.message);
@@ -792,6 +835,7 @@ app.post('/api/uv/lead', detectRateLimit, async (req, res) => {
       acquisition_source, acquisition_medium, attribution_quality,
       utm_source, utm_medium, utm_campaign, utm_term, utm_content,
       google_click_id_present, referrer_host, landing_path, form_placement,
+      posthog_session_id,
     } = req.body || {};
     const email = typeof rawEmail === 'string' ? rawEmail.toLowerCase().trim() : rawEmail;
     if (!email || typeof email !== 'string' || !UV_EMAIL_RE.test(email)) {
@@ -844,6 +888,14 @@ app.post('/api/uv/lead', detectRateLimit, async (req, res) => {
       landing_path: normalizePath(landing_path),
       form_placement: normalizeFormPlacement(form_placement),
     });
+    if (isForwardPostHogEvent(lead.created_at)) {
+      await posthog.captureWaitlistSubmitted({
+        sourceKey: 'railway_uv_lead',
+        sourceIdentity: `glowlytics:lead:railway:${lead.id}`,
+        timestamp: lead.created_at,
+        attribution: { ...lead, posthog_session_id },
+      });
+    }
     await uvQueries.claimScan(pool, scan_id);
 
     // Best-effort marketing side effect — loops.sendEvent already swallows its
@@ -2009,12 +2061,16 @@ async function convertUvLeadToCustomer(userId) {
     });
     if (!clerkRes.ok) return { status: 'unavailable' };
     const data = await clerkRes.json();
-    const rawEmail =
-      data.email_addresses?.find((entry) => entry.id === data.primary_email_address_id)?.email_address ||
-      data.email_addresses?.[0]?.email_address ||
-      null;
-    if (!rawEmail) return { status: 'unavailable' };
-    const email = rawEmail.toLowerCase().trim();
+    const primaryEmail = data.email_addresses?.find(
+      (entry) => entry.id === data.primary_email_address_id
+    );
+    if (
+      typeof primaryEmail?.email_address !== 'string' ||
+      primaryEmail.verification?.status !== 'verified'
+    ) {
+      return { status: 'unavailable' };
+    }
+    const email = primaryEmail.email_address.toLowerCase().trim();
     const transitionedLead = await uvQueries.markCustomer(pool, { email, clerk_user_id: userId });
     const row = transitionedLead || await uvQueries.findCustomerLead(pool, userId);
     if (row) {
@@ -2026,6 +2082,19 @@ async function convertUvLeadToCustomer(userId) {
         } catch (loopsErr) {
           log.warn('[uv] became_customer marketing event failed:', loopsErr?.message || loopsErr);
         }
+      }
+      const waitlistLead = await findWaitlistLeadByEmail(email);
+      if (waitlistLead.status === 'unavailable') {
+        return waitlistLead;
+      }
+      if (waitlistLead.status === 'matched') {
+        return {
+          status: 'matched',
+          lead: {
+            ...row,
+            ...waitlistLead.lead,
+          },
+        };
       }
       const sourceIdentity =
         typeof row.id === 'string' && row.id.trim()

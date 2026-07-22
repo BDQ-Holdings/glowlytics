@@ -23,7 +23,7 @@ import { Glow, GlowPalettesDark } from '../src/constants/theme';
 import { useStore } from '../src/store/useStore';
 import { setAuthTokenProvider } from '../src/services/api';
 import { initRevenueCat, identifyUser, subscriptionFromCustomerInfo, setupCustomerInfoListener } from '../src/services/subscription';
-import { initAnalytics, identifyGlowlyticsUser, trackEvent, resetAnalytics } from '../src/services/analytics';
+import { prepareAnalyticsIdentityHandoff, trackEvent } from '../src/services/analytics';
 import {
   applyAppIcon,
   currentNativeIcon,
@@ -294,10 +294,12 @@ function ClerkGatedApp() {
   const servicesInitStarted = useRef(false);
   const clerkInitStartedAt = useRef(Date.now());
   const listenerCleanup = useRef<() => void>(() => {});
-  const lastAnalyticsUserId = useRef<string | null>(null);
+  const currentAnalyticsUserId = useRef<string | null>(null);
+  const analyticsStartupHandoffSettled = useRef(false);
   const [appReady, setAppReady] = useState(false);
   const [splashTimedOut, setSplashTimedOut] = useState(false);
 
+  currentAnalyticsUserId.current = userId ?? null;
   useEffect(() => {
     if (clerkLoaded) {
       if (__DEV__) {
@@ -388,7 +390,12 @@ function ClerkGatedApp() {
     const initDeferred = async () => {
       try {
         if (__DEV__) console.log('[App] Initializing analytics...');
-        await initAnalytics();
+        const startupAnalyticsUserId = currentAnalyticsUserId.current;
+        await prepareAnalyticsIdentityHandoff(startupAnalyticsUserId);
+        analyticsStartupHandoffSettled.current = true;
+        if (currentAnalyticsUserId.current !== startupAnalyticsUserId) {
+          await prepareAnalyticsIdentityHandoff(currentAnalyticsUserId.current);
+        }
         trackEvent('app_init_complete', {
           has_revenuecat_key: !!env.REVENUECAT_API_KEY,
           has_posthog_key: !!env.POSTHOG_API_KEY,
@@ -421,28 +428,8 @@ function ClerkGatedApp() {
   }, [clerkLoaded, getToken, setSubscription, userId]);
 
   useEffect(() => {
-    if (!clerkLoaded) return;
-    let cancelled = false;
-    if (userId && lastAnalyticsUserId.current !== userId) {
-      const previousAnalyticsUserId = lastAnalyticsUserId.current;
-      void initAnalytics().then((ready) => {
-        if (cancelled || !ready) return;
-        if (previousAnalyticsUserId && previousAnalyticsUserId !== userId) {
-          resetAnalytics();
-          lastAnalyticsUserId.current = null;
-        }
-        if (identifyGlowlyticsUser(userId)) {
-          lastAnalyticsUserId.current = userId;
-        }
-      });
-      return () => {
-        cancelled = true;
-      };
-    }
-    if (!userId && lastAnalyticsUserId.current) {
-      resetAnalytics();
-      lastAnalyticsUserId.current = null;
-    }
+    if (!clerkLoaded || !analyticsStartupHandoffSettled.current) return;
+    void prepareAnalyticsIdentityHandoff(userId ?? null);
   }, [clerkLoaded, userId]);
 
   useEffect(() => {

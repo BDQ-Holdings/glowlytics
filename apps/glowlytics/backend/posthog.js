@@ -24,6 +24,8 @@ const ATTRIBUTION_QUALITIES = new Set(['utm', 'referrer', 'unknown', 'backfilled
 const FORM_PLACEMENTS = new Set(['hero', 'footer', 'modal', 'pricing', 'mobile_onboarding', 'unknown']);
 const SENSITIVE_VALUE_RE = /([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})|((api[_-]?key|api|secret|password|credential|bearer|access|refresh|id)?[_-]?token=?)|\b(api[_-]?key|secret|password|credential|bearer)\b|((gclid|gbraid|wbraid)=?)/i;
 const WAITLIST_SOURCE_ID_RE = /^glowlytics:lead:(?:d1:[1-9]\d*|railway:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/;
+const FORWARD_WAITLIST_SOURCES = new Set(['railway_waitlist', 'railway_uv_lead']);
+const POSTHOG_SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function marketing(value, max = 256) {
   if (typeof value !== 'string') return null;
@@ -63,16 +65,20 @@ function normalizeFormPlacement(value) {
 function waitlistSourceIdentity(value) {
   return typeof value === 'string' && WAITLIST_SOURCE_ID_RE.test(value) ? value : null;
 }
+function posthogSessionId(value) {
+  return typeof value === 'string' && POSTHOG_SESSION_ID_RE.test(value) ? value.toLowerCase() : null;
+}
 
-function accountAttributionProperties(attribution, waitlistMatch) {
-  const sourceIdentity = waitlistMatch ? waitlistSourceIdentity(attribution?.source_identity) : null;
+
+function attributionProperties(attribution, historicalBackfill = false) {
+  const sessionId = posthogSessionId(attribution?.posthog_session_id);
   return {
     product: 'glowlytics',
     acquisition_source: enumOr(ACQUISITION_SOURCES, attribution?.acquisition_source, 'unknown'),
     acquisition_medium: marketing(attribution?.acquisition_medium, 64) || 'unknown',
     attribution_model: 'first_touch',
     attribution_quality: enumOr(ATTRIBUTION_QUALITIES, attribution?.attribution_quality, 'unknown'),
-    historical_backfill: false,
+    historical_backfill: historicalBackfill,
     utm_source: marketing(attribution?.utm_source, 128)?.toLowerCase() || null,
     utm_medium: marketing(attribution?.utm_medium, 128)?.toLowerCase() || null,
     utm_campaign: marketing(attribution?.utm_campaign, 256),
@@ -82,10 +88,60 @@ function accountAttributionProperties(attribution, waitlistMatch) {
     referrer_host: normalizeHost(attribution?.referrer_host),
     landing_path: normalizePath(attribution?.landing_path),
     form_placement: normalizeFormPlacement(attribution?.form_placement),
+    ...(sessionId ? { $session_id: sessionId } : {}),
+  };
+}
+
+function accountAttributionProperties(attribution, waitlistMatch) {
+  const sourceIdentity = waitlistMatch ? waitlistSourceIdentity(attribution?.source_identity) : null;
+  return {
+    ...attributionProperties(attribution),
     waitlist_match: Boolean(waitlistMatch),
     waitlist_bypassed: !waitlistMatch,
     ...(sourceIdentity ? { waitlist_source_identity: sourceIdentity } : {}),
   };
+}
+
+async function captureWaitlistSubmitted({
+  sourceKey,
+  sourceIdentity,
+  timestamp,
+  attribution,
+}) {
+  if (!FORWARD_WAITLIST_SOURCES.has(sourceKey)) {
+    throw new Error('invalid forward waitlist source');
+  }
+  if (waitlistSourceIdentity(sourceIdentity) !== sourceIdentity) {
+    throw new Error('invalid waitlist source identity');
+  }
+  if (!Number.isFinite(Date.parse(timestamp))) {
+    throw new Error('invalid waitlist timestamp');
+  }
+  const apiKey = process.env.POSTHOG_API_KEY;
+  if (!apiKey) throw new Error('POSTHOG_API_KEY missing; waitlist_submitted remains pending');
+  const host = process.env.POSTHOG_HOST || 'https://us.i.posthog.com';
+  const body = {
+    api_key: apiKey,
+    batch: [{
+      uuid: deterministicUuidV5(
+        `glowlytics|forward|waitlist_submitted|${sourceKey}|${sourceIdentity}`
+      ),
+      event: 'waitlist_submitted',
+      timestamp,
+      properties: {
+        distinct_id: sourceIdentity,
+        ...attributionProperties(attribution),
+      },
+    }],
+  };
+  const res = await fetch(`${host.replace(/\/$/, '')}/batch/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!res.ok) throw new Error(`PostHog batch capture failed: ${res.status}`);
+  return { ok: true };
 }
 
 function accountAliasUuid(userId, sourceIdentity) {
@@ -145,4 +201,5 @@ module.exports = {
   accountCreatedUuid,
   accountAttributionProperties,
   captureAccountCreated,
+  captureWaitlistSubmitted,
 };

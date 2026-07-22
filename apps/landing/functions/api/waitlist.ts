@@ -14,8 +14,8 @@
  * Storage: Cloudflare D1 (binding `WAITLIST_DB`). Table created via the
  * companion migration in functions/api/_schema.sql.
  *
- * Abuse: per-IP/day write cap via Cloudflare KV (binding `RATE_LIMIT_KV`); fails
- * open until the namespace is provisioned (see wrangler.toml).
+ * Abuse: per-IP/day write cap via Cloudflare KV (binding `RATE_LIMIT_KV`);
+ * rejects writes if the binding or KV service is unavailable.
  */
 
 export interface Env {
@@ -23,8 +23,7 @@ export interface Env {
   GLOWLYTICS_CUTOVER_AT?: string;
   NEXT_PUBLIC_POSTHOG_API_KEY?: string;
   NEXT_PUBLIC_POSTHOG_HOST?: string;
-  // Optional so the site builds/runs before the namespace is provisioned;
-  // rateLimited() fails open when this binding is absent.
+  // Optional for isolated tests, but production requests fail closed when absent.
   RATE_LIMIT_KV?: KVNamespace;
 }
 
@@ -90,6 +89,7 @@ interface StoredWaitlistRow {
   google_click_id_present: number | null;
   referrer_host: string | null;
   landing_path: string | null;
+  posthog_session_id: string | null;
 }
 
 const WAITLIST_ROW_SQL = `
@@ -108,7 +108,8 @@ const WAITLIST_ROW_SQL = `
          utm_content,
          google_click_id_present,
          referrer_host,
-         landing_path
+         landing_path,
+         posthog_session_id
     FROM waitlist
    WHERE email = ?
    LIMIT 1`;
@@ -157,6 +158,13 @@ function pathOnly(input: unknown): string | null {
   }
 }
 
+const POSTHOG_SESSION_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function posthogSessionId(input: unknown): string | null {
+  return typeof input === "string" && POSTHOG_SESSION_ID_RE.test(input) ? input.toLowerCase() : null;
+}
+
 function parseAttribution(payload: Record<string, unknown>) {
   const acquisitionSource = field(payload.acquisition_source, 32) as AcquisitionSource | null;
   const attributionQuality = field(payload.attribution_quality, 32) as AttributionQuality | null;
@@ -177,6 +185,7 @@ function parseAttribution(payload: Record<string, unknown>) {
     google_click_id_present: payload.google_click_id_present === true,
     referrer_host: hostnameOnly(payload.referrer_host),
     landing_path: pathOnly(payload.landing_path),
+    posthog_session_id: posthogSessionId(payload.posthog_session_id),
   };
 }
 
@@ -203,6 +212,7 @@ async function captureWaitlistSubmitted(env: Env, row: StoredWaitlistRow): Promi
   const distinctId = `glowlytics:lead:d1:${row.id}`;
   const acquisitionSource = field(row.acquisition_source, 32) as AcquisitionSource | null;
   const attributionQuality = field(row.attribution_quality, 32) as AttributionQuality | null;
+  const sessionId = posthogSessionId(row.posthog_session_id);
   const host = (env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com").replace(/\/$/, "");
   const response = await fetch(`${host}/batch/`, {
     method: "POST",
@@ -237,6 +247,7 @@ async function captureWaitlistSubmitted(env: Env, row: StoredWaitlistRow): Promi
             google_click_id_present: Boolean(row.google_click_id_present),
             referrer_host: hostnameOnly(row.referrer_host),
             landing_path: pathOnly(row.landing_path),
+            ...(sessionId ? { $session_id: sessionId } : {}),
           },
         },
       ],
@@ -273,9 +284,8 @@ let rateLimitWarned = false;
 
 /**
  * Per-IP/day abuse cap backed by Cloudflare KV, keyed on cf-connecting-ip + UTC
- * day. Increments a counter and returns true once the day's count exceeds
- * `maxPerDay`. Fails OPEN (returns false) when RATE_LIMIT_KV is unbound so the
- * endpoint keeps working before the namespace is provisioned.
+ * day. Increments a counter and returns true once the day's count reaches
+ * `maxPerDay`. Missing or unavailable KV fails closed.
  */
 export async function rateLimited(
   env: Env,
@@ -287,21 +297,23 @@ export async function rateLimited(
   if (!kv) {
     if (!rateLimitWarned) {
       rateLimitWarned = true;
-      console.warn(
-        "RATE_LIMIT_KV unbound — rate limiting disabled (failing open). Provision with " +
-          "`wrangler kv:namespace create RATE_LIMIT_KV` and set the id in wrangler.toml.",
-      );
+      console.error("RATE_LIMIT_KV unbound — rejecting public writes.");
     }
-    return false;
+    return true;
   }
   const ip = request.headers.get("cf-connecting-ip") || "0.0.0.0";
   const day = new Date().toISOString().slice(0, 10);
   const key = `rl:${bucket}:${day}:${ip}`;
-  const current = parseInt((await kv.get(key)) || "0", 10) || 0;
-  if (current >= maxPerDay) return true;
-  // ~25h TTL so the counter outlives the UTC day boundary, then self-expires.
-  await kv.put(key, String(current + 1), { expirationTtl: 90000 });
-  return false;
+  try {
+    const current = parseInt((await kv.get(key)) || "0", 10) || 0;
+    if (current >= maxPerDay) return true;
+    // ~25h TTL so the counter outlives the UTC day boundary, then self-expires.
+    await kv.put(key, String(current + 1), { expirationTtl: 90000 });
+    return false;
+  } catch (error) {
+    console.error("RATE_LIMIT_KV unavailable — rejecting public write.", error);
+    return true;
+  }
 }
 
 export const onRequestOptions: PagesFunction<Env> = async () =>
@@ -345,8 +357,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
          (email, source, attribution_slug, attribution_referrer,
           acquisition_source, acquisition_medium, attribution_model, attribution_quality,
           historical_backfill, form_placement, utm_source, utm_medium, utm_campaign,
-          utm_term, utm_content, google_click_id_present, referrer_host, landing_path, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          utm_term, utm_content, google_click_id_present, referrer_host, landing_path,
+          posthog_session_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
       .bind(
         email,
@@ -367,6 +380,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
         attribution.google_click_id_present ? 1 : 0,
         attribution.referrer_host,
         attribution.landing_path,
+        attribution.posthog_session_id,
         createdAt,
       )
       .run();

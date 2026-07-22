@@ -22,6 +22,7 @@ type WaitlistRow = {
   google_click_id_present: number;
   referrer_host: string | null;
   landing_path: string | null;
+  posthog_session_id: string | null;
 };
 
 type Prepared = {
@@ -37,7 +38,7 @@ function waitlistRow(overrides: Partial<WaitlistRow> = {}): WaitlistRow {
     email: "lead@example.com",
     source: "hero",
     created_at: "2026-07-21T12:00:00.000Z",
-    posthog_distinct_id: "0190-browser-id",
+    posthog_session_id: "0198b6bc-c2f8-7b5d-9e18-6c98232a1024",
     acquisition_source: "google",
     acquisition_medium: "paid_search",
     attribution_model: "first_touch",
@@ -78,6 +79,10 @@ function envWithDb(
   return {
     env: {
       WAITLIST_DB: db,
+      RATE_LIMIT_KV: {
+        get: async () => null,
+        put: async () => undefined,
+      },
       ...(cutover === null ? {} : { GLOWLYTICS_CUTOVER_AT: cutover }),
       NEXT_PUBLIC_POSTHOG_API_KEY: "phc_test",
       NEXT_PUBLIC_POSTHOG_HOST: "https://us.i.posthog.com",
@@ -118,6 +123,7 @@ describe("waitlist attribution storage", () => {
         google_click_id_present: true,
         landing_path: "/uv-scan?email=lead@example.com#frag",
         referrer_host: "https://www.google.com/search?q=lead@example.com",
+        posthog_session_id: "0198b6bc-c2f8-7b5d-9e18-6c98232a1024",
       }), env } as never);
 
       assert.equal(res.status, 200);
@@ -154,7 +160,49 @@ describe("waitlist attribution storage", () => {
       assert.equal(captureBody.batch[0].properties.distinct_id, "glowlytics:lead:d1:41");
       assert.equal(captureBody.batch[0].properties.product, "glowlytics");
       assert.equal(captureBody.batch[0].properties.acquisition_source, "google");
+      assert.equal(
+        captureBody.batch[0].properties.$session_id,
+        "0198b6bc-c2f8-7b5d-9e18-6c98232a1024",
+      );
+      assert.equal(Object.prototype.hasOwnProperty.call(captureBody.batch[0].properties, "posthog_session_id"), false);
+      assert.equal(Object.prototype.hasOwnProperty.call(captureBody.batch[0].properties, "posthog_distinct_id"), false);
+      assert.equal(Object.prototype.hasOwnProperty.call(captureBody.batch[0].properties, "browser_distinct_id"), false);
+      assert.equal(Object.prototype.hasOwnProperty.call(captureBody.batch[0].properties, "account_alias"), false);
+      assert.equal(Object.prototype.hasOwnProperty.call(captureBody.batch[0].properties, "lead_alias"), false);
       assert.doesNotMatch(JSON.stringify(captureBody), /lead@example\.com/i);
+      assert.doesNotMatch(JSON.stringify(captureBody), /0190-browser-id/);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("drops malformed PostHog session IDs before storage and capture", async () => {
+    const { env, calls } = envWithDb([waitlistRow({ posthog_session_id: null })]);
+    const captureCalls: Array<RequestInit | undefined> = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+      captureCalls.push(init);
+      return new Response(null, { status: 200 });
+    }) as typeof fetch;
+    try {
+      const res = await onRequestPost({
+        request: post({
+          email: "lead@example.com",
+          posthog_session_id: "glowlytics:user:user_123",
+          posthog_distinct_id: "0190-browser-id",
+        }),
+        env,
+      } as never);
+
+      assert.equal(res.status, 200);
+      assert.deepEqual(await res.json(), { ok: true });
+      const insert = calls.find((call) => call.sql.includes("INSERT OR IGNORE INTO waitlist"));
+      assert.ok(insert);
+      assert.equal(insert.values.includes("glowlytics:user:user_123"), false);
+      assert.equal(insert.values.includes("0190-browser-id"), false);
+      const captureBody = JSON.parse(String(captureCalls[0]?.body));
+      assert.equal(Object.prototype.hasOwnProperty.call(captureBody.batch[0].properties, "$session_id"), false);
+      assert.doesNotMatch(JSON.stringify(captureBody), /glowlytics:user:user_123/);
       assert.doesNotMatch(JSON.stringify(captureBody), /0190-browser-id/);
     } finally {
       globalThis.fetch = originalFetch;
@@ -176,14 +224,19 @@ describe("waitlist attribution storage", () => {
         form_placement: "footer",
         acquisition_source: "instagram",
         acquisition_medium: "paid_social",
+        posthog_session_id: "0198b6bd-58ad-7ab8-b11a-4bcb1005e036",
       }), env } as never);
-
       assert.equal(res.status, 200);
       assert.deepEqual(await res.json(), { ok: true });
       assert.equal(calls.some((call) => call.sql.includes("INSERT OR IGNORE INTO waitlist")), true);
       const captureBody = JSON.parse(String(captureCalls[0]?.body));
       assert.equal(captureBody.batch[0].properties.acquisition_source, "google");
       assert.equal(captureBody.batch[0].properties.form_placement, "hero");
+      assert.equal(
+        captureBody.batch[0].properties.$session_id,
+        "0198b6bc-c2f8-7b5d-9e18-6c98232a1024",
+      );
+      assert.doesNotMatch(JSON.stringify(captureBody), /0198b6bd-58ad-7ab8-b11a-4bcb1005e036/);
       assert.doesNotMatch(JSON.stringify(captureBody), /lead@example\.com/i);
     } finally {
       globalThis.fetch = originalFetch;

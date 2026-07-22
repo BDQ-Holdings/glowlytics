@@ -12,7 +12,10 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getCurrentFirstTouch } from "@/components/PostHogAttribution";
+import {
+  getCurrentFirstTouch,
+  getCurrentPostHogSessionId,
+} from "@/components/PostHogAttribution";
 
 import {
   SOURCE,
@@ -143,6 +146,7 @@ export function DriverFlow({
         const token = await postLead(e, result.scan_id, claimToken ?? result.claim_token, {
           firstTouch: getCurrentFirstTouch(),
           formPlacement: SOURCE,
+          posthogSessionId: getCurrentPostHogSessionId(),
         });
         setEmail(e);
         setReportToken(token);

@@ -98,4 +98,70 @@ describe('PostHog source lead identity promotion', () => {
       properties,
     }));
   });
+  test('captures a deterministic forward Railway waitlist event under its source identity', async () => {
+    const sourceIdentity = 'glowlytics:lead:railway:66fd1965-6388-4071-9e50-382223698678';
+    const timestamp = '2026-07-21T12:02:00.000Z';
+
+    await posthog.captureWaitlistSubmitted({
+      sourceKey: 'railway_waitlist',
+      sourceIdentity,
+      timestamp,
+      attribution: {
+        acquisition_source: 'google',
+        acquisition_medium: 'paid_search',
+        attribution_quality: 'utm',
+        form_placement: 'hero',
+        utm_campaign: 'launch',
+        utm_content: 'api_key=secret',
+        posthog_session_id: '0198b6bc-c2f8-7b5d-9e18-6c98232a1024',
+      },
+    });
+    await posthog.captureWaitlistSubmitted({
+      sourceKey: 'railway_waitlist',
+      sourceIdentity,
+      timestamp,
+      attribution: {
+        acquisition_source: 'google',
+        acquisition_medium: 'paid_search',
+        attribution_quality: 'utm',
+        form_placement: 'hero',
+        utm_campaign: 'launch',
+      },
+    });
+
+    const first = JSON.parse(global.fetch.mock.calls[0][1].body);
+    const second = JSON.parse(global.fetch.mock.calls[1][1].body);
+    expect(first.batch).toEqual([{
+      uuid: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      event: 'waitlist_submitted',
+      timestamp,
+      properties: expect.objectContaining({
+        distinct_id: sourceIdentity,
+        product: 'glowlytics',
+        acquisition_source: 'google',
+        acquisition_medium: 'paid_search',
+        attribution_model: 'first_touch',
+        attribution_quality: 'utm',
+        historical_backfill: false,
+        form_placement: 'hero',
+        utm_campaign: 'launch',
+        utm_content: null,
+        $session_id: '0198b6bc-c2f8-7b5d-9e18-6c98232a1024',
+      }),
+    }]);
+    expect(second.batch[0].uuid).toBe(first.batch[0].uuid);
+    expect(JSON.stringify(first.batch[0].properties)).not.toMatch(/api_key|secret|@/);
+    expect(first.batch[0].properties).not.toHaveProperty('posthog_session_id');
+  });
+
+  test('rejects a forward waitlist event without a validated source identity', async () => {
+    await expect(posthog.captureWaitlistSubmitted({
+      sourceKey: 'railway_uv_lead',
+      sourceIdentity: 'browser-1',
+      timestamp: '2026-07-21T12:02:00.000Z',
+      attribution: {},
+    })).rejects.toThrow(/source identity/i);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
 });

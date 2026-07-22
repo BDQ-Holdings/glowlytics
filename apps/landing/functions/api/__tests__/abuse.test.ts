@@ -60,10 +60,9 @@ describe("resolveTrackSalt (LND-08 fail-closed salt)", () => {
 });
 
 describe("rateLimited (LND-03) — waitlist copy", () => {
-  it("fails open (returns false) when RATE_LIMIT_KV is unbound", async () => {
+  it("fails closed when RATE_LIMIT_KV is unbound", async () => {
     const env = { WAITLIST_DB: {} } as never;
-    assert.equal(await waitlistRateLimited(env, reqFrom("1.2.3.4"), "waitlist", 1), false);
-    assert.equal(await waitlistRateLimited(env, reqFrom("1.2.3.4"), "waitlist", 1), false);
+    assert.equal(await waitlistRateLimited(env, reqFrom("1.2.3.4"), "waitlist", 1), true);
   });
 
   it("allows up to the cap, then blocks; writes carry a ~25h TTL", async () => {
@@ -100,12 +99,23 @@ describe("rateLimited (LND-03) — waitlist copy", () => {
     const env = { WAITLIST_DB: {}, RATE_LIMIT_KV: kv } as never;
     assert.equal(await waitlistRateLimited(env, reqFrom("1.2.3.4"), "waitlist", 5), false);
   });
+  it("fails closed when KV cannot read the counter", async () => {
+    const kv = {
+      async get(): Promise<string | null> {
+        throw new Error("KV unavailable");
+      },
+      async put(): Promise<void> {},
+    };
+    const env = { WAITLIST_DB: {}, RATE_LIMIT_KV: kv } as never;
+    assert.equal(await waitlistRateLimited(env, reqFrom("1.2.3.4"), "waitlist", 5), true);
+  });
+
 });
 
 describe("rateLimited (LND-03) — track copy", () => {
-  it("fails open when RATE_LIMIT_KV is unbound", async () => {
+  it("fails closed when RATE_LIMIT_KV is unbound", async () => {
     const env = { WAITLIST_DB: {} } as never;
-    assert.equal(await trackRateLimited(env, reqFrom("5.5.5.5"), "track", 1), false);
+    assert.equal(await trackRateLimited(env, reqFrom("5.5.5.5"), "track", 1), true);
   });
 
   it("blocks once the cap is exceeded", async () => {
@@ -114,4 +124,17 @@ describe("rateLimited (LND-03) — track copy", () => {
     assert.equal(await trackRateLimited(env, reqFrom("5.5.5.5"), "track", 1), false);
     assert.equal(await trackRateLimited(env, reqFrom("5.5.5.5"), "track", 1), true);
   });
+  it("fails closed when KV cannot write the counter", async () => {
+    const kv = {
+      async get(): Promise<string | null> {
+        return null;
+      },
+      async put(): Promise<void> {
+        throw new Error("KV unavailable");
+      },
+    };
+    const env = { WAITLIST_DB: {}, RATE_LIMIT_KV: kv } as never;
+    assert.equal(await trackRateLimited(env, reqFrom("5.5.5.5"), "track", 1), true);
+  });
+
 });

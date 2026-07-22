@@ -143,10 +143,17 @@ describe('db-init migrationV5 (structural)', () => {
     expect(typeof dbInit.markPreCutoverProfilesHistorical).toBe('function');
   });
 
-  test('migrationV8 scrubs retired browser identities and their index', () => {
-    expect(dbInit.migrationV8).toContain('DROP INDEX IF EXISTS idx_uv_leads_posthog_distinct_id');
-    expect(dbInit.migrationV8).toContain('SET posthog_distinct_id = NULL');
-    expect(dbInit.migrationV8).toContain('WHERE posthog_distinct_id IS NOT NULL');
+  test('migrationV8 scrubs browser identities and reopens dirty pending deliveries', () => {
+    const m = dbInit.migrationV8;
+    expect(m).toContain('DROP INDEX IF EXISTS idx_uv_leads_posthog_distinct_id');
+    expect(m).toContain('SET posthog_distinct_id = NULL');
+    expect(m).toContain('WHERE posthog_distinct_id IS NOT NULL');
+    expect(m).toContain("posthog_account_created_properties ? '$anon_distinct_id'");
+    expect(m).toContain("posthog_account_created_status IN ('reconciliation_pending', 'pending_delivery')");
+    expect(m).toContain("posthog_account_created_status = 'reconciliation_pending'");
+    expect(m).toContain('posthog_account_created_uuid = NULL');
+    expect(m).toContain('posthog_account_created_properties = NULL');
+    expect(m).toContain("posthog_account_created_properties - '$anon_distinct_id'");
   });
 
   test('pre-cutover ownership marking is rerunnable and never consumes a forward reconciliation row', async () => {

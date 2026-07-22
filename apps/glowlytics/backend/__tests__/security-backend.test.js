@@ -53,6 +53,15 @@ jest.mock('../queries/uv', () => ({
   markCustomer: jest.fn(),
 }));
 
+jest.mock('../posthog', () => {
+  const actual = jest.requireActual('../posthog');
+  return {
+    ...actual,
+    captureAccountCreated: jest.fn().mockResolvedValue(undefined),
+    captureWaitlistSubmitted: jest.fn().mockResolvedValue(undefined),
+  };
+});
+
 const request = require('supertest');
 const app = require('../app');
 const uvScan = require('../uv-scan');
@@ -94,7 +103,13 @@ describe('B1 — /api/uv/lead enforces the claim_token binding', () => {
   test('happy path: correct token claims the report (200)', async () => {
     uvQueries.getScan.mockResolvedValue({ ...baseScan, claim_token: 'TOK', claimed: false });
     uvQueries.getLeadByEmail.mockResolvedValue(null);
-    uvQueries.upsertLead.mockResolvedValue({ email: 'a@b.com', report_token: 'rt1', scan_id: 'scan1' });
+    uvQueries.upsertLead.mockResolvedValue({
+      id: '152605c9-cf42-449a-9b71-f9d731ff1856',
+      email: 'a@b.com',
+      report_token: 'rt1',
+      scan_id: 'scan1',
+      created_at: '2026-07-21T12:00:00.000Z',
+    });
     uvQueries.claimScan.mockResolvedValue({ id: 'scan1', claimed: true });
     loops.sendEvent.mockResolvedValue({ skipped: true });
 
@@ -149,7 +164,13 @@ describe('B1 — /api/uv/lead enforces the claim_token binding', () => {
   test('same-email re-claim is idempotent → 200 with the original token', async () => {
     uvQueries.getScan.mockResolvedValue({ ...baseScan, claim_token: 'TOK', claimed: true });
     uvQueries.getLeadByEmail.mockResolvedValue({ email: 'a@b.com', scan_id: 'scan1', report_token: 'rt1' });
-    uvQueries.upsertLead.mockResolvedValue({ email: 'a@b.com', report_token: 'rt1', scan_id: 'scan1' });
+    uvQueries.upsertLead.mockResolvedValue({
+      id: '152605c9-cf42-449a-9b71-f9d731ff1856',
+      email: 'a@b.com',
+      report_token: 'rt1',
+      scan_id: 'scan1',
+      created_at: '2026-07-21T12:00:00.000Z',
+    });
     uvQueries.claimScan.mockResolvedValue({ id: 'scan1', claimed: true });
     loops.sendEvent.mockResolvedValue({ skipped: true });
 
@@ -164,7 +185,13 @@ describe('B1 — /api/uv/lead enforces the claim_token binding', () => {
   test('legacy scan (null claim_token) stays claimable → 200', async () => {
     uvQueries.getScan.mockResolvedValue({ ...baseScan, claim_token: null, claimed: false });
     uvQueries.getLeadByEmail.mockResolvedValue(null);
-    uvQueries.upsertLead.mockResolvedValue({ email: 'a@b.com', report_token: 'rtLegacy', scan_id: 'scan1' });
+    uvQueries.upsertLead.mockResolvedValue({
+      id: '152605c9-cf42-449a-9b71-f9d731ff1856',
+      email: 'a@b.com',
+      report_token: 'rtLegacy',
+      scan_id: 'scan1',
+      created_at: '2026-07-21T12:00:00.000Z',
+    });
     uvQueries.claimScan.mockResolvedValue({ id: 'scan1', claimed: true });
     loops.sendEvent.mockResolvedValue({ skipped: true });
 
@@ -295,7 +322,18 @@ describe('B6 — oversized image_base64 rejected with 413', () => {
 describe('waitlist endpoints are rate-limited per IP', () => {
   beforeEach(() => {
     app._resetRateLimiters();
-    mockQuery.mockResolvedValue({ rows: [{ count: '0' }] });
+    mockQuery.mockImplementation(async (sql) => (
+      /INSERT INTO waitlist/.test(sql)
+        ? {
+            rows: [{
+              id: '66fd1965-6388-4071-9e50-382223698678',
+              source: 'landing',
+              created_at: '2026-07-21T12:00:00.000Z',
+            }],
+            rowCount: 1,
+          }
+        : { rows: [{ count: '0' }] }
+    ));
   });
   afterEach(() => {
     app._resetRateLimiters(); // don't leak a hot limiter into other describes

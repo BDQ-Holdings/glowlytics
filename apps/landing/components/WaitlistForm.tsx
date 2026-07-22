@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { PAGEVIEW_SESSION_KEY } from "./PageViewBeacon";
-import { getCurrentFirstTouch } from "./PostHogAttribution";
+import { getCurrentFirstTouch, getCurrentPostHogSessionId } from "./PostHogAttribution";
 type Status = "idle" | "loading" | "success" | "error";
 
 interface Props {
@@ -52,6 +52,7 @@ export type WaitlistAttributionPayload = {
   google_click_id_present: boolean;
   referrer_host?: string | null;
   landing_path?: string | null;
+  posthog_session_id?: string;
 };
 
 type WaitlistAttribution = WaitlistAttributionPayload & { product: "glowlytics" };
@@ -73,9 +74,20 @@ export function normalizeFormPlacement(value: unknown): FormPlacement {
   return typeof value === "string" ? FORM_PLACEMENT_ALIASES[value] || "unknown" : "unknown";
 }
 
+const POSTHOG_SESSION_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-function buildWaitlistAttribution(formPlacement: string): WaitlistAttribution {
+function sanitizePostHogSessionId(value: unknown): string | null {
+  return typeof value === "string" && POSTHOG_SESSION_ID_RE.test(value) ? value.toLowerCase() : null;
+}
+
+
+export function buildWaitlistAttribution(
+  formPlacement: string,
+  posthogSessionId: string | null = getCurrentPostHogSessionId(),
+): WaitlistAttribution {
   const firstTouch = getCurrentFirstTouch();
+  const sessionId = sanitizePostHogSessionId(posthogSessionId);
   return {
     product: "glowlytics",
     acquisition_source: firstTouch?.acquisition_source || "unknown",
@@ -92,6 +104,7 @@ function buildWaitlistAttribution(formPlacement: string): WaitlistAttribution {
     google_click_id_present: firstTouch?.google_click_id_present ?? false,
     referrer_host: firstTouch?.referrer_host ?? null,
     landing_path: firstTouch?.landing_path ?? null,
+    ...(sessionId ? { posthog_session_id: sessionId } : {}),
   };
 }
 

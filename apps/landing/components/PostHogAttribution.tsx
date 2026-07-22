@@ -17,9 +17,9 @@ export const POSTHOG_INIT_OPTIONS = {
 
 let initialized = false;
 
-export function getPostHogDistinctId(): string | null {
+export function getCurrentPostHogSessionId(): string | null {
   if (!initialized) return null;
-  const id = posthog.get_distinct_id();
+  const id = posthog.get_session_id();
   return typeof id === "string" && id ? id : null;
 }
 

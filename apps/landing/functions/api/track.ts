@@ -16,14 +16,13 @@
  * Salt: when TRACK_SALT is unset we use a random per-request salt (fail closed)
  * rather than a public default — counts are preserved but cross-day visitor
  * correlation is intentionally lost. Abuse: per-IP/day cap via Cloudflare KV
- * (binding `RATE_LIMIT_KV`); fails open until provisioned (see wrangler.toml).
+ * (binding `RATE_LIMIT_KV`); rejects requests if KV is unavailable.
  */
 
 export interface Env {
   WAITLIST_DB: D1Database;
   TRACK_SALT?: string;
-  // Optional so the site builds/runs before the namespace is provisioned;
-  // rateLimited() fails open when this binding is absent.
+  // Optional for isolated tests, but production requests fail closed when absent.
   RATE_LIMIT_KV?: KVNamespace;
 }
 
@@ -89,9 +88,8 @@ let rateLimitWarned = false;
 
 /**
  * Per-IP/day abuse cap backed by Cloudflare KV, keyed on cf-connecting-ip + UTC
- * day. Increments a counter and returns true once the day's count exceeds
- * `maxPerDay`. Fails OPEN (returns false) when RATE_LIMIT_KV is unbound so the
- * beacon keeps working before the namespace is provisioned.
+ * day. Increments a counter and returns true once the day's count reaches
+ * `maxPerDay`. Missing or unavailable KV fails closed.
  */
 export async function rateLimited(
   env: Env,
@@ -103,21 +101,23 @@ export async function rateLimited(
   if (!kv) {
     if (!rateLimitWarned) {
       rateLimitWarned = true;
-      console.warn(
-        "RATE_LIMIT_KV unbound — rate limiting disabled (failing open). Provision with " +
-          "`wrangler kv:namespace create RATE_LIMIT_KV` and set the id in wrangler.toml.",
-      );
+      console.error("RATE_LIMIT_KV unbound — rejecting public writes.");
     }
-    return false;
+    return true;
   }
   const ip = request.headers.get("cf-connecting-ip") || "0.0.0.0";
   const day = utcDay();
   const key = `rl:${bucket}:${day}:${ip}`;
-  const current = parseInt((await kv.get(key)) || "0", 10) || 0;
-  if (current >= maxPerDay) return true;
-  // ~25h TTL so the counter outlives the UTC day boundary, then self-expires.
-  await kv.put(key, String(current + 1), { expirationTtl: 90000 });
-  return false;
+  try {
+    const current = parseInt((await kv.get(key)) || "0", 10) || 0;
+    if (current >= maxPerDay) return true;
+    // ~25h TTL so the counter outlives the UTC day boundary, then self-expires.
+    await kv.put(key, String(current + 1), { expirationTtl: 90000 });
+    return false;
+  } catch (error) {
+    console.error("RATE_LIMIT_KV unavailable — rejecting public write.", error);
+    return true;
+  }
 }
 
 export const onRequestOptions: PagesFunction<Env> = async () =>

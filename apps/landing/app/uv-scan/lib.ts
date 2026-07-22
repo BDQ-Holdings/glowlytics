@@ -190,6 +190,7 @@ export interface LeadAttributionOptions {
   firstTouch?: FirstTouchSnapshot | null;
   formPlacement?: string | null;
   source?: string | null;
+  posthogSessionId?: string | null;
 }
 
 type LeadOptionsOrSource = string | LeadAttributionOptions;
@@ -212,10 +213,20 @@ type LeadRequestBody = {
   google_click_id_present: boolean;
   referrer_host?: string;
   landing_path?: string;
+  posthog_session_id?: string;
 };
 
 const SENSITIVE_MARKETING_VALUE_RE =
   /([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})|((api[_-]?key|api|secret|password|credential|bearer|access|refresh|id)?[_-]?token=?)|\b(api[_-]?key|secret|password|credential|bearer)\b|((gclid|gbraid|wbraid)=?)/i;
+const POSTHOG_SESSION_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function safePostHogSessionId(value: string | null | undefined): string | undefined {
+  return typeof value === "string" && POSTHOG_SESSION_ID_RE.test(value)
+    ? value.toLowerCase()
+    : undefined;
+}
+
 
 function safeMarketingValue(value: string | null | undefined, max: number): string | undefined {
   if (typeof value !== "string") return undefined;
@@ -265,6 +276,9 @@ function leadBody(
   withSafeMarketingValue(body, "utm_content", firstTouch?.utm_content, 256);
   withSafeMarketingValue(body, "referrer_host", firstTouch?.referrer_host, 256);
   withSafeMarketingValue(body, "landing_path", firstTouch?.landing_path, 256);
+
+  const sessionId = safePostHogSessionId(options.posthogSessionId);
+  if (sessionId) body.posthog_session_id = sessionId;
 
   return body;
 }

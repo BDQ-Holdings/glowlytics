@@ -6,13 +6,19 @@ jest.mock('posthog-react-native', () => {
   const mockIdentify = jest.fn();
   const mockScreen = jest.fn();
   const mockReset = jest.fn();
+  const mockGetDistinctId = jest.fn(() => 'anonymous-device-id');
+  const mockReady = jest.fn(() => Promise.resolve());
 
-  return jest.fn().mockImplementation(() => ({
+  const MockPostHog = jest.fn().mockImplementation(() => ({
     capture: mockCapture,
     identify: mockIdentify,
     screen: mockScreen,
     reset: mockReset,
+    ready: mockReady,
+    getDistinctId: mockGetDistinctId,
   }));
+  Object.assign(MockPostHog, { mockReady });
+  return MockPostHog;
 });
 
 const ORIGINAL_POSTHOG_API_KEY = process.env.EXPO_PUBLIC_POSTHOG_API_KEY;
@@ -64,6 +70,14 @@ describe('analytics', () => {
 });
 
 const instance = () => (jest.requireMock('posthog-react-native') as jest.Mock).mock.results.at(-1)?.value;
+const readyMock = () => (
+  jest.requireMock('posthog-react-native') as jest.Mock & { mockReady: jest.Mock }
+).mockReady;
+const initWithDistinctId = async (distinctId: string) => {
+  const { initAnalytics } = require('../analytics');
+  await initAnalytics();
+  instance().getDistinctId.mockReturnValue(distinctId);
+};
 
 describe('Glowlytics canonical PostHog identity', () => {
   beforeEach(() => {
@@ -116,6 +130,27 @@ describe('Glowlytics canonical PostHog identity', () => {
     expect(instance().identify).toHaveBeenCalledWith('glowlytics:user:user_startup', { product: 'glowlytics' });
   });
 
+  it('waits for native PostHog storage readiness before resolving initialization', async () => {
+    let releaseReady: (() => void) | undefined;
+    readyMock().mockImplementationOnce(() => new Promise<void>((resolve) => {
+      releaseReady = resolve;
+    }));
+    const { initAnalytics } = require('../analytics');
+    let settled = false;
+
+    const initialization = initAnalytics().then((result: boolean) => {
+      settled = true;
+      return result;
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(settled).toBe(false);
+    expect(instance().ready).toHaveBeenCalledTimes(1);
+    releaseReady?.();
+    await expect(initialization).resolves.toBe(true);
+  });
+
   it('trackEvent adds product=glowlytics', async () => {
     const { initAnalytics, trackEvent } = require('../analytics');
     await initAnalytics();
@@ -124,6 +159,74 @@ describe('Glowlytics canonical PostHog identity', () => {
       product: 'glowlytics',
       subscription_tier: 'free',
     });
+  });
+
+  it('resets a persisted Glowlytics account when Clerk cold-starts signed out', async () => {
+    const { prepareAnalyticsIdentityHandoff } = require('../analytics');
+    await initWithDistinctId('glowlytics:user:user_a');
+
+    await expect(prepareAnalyticsIdentityHandoff(null)).resolves.toBe(true);
+
+    expect(instance().reset).toHaveBeenCalledTimes(1);
+    expect(instance().identify).not.toHaveBeenCalled();
+  });
+
+  it.each(['user_legacy', 'anonymous'])(
+    'resets a persisted legacy identified value %s when Clerk cold-starts signed out',
+    async (legacyDistinctId) => {
+      const { prepareAnalyticsIdentityHandoff } = require('../analytics');
+      await initWithDistinctId(legacyDistinctId);
+
+      await expect(prepareAnalyticsIdentityHandoff(null)).resolves.toBe(true);
+
+      expect(instance().reset).toHaveBeenCalledTimes(1);
+      expect(instance().identify).not.toHaveBeenCalled();
+    },
+  );
+
+  it('resets a persisted Glowlytics account before identifying a different cold-start Clerk user', async () => {
+    const { prepareAnalyticsIdentityHandoff } = require('../analytics');
+    await initWithDistinctId('glowlytics:user:user_a');
+
+    await expect(prepareAnalyticsIdentityHandoff('user_b')).resolves.toBe(true);
+
+    expect(instance().reset).toHaveBeenCalledTimes(1);
+    expect(instance().identify).toHaveBeenCalledWith('glowlytics:user:user_b', { product: 'glowlytics' });
+    expect(instance().reset.mock.invocationCallOrder[0]).toBeLessThan(instance().identify.mock.invocationCallOrder[0]);
+  });
+
+  it('resets a persisted raw Clerk ID before identifying its canonical replacement', async () => {
+    const { prepareAnalyticsIdentityHandoff } = require('../analytics');
+    await initWithDistinctId('user_legacy');
+
+    await expect(prepareAnalyticsIdentityHandoff('user_legacy')).resolves.toBe(true);
+
+    expect(instance().reset).toHaveBeenCalledTimes(1);
+    expect(instance().identify).toHaveBeenCalledWith('glowlytics:user:user_legacy', { product: 'glowlytics' });
+    expect(instance().reset.mock.invocationCallOrder[0]).toBeLessThan(instance().identify.mock.invocationCallOrder[0]);
+  });
+
+  it('preserves anonymous history when identifying the first Clerk user', async () => {
+    const { prepareAnalyticsIdentityHandoff } = require('../analytics');
+    await initWithDistinctId('anonymous-device-id');
+
+    await expect(prepareAnalyticsIdentityHandoff('user_first')).resolves.toBe(true);
+
+    expect(instance().reset).not.toHaveBeenCalled();
+    expect(instance().identify).toHaveBeenCalledWith('glowlytics:user:user_first', { product: 'glowlytics' });
+  });
+
+  it('resets before identifying direct account switches even when in-memory starts from the previous account', async () => {
+    const { prepareAnalyticsIdentityHandoff } = require('../analytics');
+    await initWithDistinctId('anonymous-device-id');
+    await prepareAnalyticsIdentityHandoff('user_a');
+    instance().getDistinctId.mockReturnValue('glowlytics:user:user_a');
+
+    await prepareAnalyticsIdentityHandoff('user_b');
+
+    expect(instance().reset).toHaveBeenCalledTimes(1);
+    expect(instance().identify).toHaveBeenLastCalledWith('glowlytics:user:user_b', { product: 'glowlytics' });
+    expect(instance().reset.mock.invocationCallOrder[0]).toBeLessThan(instance().identify.mock.invocationCallOrder.at(-1)!);
   });
 });
 
@@ -135,8 +238,8 @@ describe('Glowlytics root layout analytics identity handoff', () => {
   let mockSetSubscription: jest.Mock;
   let mockSyncHealthData: jest.Mock;
   let mockInitAnalytics: jest.Mock;
-  let mockIdentifyGlowlyticsUser: jest.Mock;
-  let mockResetAnalytics: jest.Mock;
+  let mockPrepareAnalyticsIdentityHandoff: jest.Mock;
+  let mockTrackEvent: jest.Mock;
   let RootLayout: React.ComponentType;
   let tree: ReactTestRenderer | undefined;
 
@@ -159,12 +262,12 @@ describe('Glowlytics root layout analytics identity handoff', () => {
     mockSetSubscription = jest.fn();
     mockSyncHealthData = jest.fn(() => Promise.resolve());
     mockInitAnalytics = jest.fn(() => Promise.resolve(true));
-    mockIdentifyGlowlyticsUser = jest.fn((userId: string) => {
-      identityEvents.push(`identify:${userId}`);
-      return true;
+    mockPrepareAnalyticsIdentityHandoff = jest.fn((userId: string | null) => {
+      identityEvents.push(userId ? `handoff:${userId}` : 'handoff:signed-out');
+      return Promise.resolve(true);
     });
-    mockResetAnalytics = jest.fn(() => {
-      identityEvents.push('reset');
+    mockTrackEvent = jest.fn((event: string) => {
+      identityEvents.push(`track:${event}`);
     });
     jest.spyOn(console, 'error').mockImplementation(() => {});
     jest.spyOn(console, 'warn').mockImplementation(() => {});
@@ -223,9 +326,8 @@ describe('Glowlytics root layout analytics identity handoff', () => {
     }));
     jest.doMock('../../../src/services/analytics', () => ({
       initAnalytics: mockInitAnalytics,
-      identifyGlowlyticsUser: mockIdentifyGlowlyticsUser,
-      trackEvent: jest.fn(),
-      resetAnalytics: mockResetAnalytics,
+      prepareAnalyticsIdentityHandoff: mockPrepareAnalyticsIdentityHandoff,
+      trackEvent: mockTrackEvent,
     }));
     jest.doMock('../../../src/services/appearance', () => ({
       applyAppIcon: jest.fn(() => Promise.resolve()),
@@ -276,14 +378,13 @@ describe('Glowlytics root layout analytics identity handoff', () => {
     jest.restoreAllMocks();
   });
 
-  it('resets PostHog before identifying a different already-signed-in Clerk user', async () => {
+  it('hands off identity again when Clerk switches directly from account A to B', async () => {
     await act(async () => {
       tree = create(React.createElement(RootLayout));
       await flushIdentityEffects();
     });
 
-    expect(identityEvents).toEqual(['identify:user_a']);
-    expect(mockResetAnalytics).not.toHaveBeenCalled();
+    expect(identityEvents).toContain('handoff:user_a');
 
     mockAuth = { ...mockAuth, userId: 'user_b' };
 
@@ -292,12 +393,11 @@ describe('Glowlytics root layout analytics identity handoff', () => {
       await flushIdentityEffects();
     });
 
-    expect(identityEvents).toEqual(['identify:user_a', 'reset', 'identify:user_b']);
-    expect(mockResetAnalytics).toHaveBeenCalledTimes(1);
-    expect(mockIdentifyGlowlyticsUser).toHaveBeenCalledTimes(2);
+    expect(mockPrepareAnalyticsIdentityHandoff).toHaveBeenCalledWith('user_b');
+    expect(identityEvents).toContain('handoff:user_b');
   });
 
-  it('does not reset PostHog for ordinary initial sign-in from a signed-out render', async () => {
+  it('hands off ordinary first sign-in from a signed-out render without resetting in layout', async () => {
     mockAuth = { ...mockAuth, userId: null };
 
     await act(async () => {
@@ -305,7 +405,7 @@ describe('Glowlytics root layout analytics identity handoff', () => {
       await flushIdentityEffects();
     });
 
-    expect(identityEvents).toEqual([]);
+    expect(mockPrepareAnalyticsIdentityHandoff).toHaveBeenCalledWith(null);
 
     mockAuth = { ...mockAuth, userId: 'user_b' };
 
@@ -314,8 +414,59 @@ describe('Glowlytics root layout analytics identity handoff', () => {
       await flushIdentityEffects();
     });
 
-    expect(identityEvents).toEqual(['identify:user_b']);
-    expect(mockResetAnalytics).not.toHaveBeenCalled();
-    expect(mockIdentifyGlowlyticsUser).toHaveBeenCalledTimes(1);
+    expect(mockPrepareAnalyticsIdentityHandoff).toHaveBeenCalledWith('user_b');
+  });
+
+  it('does not emit app_init_complete until the startup identity handoff resolves', async () => {
+    let resolveHandoff!: (ready: boolean) => void;
+    mockPrepareAnalyticsIdentityHandoff.mockImplementationOnce((userId: string | null) => {
+      identityEvents.push(userId ? `handoff-start:${userId}` : 'handoff-start:signed-out');
+      return new Promise<boolean>((resolve) => {
+        resolveHandoff = resolve;
+      });
+    });
+
+    await act(async () => {
+      tree = create(React.createElement(RootLayout));
+      await flushIdentityEffects();
+    });
+
+    expect(identityEvents).toEqual(['handoff-start:user_a']);
+    expect(mockTrackEvent).not.toHaveBeenCalledWith('app_init_complete', expect.anything());
+
+    await act(async () => {
+      resolveHandoff(true);
+      await flushIdentityEffects();
+    });
+
+    expect(identityEvents).toEqual(['handoff-start:user_a', 'track:app_init_complete']);
+  });
+  it('reconciles the latest Clerk user when startup identity handoff resolves after an account switch', async () => {
+    let resolveHandoff!: (ready: boolean) => void;
+    mockPrepareAnalyticsIdentityHandoff.mockImplementationOnce(() => (
+      new Promise<boolean>((resolve) => {
+        resolveHandoff = resolve;
+      })
+    ));
+
+    await act(async () => {
+      tree = create(React.createElement(RootLayout));
+      await flushIdentityEffects();
+    });
+
+    mockAuth = { ...mockAuth, userId: 'user_b' };
+    await act(async () => {
+      tree!.update(React.createElement(RootLayout));
+      await flushIdentityEffects();
+    });
+
+    expect(mockPrepareAnalyticsIdentityHandoff).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveHandoff(true);
+      await flushIdentityEffects();
+    });
+
+    expect(mockPrepareAnalyticsIdentityHandoff).toHaveBeenLastCalledWith('user_b');
   });
 });

@@ -58,6 +58,7 @@ jest.mock('../posthog', () => {
   return {
     ...actual,
     captureAccountCreated: jest.fn().mockResolvedValue(undefined),
+    captureWaitlistSubmitted: jest.fn().mockResolvedValue(undefined),
     accountCreatedUuid: (id) => `11111111-1111-5111-8111-${Buffer.from(id).toString('hex').padStart(12, '0').slice(0, 12)}`,
   };
 });
@@ -252,6 +253,61 @@ beforeEach(() => {
   if (typeof app._resetRateLimiters === 'function') app._resetRateLimiters();
 });
 
+describe('POST /api/waitlist', () => {
+  test('captures a retry-safe forward event for the canonical Railway row', async () => {
+    const row = {
+      id: '66fd1965-6388-4071-9e50-382223698678',
+      source: 'landing',
+      created_at: '2026-07-21T12:00:00.000Z',
+    };
+    mockQuery.mockResolvedValue({ rows: [row], rowCount: 1 });
+
+    const res = await request(app)
+      .post('/api/waitlist')
+      .send({
+        email: 'Lead@Example.com',
+        source: 'landing',
+        form_placement: 'hero',
+        posthog_session_id: '0198b6bc-c2f8-7b5d-9e18-6c98232a1024',
+        acquisition_source: 'google',
+      });
+
+    expect(res.status).toBe(200);
+    expect(mockQuery).toHaveBeenCalledWith(
+      expect.stringMatching(/INSERT INTO waitlist[\s\S]*RETURNING id, source, created_at/),
+      ['lead@example.com', 'landing'],
+    );
+    expect(posthog.captureWaitlistSubmitted).toHaveBeenCalledWith(expect.objectContaining({
+      sourceKey: 'railway_waitlist',
+      sourceIdentity: `glowlytics:lead:railway:${row.id}`,
+      timestamp: row.created_at,
+      attribution: expect.objectContaining({
+        form_placement: 'hero',
+        acquisition_source: 'google',
+        posthog_session_id: '0198b6bc-c2f8-7b5d-9e18-6c98232a1024',
+      }),
+    }));
+  });
+
+  test('does not emit a forward event for a pre-cutover Railway row', async () => {
+    mockQuery.mockResolvedValue({
+      rows: [{
+        id: '66fd1965-6388-4071-9e50-382223698678',
+        source: 'landing',
+        created_at: '2026-07-19T12:00:00.000Z',
+      }],
+      rowCount: 1,
+    });
+
+    const res = await request(app)
+      .post('/api/waitlist')
+      .send({ email: 'lead@example.com' });
+
+    expect(res.status).toBe(200);
+    expect(posthog.captureWaitlistSubmitted).not.toHaveBeenCalled();
+  });
+});
+
 describe('POST /api/uv/screen', () => {
   test('200 returns the screenImage result', async () => {
     const screen = { ok: true, canProceed: true, confidence: 0.9, checks: [] };
@@ -359,7 +415,12 @@ describe('POST /api/uv/lead', () => {
       overall: JSON.stringify({ sunDamageScore: 55, severity: 'moderate' }),
       asymmetry: { score: 12 },
     });
-    uvQueries.upsertLead.mockResolvedValue({ email: 'a@b.com', report_token: 'tok123' });
+    uvQueries.upsertLead.mockResolvedValue({
+      id: '152605c9-cf42-449a-9b71-f9d731ff1856',
+      email: 'a@b.com',
+      report_token: 'tok123',
+      created_at: '2026-07-21T12:00:00.000Z',
+    });
     uvQueries.claimScan.mockResolvedValue({ id: 'scan1', claimed: true });
     loops.sendEvent.mockResolvedValue({ skipped: true });
 
@@ -387,13 +448,88 @@ describe('POST /api/uv/lead', () => {
     });
   });
 
+  test('captures a retry-safe source event before claiming a forward UV lead', async () => {
+    const lead = {
+      id: '152605c9-cf42-449a-9b71-f9d731ff1856',
+      email: 'a@b.com',
+      report_token: 'tok123',
+      created_at: '2026-07-21T12:00:00.000Z',
+      acquisition_source: 'facebook',
+      acquisition_medium: 'paid_social',
+      attribution_quality: 'utm',
+      form_placement: 'footer',
+      landing_path: '/uv-scan',
+    };
+    uvQueries.getScan.mockResolvedValue({
+      id: 'scan1',
+      overall: { sunDamageScore: 55, severity: 'moderate' },
+      asymmetry: { score: 12 },
+    });
+    uvQueries.upsertLead.mockResolvedValue(lead);
+    uvQueries.claimScan.mockResolvedValue({ id: 'scan1', claimed: true });
+
+    const res = await request(app)
+      .post('/api/uv/lead')
+      .send({
+        email: 'a@b.com',
+        scan_id: 'scan1',
+        source: 'uv-scan-web',
+        acquisition_source: 'facebook',
+        acquisition_medium: 'paid_social',
+        attribution_quality: 'utm',
+        form_placement: 'footer',
+        landing_path: '/uv-scan',
+        posthog_session_id: '0198b6bd-58ad-7ab8-b11a-4bcb1005e036',
+      });
+
+    expect(res.status).toBe(200);
+    expect(posthog.captureWaitlistSubmitted).toHaveBeenCalledWith({
+      sourceKey: 'railway_uv_lead',
+      sourceIdentity: `glowlytics:lead:railway:${lead.id}`,
+      timestamp: lead.created_at,
+      attribution: expect.objectContaining({
+        ...lead,
+        posthog_session_id: '0198b6bd-58ad-7ab8-b11a-4bcb1005e036',
+      }),
+    });
+    expect(posthog.captureWaitlistSubmitted.mock.invocationCallOrder[0])
+      .toBeLessThan(uvQueries.claimScan.mock.invocationCallOrder[0]);
+  });
+
+  test('leaves a forward UV scan unclaimed when PostHog capture fails', async () => {
+    uvQueries.getScan.mockResolvedValue({
+      id: 'scan1',
+      overall: { sunDamageScore: 55, severity: 'moderate' },
+      asymmetry: { score: 12 },
+    });
+    uvQueries.upsertLead.mockResolvedValue({
+      id: '152605c9-cf42-449a-9b71-f9d731ff1856',
+      email: 'a@b.com',
+      report_token: 'tok123',
+      created_at: '2026-07-21T12:00:00.000Z',
+    });
+    posthog.captureWaitlistSubmitted.mockRejectedValueOnce(new Error('network'));
+
+    const res = await request(app)
+      .post('/api/uv/lead')
+      .send({ email: 'a@b.com', scan_id: 'scan1' });
+
+    expect(res.status).toBe(500);
+    expect(uvQueries.claimScan).not.toHaveBeenCalled();
+  });
+
   test('normalizes attribution fields before storing the UV lead', async () => {
     uvQueries.getScan.mockResolvedValue({
       id: 'scan1',
       overall: { sunDamageScore: 55, severity: 'moderate' },
       asymmetry: { score: 12 },
     });
-    uvQueries.upsertLead.mockResolvedValue({ email: 'a@b.com', report_token: 'tok123' });
+    uvQueries.upsertLead.mockResolvedValue({
+      id: '152605c9-cf42-449a-9b71-f9d731ff1856',
+      email: 'a@b.com',
+      report_token: 'tok123',
+      created_at: '2026-07-21T12:00:00.000Z',
+    });
     uvQueries.claimScan.mockResolvedValue({ id: 'scan1', claimed: true });
 
     const res = await request(app)
@@ -442,7 +578,12 @@ describe('POST /api/uv/lead', () => {
       overall: { sunDamageScore: 55, severity: 'moderate' },
       asymmetry: { score: 12 },
     });
-    uvQueries.upsertLead.mockResolvedValue({ email: 'a@b.com', report_token: 'tok123' });
+    uvQueries.upsertLead.mockResolvedValue({
+      id: '152605c9-cf42-449a-9b71-f9d731ff1856',
+      email: 'a@b.com',
+      report_token: 'tok123',
+      created_at: '2026-07-21T12:00:00.000Z',
+    });
     uvQueries.claimScan.mockResolvedValue({ id: 'scan1', claimed: true });
 
     const res = await request(app)
@@ -478,7 +619,12 @@ describe('POST /api/uv/lead', () => {
       overall: { sunDamageScore: 55, severity: 'moderate' },
       asymmetry: { score: 12 },
     });
-    uvQueries.upsertLead.mockResolvedValue({ email: 'a@b.com', report_token: 'tok123' });
+    uvQueries.upsertLead.mockResolvedValue({
+      id: '152605c9-cf42-449a-9b71-f9d731ff1856',
+      email: 'a@b.com',
+      report_token: 'tok123',
+      created_at: '2026-07-21T12:00:00.000Z',
+    });
     uvQueries.claimScan.mockResolvedValue({ id: 'scan1', claimed: true });
 
     const res = await request(app)
@@ -616,6 +762,7 @@ describe('POST /api/users — lead -> customer conversion hook', () => {
   const validBody = { age_range: '25-34', location_coarse: 'US-CA' };
   const railwayLeadId = '152605c9-cf42-449a-9b71-f9d731ff1856';
   let waitlistLookupFetch;
+  let clerkUser;
 
   beforeEach(() => {
     process.env.CLERK_SECRET_KEY = 'sk_test_dummy';
@@ -632,6 +779,14 @@ describe('POST /api/users — lead -> customer conversion hook', () => {
     loops.sendEvent.mockResolvedValue({ skipped: true });
     railwayWaitlistLead = null;
     seedProfiles([]);
+    clerkUser = {
+      email_addresses: [{
+        id: 'idn_1',
+        email_address: 'lead@example.com',
+        verification: { status: 'verified' },
+      }],
+      primary_email_address_id: 'idn_1',
+    };
     waitlistLookupFetch = jest.fn().mockResolvedValue({
       ok: true,
       status: 200,
@@ -642,10 +797,7 @@ describe('POST /api/users — lead -> customer conversion hook', () => {
         return {
           ok: true,
           status: 200,
-          json: async () => ({
-            email_addresses: [{ id: 'idn_1', email_address: 'lead@example.com' }],
-            primary_email_address_id: 'idn_1',
-          }),
+          json: async () => clerkUser,
         };
       }
       if (String(url) === process.env.GLOWLYTICS_WAITLIST_LOOKUP_URL) {
@@ -661,6 +813,54 @@ describe('POST /api/users — lead -> customer conversion hook', () => {
     delete process.env.GLOWLYTICS_CUTOVER_AT;
     delete process.env.GLOWLYTICS_WAITLIST_LOOKUP_URL;
     delete process.env.GLOWLYTICS_WAITLIST_LOOKUP_TOKEN;
+  });
+
+  test('unverified primary email cannot claim a waitlist identity', async () => {
+    clerkUser.email_addresses[0].verification.status = 'unverified';
+    railwayWaitlistLead = {
+      id: '66fd1965-6388-4071-9e50-382223698678',
+      source: 'landing',
+    };
+
+    const res = await request(app).post('/api/users').send(validBody);
+
+    expect(res.status).toBe(201);
+    expect(uvQueries.markCustomer).not.toHaveBeenCalled();
+    expect(posthog.captureAccountCreated).not.toHaveBeenCalled();
+    expect(profileState('dev-user')).toEqual(expect.objectContaining({
+      posthog_account_created_status: 'reconciliation_pending',
+      posthog_account_created_uuid: null,
+      posthog_account_created_waitlist_match: null,
+    }));
+  });
+
+  test('non-primary verified email cannot claim a waitlist identity', async () => {
+    clerkUser = {
+      email_addresses: [
+        {
+          id: 'idn_primary',
+          email_address: 'unverified@example.com',
+          verification: { status: 'unverified' },
+        },
+        {
+          id: 'idn_secondary',
+          email_address: 'lead@example.com',
+          verification: { status: 'verified' },
+        },
+      ],
+      primary_email_address_id: 'idn_primary',
+    };
+    railwayWaitlistLead = {
+      id: '66fd1965-6388-4071-9e50-382223698678',
+      source: 'landing',
+    };
+
+    const res = await request(app).post('/api/users').send(validBody);
+
+    expect(res.status).toBe(201);
+    expect(uvQueries.markCustomer).not.toHaveBeenCalled();
+    expect(posthog.captureAccountCreated).not.toHaveBeenCalled();
+    expect(profileState('dev-user').posthog_account_created_status).toBe('reconciliation_pending');
   });
 
   test('first transition: markCustomer returns a row -> fires became_customer, 201', async () => {
@@ -814,6 +1014,44 @@ describe('POST /api/users — lead -> customer conversion hook', () => {
     expect(JSON.stringify(posthog.captureAccountCreated.mock.calls[0][0])).not.toMatch(
       /lead@example\.com|waitlist-read-token/
     );
+  });
+
+  test('D1 source identity wins when the same verified email also has a UV lead', async () => {
+    uvQueries.markCustomer.mockResolvedValue({
+      id: railwayLeadId,
+      email: 'lead@example.com',
+      status: 'customer',
+      acquisition_source: 'google',
+      acquisition_medium: 'paid_search',
+      attribution_quality: 'utm',
+      landing_path: '/uv-scan',
+    });
+    waitlistLookupFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        matched: true,
+        lead: {
+          source_identity: 'glowlytics:lead:d1:41',
+          acquisition_source: 'facebook',
+          acquisition_medium: 'paid_social',
+          attribution_quality: 'utm',
+          form_placement: 'hero',
+          landing_path: '/',
+        },
+      }),
+    });
+
+    const res = await request(app).post('/api/users').send(validBody);
+
+    expect(res.status).toBe(201);
+    expect(posthog.captureAccountCreated).toHaveBeenCalledWith(expect.objectContaining({
+      properties: expect.objectContaining({
+        waitlist_source_identity: 'glowlytics:lead:d1:41',
+        acquisition_source: 'facebook',
+        landing_path: '/',
+      }),
+    }));
   });
 
   test('Railway waitlist lead promotes a source-owned identity when D1 has no match', async () => {

@@ -266,14 +266,32 @@ CREATE INDEX IF NOT EXISTS idx_user_profiles_posthog_account_created_pending
   WHERE posthog_account_created_status IN ('reconciliation_pending', 'pending_delivery');
 `;
 
-// Migration v8: browser IDs are not an account-proof and are no longer used.
-// Keep the legacy nullable column for rolling compatibility, but scrub values
-// and remove any existing lookup index during idempotent startup.
+// Migration v8: browser IDs are not account proof and are no longer used.
+// Reopen any not-yet-delivered snapshot that froze one so reconciliation can
+// rebuild it from a verified source identity, then scrub every retained copy.
+// Keep the nullable uv_leads column only for rolling compatibility.
 const migrationV8 = `
 DROP INDEX IF EXISTS idx_uv_leads_posthog_distinct_id;
 UPDATE uv_leads
    SET posthog_distinct_id = NULL
  WHERE posthog_distinct_id IS NOT NULL;
+
+UPDATE user_profiles
+   SET posthog_account_created_status = 'reconciliation_pending',
+       posthog_account_created_uuid = NULL,
+       posthog_account_created_timestamp = NULL,
+       posthog_account_created_sent_at = NULL,
+       posthog_account_created_properties = NULL,
+       posthog_account_created_waitlist_match = NULL,
+       posthog_account_created_delivery_claimed_at = NULL,
+       posthog_account_created_retry_after = NULL
+ WHERE posthog_account_created_properties ? '$anon_distinct_id'
+   AND posthog_account_created_status IN ('reconciliation_pending', 'pending_delivery');
+
+UPDATE user_profiles
+   SET posthog_account_created_properties =
+         posthog_account_created_properties - '$anon_distinct_id'
+ WHERE posthog_account_created_properties ? '$anon_distinct_id';
 `;
 
 const POSTHOG_ATTRIBUTION_COLUMNS = {
