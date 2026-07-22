@@ -35,7 +35,10 @@
     "moduleNameMapper": {
       "^uuid$": "<rootDir>/__mocks__/uuid.js",
       "^jwks-rsa$": "<rootDir>/__mocks__/jwks-rsa.js"
-    }
+    },
+    "setupFilesAfterEnv": [
+      "<rootDir>/jest.setup.js"
+    ]
   },
   "optionalDependencies": {
     "onnxruntime-node": "^1.24.3"

@@ -260,11 +260,20 @@ ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS posthog_account_created_waitl
 ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS posthog_account_created_delivery_claimed_at TIMESTAMPTZ;
 ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS posthog_account_created_retry_after TIMESTAMPTZ;
 
-CREATE INDEX IF NOT EXISTS idx_uv_leads_posthog_distinct_id ON uv_leads(posthog_distinct_id);
 CREATE INDEX IF NOT EXISTS idx_uv_leads_acquisition_source ON uv_leads(acquisition_source);
 CREATE INDEX IF NOT EXISTS idx_user_profiles_posthog_account_created_pending
   ON user_profiles(posthog_account_created_status, posthog_account_created_retry_after, created_at)
   WHERE posthog_account_created_status IN ('reconciliation_pending', 'pending_delivery');
+`;
+
+// Migration v8: browser IDs are not an account-proof and are no longer used.
+// Keep the legacy nullable column for rolling compatibility, but scrub values
+// and remove any existing lookup index during idempotent startup.
+const migrationV8 = `
+DROP INDEX IF EXISTS idx_uv_leads_posthog_distinct_id;
+UPDATE uv_leads
+   SET posthog_distinct_id = NULL
+ WHERE posthog_distinct_id IS NOT NULL;
 `;
 
 const POSTHOG_ATTRIBUTION_COLUMNS = {
@@ -370,6 +379,7 @@ async function initSchema(externalPool) {
     console.warn('[db-init] Migration v6 warning (may be harmless):', err.message);
   }
   await externalPool.query(migrationV7);
+  await externalPool.query(migrationV8);
   await verifyPostHogAttributionSchema(externalPool);
   await markPreCutoverProfilesHistorical(externalPool, process.env.GLOWLYTICS_CUTOVER_AT);
 }
@@ -395,4 +405,4 @@ if (require.main === module) {
   })();
 }
 
-module.exports = { schema, initSchema, migrationV5, migrationV6, migrationV7, markPreCutoverProfilesHistorical, verifyPostHogAttributionSchema };
+module.exports = { schema, initSchema, migrationV5, migrationV6, migrationV7, migrationV8, markPreCutoverProfilesHistorical, verifyPostHogAttributionSchema };

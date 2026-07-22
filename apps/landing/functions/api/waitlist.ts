@@ -21,6 +21,8 @@
 export interface Env {
   WAITLIST_DB: D1Database;
   GLOWLYTICS_CUTOVER_AT?: string;
+  NEXT_PUBLIC_POSTHOG_API_KEY?: string;
+  NEXT_PUBLIC_POSTHOG_HOST?: string;
   // Optional so the site builds/runs before the namespace is provisioned;
   // rateLimited() fails open when this binding is absent.
   RATE_LIMIT_KV?: KVNamespace;
@@ -71,6 +73,46 @@ const FORM_PLACEMENT_ALIASES: Record<string, FormPlacement> = {
 };
 const MAX_ATTR = 256;
 
+interface StoredWaitlistRow {
+  id: number;
+  created_at: string;
+  acquisition_source: string | null;
+  acquisition_medium: string | null;
+  attribution_model: string | null;
+  attribution_quality: string | null;
+  historical_backfill: number | null;
+  form_placement: string | null;
+  utm_source: string | null;
+  utm_medium: string | null;
+  utm_campaign: string | null;
+  utm_term: string | null;
+  utm_content: string | null;
+  google_click_id_present: number | null;
+  referrer_host: string | null;
+  landing_path: string | null;
+}
+
+const WAITLIST_ROW_SQL = `
+  SELECT id,
+         created_at,
+         acquisition_source,
+         acquisition_medium,
+         attribution_model,
+         attribution_quality,
+         historical_backfill,
+         form_placement,
+         utm_source,
+         utm_medium,
+         utm_campaign,
+         utm_term,
+         utm_content,
+         google_click_id_present,
+         referrer_host,
+         landing_path
+    FROM waitlist
+   WHERE email = ?
+   LIMIT 1`;
+
 function field(input: unknown, max = MAX_ATTR): string | null {
   if (typeof input !== "string") return null;
   const trimmed = input.trim();
@@ -119,7 +161,6 @@ function parseAttribution(payload: Record<string, unknown>) {
   const acquisitionSource = field(payload.acquisition_source, 32) as AcquisitionSource | null;
   const attributionQuality = field(payload.attribution_quality, 32) as AttributionQuality | null;
   return {
-    posthog_distinct_id: field(payload.posthog_distinct_id, 128),
     acquisition_source:
       acquisitionSource && ACQUISITION_SOURCES[acquisitionSource] ? acquisitionSource : "unknown",
     acquisition_medium: field(payload.acquisition_medium, 64) || "unknown",
@@ -139,6 +180,72 @@ function parseAttribution(payload: Record<string, unknown>) {
   };
 }
 
+async function waitlistSubmittedUuid(rowId: number): Promise<string> {
+  const namespaceHex = "8f3138f3b4e55af1bd6f25fb94a89a9f";
+  const namespaceBytes = new Uint8Array(16);
+  for (let index = 0; index < namespaceBytes.length; index += 1) {
+    namespaceBytes[index] = Number.parseInt(namespaceHex.slice(index * 2, index * 2 + 2), 16);
+  }
+  const nameBytes = new TextEncoder().encode(`glowlytics|forward|waitlist_submitted|d1|${rowId}`);
+  const input = new Uint8Array(namespaceBytes.length + nameBytes.length);
+  input.set(namespaceBytes);
+  input.set(nameBytes, namespaceBytes.length);
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-1", input));
+  digest[6] = (digest[6] & 0x0f) | 0x50;
+  digest[8] = (digest[8] & 0x3f) | 0x80;
+  const hex = Array.from(digest.subarray(0, 16), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+}
+
+async function captureWaitlistSubmitted(env: Env, row: StoredWaitlistRow): Promise<void> {
+  const apiKey = env.NEXT_PUBLIC_POSTHOG_API_KEY;
+  if (!apiKey) throw new Error("PostHog project key is unavailable");
+  const distinctId = `glowlytics:lead:d1:${row.id}`;
+  const acquisitionSource = field(row.acquisition_source, 32) as AcquisitionSource | null;
+  const attributionQuality = field(row.attribution_quality, 32) as AttributionQuality | null;
+  const host = (env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com").replace(/\/$/, "");
+  const response = await fetch(`${host}/batch/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      api_key: apiKey,
+      batch: [
+        {
+          uuid: await waitlistSubmittedUuid(row.id),
+          event: "waitlist_submitted",
+          timestamp: row.created_at,
+          properties: {
+            distinct_id: distinctId,
+            product: "glowlytics",
+            acquisition_source:
+              acquisitionSource && ACQUISITION_SOURCES[acquisitionSource]
+                ? acquisitionSource
+                : "unknown",
+            acquisition_medium: marketingField(row.acquisition_medium, 64) || "unknown",
+            attribution_model: "first_touch",
+            attribution_quality:
+              attributionQuality && ATTRIBUTION_QUALITIES[attributionQuality]
+                ? attributionQuality
+                : "unknown",
+            historical_backfill: false,
+            form_placement: normalizeFormPlacement(row.form_placement),
+            utm_source: marketingField(row.utm_source, 128)?.toLowerCase() || null,
+            utm_medium: marketingField(row.utm_medium, 128)?.toLowerCase() || null,
+            utm_campaign: marketingField(row.utm_campaign, 256),
+            utm_term: marketingField(row.utm_term, 256),
+            utm_content: marketingField(row.utm_content, 256),
+            google_click_id_present: Boolean(row.google_click_id_present),
+            referrer_host: hostnameOnly(row.referrer_host),
+            landing_path: pathOnly(row.landing_path),
+          },
+        },
+      ],
+    }),
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!response.ok) throw new Error(`PostHog batch capture failed with status ${response.status}`);
+}
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -148,7 +255,7 @@ const corsHeaders = {
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "Content-Type": "application/json", ...corsHeaders },
+    headers: { "Cache-Control": "no-store", "Content-Type": "application/json", ...corsHeaders },
   });
 }
 
@@ -217,48 +324,35 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     return json(400, { error: "invalid email" });
   }
 
+  const cutoverMs = Date.parse(env.GLOWLYTICS_CUTOVER_AT || "");
+  if (!Number.isFinite(cutoverMs)) {
+    return json(500, { error: "cutover_not_configured" });
+  }
   const source =
     typeof payload.source === "string" && payload.source.length <= 64
       ? payload.source
       : "landing";
-
   const attributionSlug =
     typeof payload.attribution_slug === "string" && payload.attribution_slug.length <= 128
       ? payload.attribution_slug
       : null;
+  const attribution = parseAttribution(payload);
+  const createdAt = new Date().toISOString();
 
   try {
-    const existing = await env.WAITLIST_DB.prepare(
-      "SELECT 1 FROM waitlist WHERE email = ? LIMIT 1",
-    )
-      .bind(email)
-      .first();
-
-    if (existing) {
-      return json(200, { ok: true, created: false });
-    }
-
-    const cutoverMs = Date.parse(env.GLOWLYTICS_CUTOVER_AT || "");
-    if (!Number.isFinite(cutoverMs)) {
-      return json(500, { error: "cutover_not_configured" });
-    }
-    const attribution = parseAttribution(payload);
-    const createdAt = new Date().toISOString();
-
     await env.WAITLIST_DB.prepare(
-      `INSERT INTO waitlist
-         (email, source, attribution_slug, attribution_referrer, posthog_distinct_id,
+      `INSERT OR IGNORE INTO waitlist
+         (email, source, attribution_slug, attribution_referrer,
           acquisition_source, acquisition_medium, attribution_model, attribution_quality,
           historical_backfill, form_placement, utm_source, utm_medium, utm_campaign,
           utm_term, utm_content, google_click_id_present, referrer_host, landing_path, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
       .bind(
         email,
         source,
         attributionSlug,
         attribution.referrer_host,
-        attribution.posthog_distinct_id,
         attribution.acquisition_source,
         attribution.acquisition_medium,
         attribution.attribution_model,
@@ -277,15 +371,23 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       )
       .run();
 
-    const trackingEnabled = Date.parse(createdAt) >= cutoverMs;
-    return json(200, {
-      ok: true,
-      created: true,
-      created_at: createdAt,
-      tracking_enabled: trackingEnabled,
-    });
-  } catch (err) {
-    console.error("waitlist insert failed", err);
+    const row = await env.WAITLIST_DB.prepare(WAITLIST_ROW_SQL)
+      .bind(email)
+      .first<StoredWaitlistRow>();
+    if (!row) throw new Error("waitlist row unavailable after insert");
+    const rowCreatedAtMs = Date.parse(row.created_at);
+    if (!Number.isFinite(rowCreatedAtMs)) throw new Error("waitlist row has invalid created_at");
+    if (rowCreatedAtMs >= cutoverMs) {
+      try {
+        await captureWaitlistSubmitted(env, row);
+      } catch (error) {
+        console.error("waitlist tracking failed", error);
+        return json(500, { error: "tracking_unavailable" });
+      }
+    }
+    return json(200, { ok: true });
+  } catch (error) {
+    console.error("waitlist insert failed", error);
     return json(500, { error: "internal" });
   }
 };

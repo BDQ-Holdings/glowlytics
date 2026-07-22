@@ -21,6 +21,8 @@ apps/landing/tsconfig.tsbuildinfo
 apps/landing/data/.seo-daily.lock
 apps/landing/data/runs/*.json
 apps/landing/data/runs/cron.log
+# Raw PostHog backfill snapshots can contain customer PII; never commit them.
+apps/glowlytics/backend/data/posthog-backfill/**/source-*.json
 # Internal working docs / design scratch — not for the (public) repo.
 .local/
 .omp/

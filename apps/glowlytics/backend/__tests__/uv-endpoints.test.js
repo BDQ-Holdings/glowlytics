@@ -412,7 +412,6 @@ describe('POST /api/uv/lead', () => {
     expect(uvQueries.upsertLead).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        posthog_distinct_id: 'browser-1',
         acquisition_source: 'google',
         acquisition_medium: 'paid_search',
         attribution_model: 'first_touch',
@@ -426,6 +425,7 @@ describe('POST /api/uv/lead', () => {
         form_placement: 'footer',
       }),
     );
+    expect(uvQueries.upsertLead.mock.calls[0][1]).not.toHaveProperty('posthog_distinct_id');
   });
 
   test('preserves facebook first-touch attribution with paid-social medium on UV leads', async () => {
@@ -607,6 +607,7 @@ describe('GET /api/uv/report/:token', () => {
 describe('POST /api/users — lead -> customer conversion hook', () => {
   const realFetch = global.fetch;
   const validBody = { age_range: '25-34', location_coarse: 'US-CA' };
+  const railwayLeadId = '152605c9-cf42-449a-9b71-f9d731ff1856';
   let waitlistLookupFetch;
 
   beforeEach(() => {
@@ -655,7 +656,7 @@ describe('POST /api/users — lead -> customer conversion hook', () => {
   });
 
   test('first transition: markCustomer returns a row -> fires became_customer, 201', async () => {
-    uvQueries.markCustomer.mockResolvedValue({ email: 'lead@example.com', status: 'customer' });
+    uvQueries.markCustomer.mockResolvedValue({ id: railwayLeadId, email: 'lead@example.com', status: 'customer' });
 
     const res = await request(app).post('/api/users').send(validBody);
 
@@ -681,6 +682,7 @@ describe('POST /api/users — lead -> customer conversion hook', () => {
 
   test('POST /api/users emits server-confirmed account_created with stable UUID/timestamp and sanitized UV attribution', async () => {
     uvQueries.markCustomer.mockResolvedValue({
+      id: railwayLeadId,
       email: 'lead@example.com',
       status: 'customer',
       acquisition_source: 'google',
@@ -706,6 +708,7 @@ describe('POST /api/users — lead -> customer conversion hook', () => {
         acquisition_source: 'google',
         landing_path: '/uv-scan',
         waitlist_match: true,
+        waitlist_source_identity: `glowlytics:lead:railway:${railwayLeadId}`,
         waitlist_bypassed: false,
       }),
     }));
@@ -716,6 +719,7 @@ describe('POST /api/users — lead -> customer conversion hook', () => {
 
   test('POST /api/users preserves facebook attribution from matched UV lead reconciliation', async () => {
     uvQueries.markCustomer.mockResolvedValue({
+      id: railwayLeadId,
       email: 'lead@example.com',
       status: 'customer',
       acquisition_source: 'facebook',
@@ -742,14 +746,14 @@ describe('POST /api/users — lead -> customer conversion hook', () => {
     }));
   });
 
-  test('D1-only landing waitlist lead links its browser identity to the canonical account', async () => {
+  test('D1-only landing waitlist lead promotes its source identity without exposing browser identity', async () => {
     waitlistLookupFetch.mockResolvedValueOnce({
       ok: true,
       status: 200,
       json: async () => ({
         matched: true,
         lead: {
-          posthog_distinct_id: 'landing-browser-1',
+          source_identity: 'glowlytics:lead:d1:41',
           acquisition_source: 'facebook',
           acquisition_medium: 'paid_social',
           attribution_model: 'first_touch',
@@ -792,12 +796,13 @@ describe('POST /api/users — lead -> customer conversion hook', () => {
       userId: 'dev-user',
       properties: expect.objectContaining({
         distinct_id: 'glowlytics:user:dev-user',
-        $anon_distinct_id: 'landing-browser-1',
         waitlist_match: true,
         waitlist_bypassed: false,
         acquisition_source: 'facebook',
+        waitlist_source_identity: 'glowlytics:lead:d1:41',
       }),
     }));
+    expect(posthog.captureAccountCreated.mock.calls[0][0].properties).not.toHaveProperty('$anon_distinct_id');
     expect(JSON.stringify(posthog.captureAccountCreated.mock.calls[0][0])).not.toMatch(
       /lead@example\.com|waitlist-read-token/
     );
@@ -819,6 +824,7 @@ describe('POST /api/users — lead -> customer conversion hook', () => {
   });
   test('server account_created telemetry drops dirty persisted form placement values', async () => {
     uvQueries.markCustomer.mockResolvedValue({
+      id: railwayLeadId,
       acquisition_source: 'google',
       attribution_quality: 'utm',
       form_placement: 'api_key=secret',
@@ -836,7 +842,7 @@ describe('POST /api/users — lead -> customer conversion hook', () => {
   test('POST /api/users retries account_created with the same UUID/timestamp/properties after a failed capture', async () => {
     posthog.captureAccountCreated.mockRejectedValueOnce(new Error('network')).mockResolvedValueOnce(undefined);
     uvQueries.markCustomer
-      .mockResolvedValueOnce({ acquisition_source: 'google', acquisition_medium: 'paid_search', attribution_model: 'first_touch', attribution_quality: 'utm', landing_path: '/uv-scan' })
+      .mockResolvedValueOnce({ id: railwayLeadId, acquisition_source: 'google', acquisition_medium: 'paid_search', attribution_model: 'first_touch', attribution_quality: 'utm', landing_path: '/uv-scan' })
       .mockResolvedValueOnce(null);
 
     const first = await request(app).post('/api/users').send(validBody);
@@ -865,7 +871,7 @@ describe('POST /api/users — lead -> customer conversion hook', () => {
         });
       });
     });
-    uvQueries.markCustomer.mockResolvedValue({ acquisition_source: 'google', attribution_quality: 'utm' });
+    uvQueries.markCustomer.mockResolvedValue({ id: railwayLeadId, acquisition_source: 'google', attribution_quality: 'utm' });
 
     const first = request(app).post('/api/users').send(validBody).then((res) => res);
     await Promise.race([
@@ -917,7 +923,7 @@ describe('POST /api/users — lead -> customer conversion hook', () => {
   });
 
   test('Loops failure cannot turn a verified lead match into a bypass', async () => {
-    uvQueries.markCustomer.mockResolvedValue({ acquisition_source: 'google', attribution_model: 'first_touch' });
+    uvQueries.markCustomer.mockResolvedValue({ id: railwayLeadId, acquisition_source: 'google', attribution_model: 'first_touch' });
     loops.sendEvent.mockRejectedValueOnce(new Error('Loops unavailable'));
 
     const res = await request(app).post('/api/users').send(validBody);
@@ -932,7 +938,7 @@ describe('POST /api/users — lead -> customer conversion hook', () => {
 
   test('worker recovers a lead already linked before a crash without relabeling it unmatched', async () => {
     uvQueries.markCustomer.mockResolvedValue(null);
-    uvQueries.findCustomerLead.mockResolvedValue({ clerk_user_id: 'dev-user', acquisition_source: 'google' });
+    uvQueries.findCustomerLead.mockResolvedValue({ id: railwayLeadId, clerk_user_id: 'dev-user', acquisition_source: 'google' });
     seedProfiles([{ user_id: 'dev-user', posthog_account_created_status: 'reconciliation_pending' }]);
 
     await app._retryPendingAccountCreatedDeliveries({ limit: 1 });
@@ -988,7 +994,7 @@ describe('POST /api/users — lead -> customer conversion hook', () => {
         await new Promise((release) => {
           releaseMarks.push(release);
         });
-        return { acquisition_source: 'google', attribution_quality: 'utm' };
+        return { id: railwayLeadId, acquisition_source: 'google', attribution_quality: 'utm' };
       });
     });
     let releaseCapture;

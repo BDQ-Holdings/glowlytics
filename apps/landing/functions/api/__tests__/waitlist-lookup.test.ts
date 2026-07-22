@@ -34,10 +34,10 @@ function lookup(email: string, token = "lookup-token") {
   });
 }
 
-describe("authenticated waitlist identity lookup", () => {
-  it("returns one exact-email attribution row without returning the email", async () => {
+describe("authenticated waitlist attribution lookup", () => {
+  it("returns one exact-email attribution row without returning email or browser identity", async () => {
     const row = {
-      posthog_distinct_id: "landing-browser-1",
+      id: 41,
       acquisition_source: "facebook",
       acquisition_medium: "paid_social",
       attribution_model: "first_touch",
@@ -62,9 +62,30 @@ describe("authenticated waitlist identity lookup", () => {
 
     assert.equal(response.status, 200);
     const responseText = await response.clone().text();
-    assert.deepEqual(await response.json(), { matched: true, lead: row });
+    assert.deepEqual(await response.json(), {
+      matched: true,
+      lead: {
+        source_identity: "glowlytics:lead:d1:41",
+        acquisition_source: "facebook",
+        acquisition_medium: "paid_social",
+        attribution_model: "first_touch",
+        attribution_quality: "utm",
+        historical_backfill: 0,
+        form_placement: "hero",
+        utm_source: "facebook",
+        utm_medium: "paid_social",
+        utm_campaign: "launch",
+        utm_term: null,
+        utm_content: null,
+        google_click_id_present: 0,
+        referrer_host: "facebook.com",
+        landing_path: "/",
+      },
+    });
     assert.equal(calls.length, 1);
     assert.match(calls[0].sql, /FROM waitlist[\s\S]*WHERE email = \?/);
+    assert.doesNotMatch(calls[0].sql, /posthog_distinct_id/);
+    assert.match(calls[0].sql, /SELECT id,/);
     assert.deepEqual(calls[0].values, ["lead@example.com"]);
     assert.doesNotMatch(responseText, /lead@example\.com/i);
   });

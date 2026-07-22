@@ -517,6 +517,13 @@ describe('POST /api/products/identify-photo', () => {
 // persist it and GET /api/products/:userId (SELECT *) has to hand it back —
 // otherwise hydrateForUser overwrites the local shelf with imageless server
 // rows and the thumbnails vanish on the second signed-in launch.
+const posthogAttributionSchemaRows = [
+  ...['created_at', 'posthog_distinct_id', 'acquisition_source', 'acquisition_medium', 'attribution_model', 'attribution_quality', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'google_click_id_present', 'referrer_host', 'landing_path', 'form_placement']
+    .map((column_name) => ({ table_name: 'uv_leads', column_name })),
+  ...['created_at', 'posthog_account_created_uuid', 'posthog_account_created_timestamp', 'posthog_account_created_sent_at', 'posthog_account_created_status', 'posthog_account_created_properties', 'posthog_account_created_waitlist_match', 'posthog_account_created_delivery_claimed_at', 'posthog_account_created_retry_after']
+    .map((column_name) => ({ table_name: 'user_profiles', column_name })),
+];
+
 describe('product_catalog image_url column (db-init structural)', () => {
   it('declares image_url TEXT on the product_catalog CREATE TABLE', () => {
     const table = dbInit.schema.match(
@@ -527,7 +534,7 @@ describe('product_catalog image_url column (db-init structural)', () => {
   });
 
   it('ships a guarded ALTER migration adding image_url for existing deployments', async () => {
-    const migrationPool = { query: jest.fn().mockResolvedValue({ rows: [] }) };
+    const migrationPool = { query: jest.fn(async (sql) => (/information_schema\.columns/.test(sql) ? { rows: posthogAttributionSchemaRows } : { rows: [] })) };
     await dbInit.initSchema(migrationPool);
     const ddl = migrationPool.query.mock.calls.map((c) => c[0]).join('\n');
     expect(ddl).toMatch(

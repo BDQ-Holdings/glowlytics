@@ -1,6 +1,6 @@
 const posthog = require('../posthog');
 
-describe('PostHog anonymous lead identity promotion', () => {
+describe('PostHog source lead identity promotion', () => {
   const realFetch = global.fetch;
   const realApiKey = process.env.POSTHOG_API_KEY;
   const realHost = process.env.POSTHOG_HOST;
@@ -19,26 +19,22 @@ describe('PostHog anonymous lead identity promotion', () => {
     else process.env.POSTHOG_HOST = realHost;
   });
 
-  test('freezes the matched browser distinct ID but omits unsafe or unmatched IDs', () => {
+  test('never promotes an unverified browser identity or email', () => {
     expect(
       posthog.accountAttributionProperties({ posthog_distinct_id: 'browser-1' }, true)
-    ).toEqual(expect.objectContaining({ $anon_distinct_id: 'browser-1' }));
-
-    expect(
-      posthog.accountAttributionProperties({ posthog_distinct_id: 'browser-1' }, false)
     ).not.toHaveProperty('$anon_distinct_id');
-
     expect(
       posthog.accountAttributionProperties({ posthog_distinct_id: 'lead@example.com' }, true)
-    ).not.toHaveProperty('$anon_distinct_id');
+    ).not.toHaveProperty('waitlist_source_identity');
   });
 
-  test('batches a deterministic identify before account_created and keeps the business event clean', async () => {
+  test('aliases a validated source-owned lead ID to the canonical account before account_created', async () => {
     const userId = 'user-1';
     const distinctId = posthog.canonicalGlowlyticsUserId(userId);
+    const sourceIdentity = 'glowlytics:lead:d1:41';
     const properties = {
       distinct_id: distinctId,
-      ...posthog.accountAttributionProperties({ posthog_distinct_id: 'browser-1' }, true),
+      ...posthog.accountAttributionProperties({ source_identity: sourceIdentity }, true),
     };
     const request = {
       userId,
@@ -48,28 +44,48 @@ describe('PostHog anonymous lead identity promotion', () => {
     };
 
     await posthog.captureAccountCreated(request);
-    await posthog.captureAccountCreated(request);
 
-    expect(global.fetch).toHaveBeenCalledTimes(2);
-    const firstBody = JSON.parse(global.fetch.mock.calls[0][1].body);
-    const secondBody = JSON.parse(global.fetch.mock.calls[1][1].body);
-    expect(firstBody.batch).toHaveLength(2);
-    expect(firstBody.batch[0]).toEqual({
-      uuid: expect.stringMatching(/^[0-9a-f-]{36}$/),
-      event: '$identify',
-      timestamp: request.timestamp,
-      properties: {
-        distinct_id: distinctId,
-        $anon_distinct_id: 'browser-1',
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(global.fetch.mock.calls[0][1].body);
+    expect(body.batch).toEqual([
+      {
+        uuid: expect.stringMatching(/^[0-9a-f-]{36}$/),
+        event: '$create_alias',
+        timestamp: request.timestamp,
+        properties: {
+          distinct_id: distinctId,
+          alias: sourceIdentity,
+        },
       },
+      {
+        uuid: request.uuid,
+        event: 'account_created',
+        timestamp: request.timestamp,
+        properties,
+      },
+    ]);
+    expect(JSON.stringify(body)).not.toMatch(/browser-1|lead@example\.com|\$anon_distinct_id/);
+  });
+
+  test('sends only account_created for a conclusively unmatched account', async () => {
+    const userId = 'user-2';
+    const properties = {
+      distinct_id: posthog.canonicalGlowlyticsUserId(userId),
+      ...posthog.accountAttributionProperties({}, false),
+    };
+
+    await posthog.captureAccountCreated({
+      userId,
+      uuid: '22222222-2222-5222-8222-222222222222',
+      timestamp: '2026-07-21T12:01:00.000Z',
+      properties,
     });
-    expect(firstBody.batch[1]).toEqual({
-      uuid: request.uuid,
+
+    const body = JSON.parse(global.fetch.mock.calls[0][1].body);
+    expect(body.batch).toHaveLength(1);
+    expect(body.batch[0]).toEqual(expect.objectContaining({
       event: 'account_created',
-      timestamp: request.timestamp,
-      properties: expect.not.objectContaining({ $anon_distinct_id: expect.anything() }),
-    });
-    expect(secondBody.batch[0].uuid).toBe(firstBody.batch[0].uuid);
-    expect(JSON.stringify(firstBody)).not.toMatch(/lead@example\.com/);
+      properties,
+    }));
   });
 });

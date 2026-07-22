@@ -424,8 +424,13 @@ function ClerkGatedApp() {
     if (!clerkLoaded) return;
     let cancelled = false;
     if (userId && lastAnalyticsUserId.current !== userId) {
+      const previousAnalyticsUserId = lastAnalyticsUserId.current;
       void initAnalytics().then((ready) => {
         if (cancelled || !ready) return;
+        if (previousAnalyticsUserId && previousAnalyticsUserId !== userId) {
+          resetAnalytics();
+          lastAnalyticsUserId.current = null;
+        }
         if (identifyGlowlyticsUser(userId)) {
           lastAnalyticsUserId.current = userId;
         }

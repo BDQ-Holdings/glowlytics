@@ -789,8 +789,8 @@ app.post('/api/uv/lead', detectRateLimit, async (req, res) => {
   try {
     const {
       email: rawEmail, scan_id, source, claim_token,
-      posthog_distinct_id, acquisition_source, acquisition_medium,
-      attribution_quality, utm_source, utm_medium, utm_campaign, utm_term, utm_content,
+      acquisition_source, acquisition_medium, attribution_quality,
+      utm_source, utm_medium, utm_campaign, utm_term, utm_content,
       google_click_id_present, referrer_host, landing_path, form_placement,
     } = req.body || {};
     const email = typeof rawEmail === 'string' ? rawEmail.toLowerCase().trim() : rawEmail;
@@ -830,7 +830,6 @@ app.post('/api/uv/lead', detectRateLimit, async (req, res) => {
       report_token: uuidv4().replace(/-/g, ''),
       scan_id,
       source: safeSource,
-      posthog_distinct_id: marketingField(posthog_distinct_id, 256),
       acquisition_source: safeAcquisitionSource,
       acquisition_medium: marketingField(acquisition_medium, 64) || 'unknown',
       attribution_model: 'first_touch',
@@ -1993,7 +1992,17 @@ async function convertUvLeadToCustomer(userId) {
           log.warn('[uv] became_customer marketing event failed:', loopsErr?.message || loopsErr);
         }
       }
-      return { status: 'matched', lead: row };
+      const sourceIdentity =
+        typeof row.id === 'string' && row.id.trim()
+          ? `glowlytics:lead:railway:${row.id.trim().toLowerCase()}`
+          : null;
+      return {
+        status: 'matched',
+        lead: {
+          ...row,
+          ...(sourceIdentity ? { source_identity: sourceIdentity } : {}),
+        },
+      };
     }
     return await findLandingWaitlistLeadByEmail(email);
   } catch (err) {
@@ -2046,6 +2055,9 @@ async function reserveAccountCreatedDelivery(userId, attribution, matchStatus) {
     distinct_id: posthog.canonicalGlowlyticsUserId(userId),
     ...posthog.accountAttributionProperties(attribution, waitlistMatch),
   };
+  if (waitlistMatch && !properties.waitlist_source_identity) {
+    throw new Error('matched account_created delivery requires a validated waitlist source identity');
+  }
   const { rows } = await pool.query(
     `UPDATE user_profiles
         SET posthog_account_created_uuid = $2::uuid,

@@ -54,21 +54,21 @@ async function claimScan(pool, id) {
 // tuple, report_token, and scan_id. Only source can be refreshed.
 async function upsertLead(pool, {
   id, email, report_token, scan_id, source,
-  posthog_distinct_id, acquisition_source, acquisition_medium, attribution_model,
-  attribution_quality, utm_source, utm_medium, utm_campaign, utm_term, utm_content,
+  acquisition_source, acquisition_medium, attribution_model, attribution_quality,
+  utm_source, utm_medium, utm_campaign, utm_term, utm_content,
   google_click_id_present, referrer_host, landing_path, form_placement,
 }) {
   const { rows } = await pool.query(
     `INSERT INTO uv_leads
-       (id, email, report_token, scan_id, source, posthog_distinct_id,
+       (id, email, report_token, scan_id, source,
         acquisition_source, acquisition_medium, attribution_model, attribution_quality,
         utm_source, utm_medium, utm_campaign, utm_term, utm_content,
         google_click_id_present, referrer_host, landing_path, form_placement)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
      ON CONFLICT (email) DO UPDATE SET
        source = COALESCE(EXCLUDED.source, uv_leads.source)
      RETURNING *`,
-    [id, email, report_token, scan_id, source, posthog_distinct_id || null,
+    [id, email, report_token, scan_id, source,
      acquisition_source || null, acquisition_medium || null, attribution_model || null, attribution_quality || null,
      utm_source || null, utm_medium || null, utm_campaign || null, utm_term || null, utm_content || null,
      Boolean(google_click_id_present), referrer_host || null, landing_path || null, form_placement || null]

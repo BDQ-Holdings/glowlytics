@@ -119,6 +119,7 @@ describe('db-init migrationV5 (structural)', () => {
     const ran = pool.query.mock.calls.map((c) => c[0]);
     expect(ran).toContain(dbInit.migrationV5);
     expect(ran).toContain(dbInit.migrationV7);
+    expect(ran).toContain(dbInit.migrationV8);
     expect(ran.some((sql) => /information_schema\.columns/.test(sql))).toBe(true);
     expect(ran.some((sql) => /historical_backfill_owned/.test(sql))).toBe(true);
   });
@@ -140,6 +141,12 @@ describe('db-init migrationV5 (structural)', () => {
     expect(m).not.toContain('UPDATE user_profiles');
     expect(m).toContain('CREATE INDEX IF NOT EXISTS idx_user_profiles_posthog_account_created_pending');
     expect(typeof dbInit.markPreCutoverProfilesHistorical).toBe('function');
+  });
+
+  test('migrationV8 scrubs retired browser identities and their index', () => {
+    expect(dbInit.migrationV8).toContain('DROP INDEX IF EXISTS idx_uv_leads_posthog_distinct_id');
+    expect(dbInit.migrationV8).toContain('SET posthog_distinct_id = NULL');
+    expect(dbInit.migrationV8).toContain('WHERE posthog_distinct_id IS NOT NULL');
   });
 
   test('pre-cutover ownership marking is rerunnable and never consumes a forward reconciliation row', async () => {
@@ -259,7 +266,7 @@ describe('upsertLead', () => {
     expect(out.report_token).toBe('tok_xyz');
   });
 
-  test('upsertLead stores first-touch fields on insert and does not overwrite them on duplicate email', async () => {
+  test('upsertLead stores first-touch fields without browser identity and does not overwrite them on duplicate email', async () => {
     const attributedLead = {
       id: 'lead_1',
       email: 'a@b.com',
@@ -281,9 +288,10 @@ describe('upsertLead', () => {
     await upsertLead(pool, attributedLead);
 
     const sql = pool.query.mock.calls[0][0];
-    expect(sql).toContain('posthog_distinct_id');
+    expect(sql).not.toContain('posthog_distinct_id');
     expect(sql).not.toMatch(/SET[\s\S]*acquisition_source\s*=/);
-    expect(pool.query.mock.calls[0][1]).toEqual(expect.arrayContaining(['browser-1', 'google', 'paid_search', 'first_touch', 'utm', true, '/uv-scan']));
+    expect(pool.query.mock.calls[0][1]).toEqual(expect.arrayContaining(['google', 'paid_search', 'first_touch', 'utm', true, '/uv-scan']));
+    expect(pool.query.mock.calls[0][1]).not.toContain('browser-1');
   });
 });
 

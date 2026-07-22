@@ -4,7 +4,7 @@ interface Env {
 }
 
 interface WaitlistLead {
-  posthog_distinct_id: string | null;
+  id: number;
   acquisition_source: string | null;
   acquisition_medium: string | null;
   attribution_model: string | null;
@@ -23,7 +23,7 @@ interface WaitlistLead {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const WAITLIST_LOOKUP_SQL = `
-  SELECT posthog_distinct_id,
+  SELECT id,
          acquisition_source,
          acquisition_medium,
          attribution_model,
@@ -95,7 +95,18 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     const lead = await env.WAITLIST_DB.prepare(WAITLIST_LOOKUP_SQL)
       .bind(email)
       .first<WaitlistLead>();
-    return lead ? json(200, { matched: true, lead }) : json(200, { matched: false });
+    if (!lead) return json(200, { matched: false });
+    if (!Number.isSafeInteger(lead.id) || lead.id < 1) {
+      throw new Error("waitlist source identity is invalid");
+    }
+    const { id, ...attribution } = lead;
+    return json(200, {
+      matched: true,
+      lead: {
+        source_identity: `glowlytics:lead:d1:${id}`,
+        ...attribution,
+      },
+    });
   } catch (error) {
     console.error("waitlist lookup failed", error);
     return json(503, { error: "unavailable" });

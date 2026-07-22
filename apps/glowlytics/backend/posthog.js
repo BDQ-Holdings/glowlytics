@@ -23,6 +23,7 @@ const ACQUISITION_SOURCES = new Set(['instagram', 'tiktok', 'facebook', 'google'
 const ATTRIBUTION_QUALITIES = new Set(['utm', 'referrer', 'unknown', 'backfilled']);
 const FORM_PLACEMENTS = new Set(['hero', 'footer', 'modal', 'pricing', 'mobile_onboarding', 'unknown']);
 const SENSITIVE_VALUE_RE = /([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})|((api[_-]?key|api|secret|password|credential|bearer|access|refresh|id)?[_-]?token=?)|\b(api[_-]?key|secret|password|credential|bearer)\b|((gclid|gbraid|wbraid)=?)/i;
+const WAITLIST_SOURCE_ID_RE = /^glowlytics:lead:(?:d1:[1-9]\d*|railway:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/;
 
 function marketing(value, max = 256) {
   if (typeof value !== 'string') return null;
@@ -59,8 +60,12 @@ function normalizeFormPlacement(value) {
   return FORM_PLACEMENTS.has(trimmed) ? trimmed : null;
 }
 
+function waitlistSourceIdentity(value) {
+  return typeof value === 'string' && WAITLIST_SOURCE_ID_RE.test(value) ? value : null;
+}
+
 function accountAttributionProperties(attribution, waitlistMatch) {
-  const anonymousDistinctId = waitlistMatch ? marketing(attribution?.posthog_distinct_id, 256) : null;
+  const sourceIdentity = waitlistMatch ? waitlistSourceIdentity(attribution?.source_identity) : null;
   return {
     product: 'glowlytics',
     acquisition_source: enumOr(ACQUISITION_SOURCES, attribution?.acquisition_source, 'unknown'),
@@ -79,8 +84,12 @@ function accountAttributionProperties(attribution, waitlistMatch) {
     form_placement: normalizeFormPlacement(attribution?.form_placement),
     waitlist_match: Boolean(waitlistMatch),
     waitlist_bypassed: !waitlistMatch,
-    ...(anonymousDistinctId ? { $anon_distinct_id: anonymousDistinctId } : {}),
+    ...(sourceIdentity ? { waitlist_source_identity: sourceIdentity } : {}),
   };
+}
+
+function accountAliasUuid(userId, sourceIdentity) {
+  return deterministicUuidV5(`glowlytics|forward|account_alias|${userId}|${sourceIdentity}`);
 }
 
 async function captureAccountCreated({ userId, uuid, timestamp, properties }) {
@@ -92,31 +101,33 @@ async function captureAccountCreated({ userId, uuid, timestamp, properties }) {
   if (!apiKey) throw new Error('POSTHOG_API_KEY missing; account_created remains pending');
   const host = process.env.POSTHOG_HOST || 'https://us.i.posthog.com';
   const accountProperties = { ...properties };
-  const anonymousDistinctId = marketing(accountProperties.$anon_distinct_id, 256);
   delete accountProperties.$anon_distinct_id;
-  const identifyEvent =
-    anonymousDistinctId && anonymousDistinctId !== distinctId
-      ? [{
-          uuid: deterministicUuidV5(`glowlytics|forward|identify|${userId}|${anonymousDistinctId}`),
-          event: '$identify',
+  const sourceIdentity = accountProperties.waitlist_source_identity;
+  if (sourceIdentity !== undefined && waitlistSourceIdentity(sourceIdentity) !== sourceIdentity) {
+    throw new Error('account_created contains an invalid waitlist source identity');
+  }
+  const batch = sourceIdentity
+    ? [
+        {
+          uuid: accountAliasUuid(userId, sourceIdentity),
+          event: '$create_alias',
           timestamp,
           properties: {
             distinct_id: distinctId,
-            $anon_distinct_id: anonymousDistinctId,
+            alias: sourceIdentity,
           },
-        }]
-      : [];
+        },
+      ]
+    : [];
+  batch.push({
+    uuid,
+    event: 'account_created',
+    timestamp,
+    properties: accountProperties,
+  });
   const body = {
     api_key: apiKey,
-    batch: [
-      ...identifyEvent,
-      {
-        uuid,
-        event: 'account_created',
-        timestamp,
-        properties: accountProperties,
-      },
-    ],
+    batch,
   };
   const res = await fetch(`${host.replace(/\/$/, '')}/batch/`, {
     method: 'POST',

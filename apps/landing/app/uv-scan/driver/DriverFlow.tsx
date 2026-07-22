@@ -12,8 +12,10 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { getCurrentFirstTouch } from "@/components/PostHogAttribution";
 
 import {
+  SOURCE,
   postAnalyze,
   postLead,
   stripDataUrl,
@@ -138,7 +140,10 @@ export function DriverFlow({
       setSubmitting(true);
       setLeadError(null);
       try {
-        const token = await postLead(e, result.scan_id, claimToken ?? result.claim_token);
+        const token = await postLead(e, result.scan_id, claimToken ?? result.claim_token, {
+          firstTouch: getCurrentFirstTouch(),
+          formPlacement: SOURCE,
+        });
         setEmail(e);
         setReportToken(token);
         setSent(true);
