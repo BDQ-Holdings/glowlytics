@@ -1945,7 +1945,7 @@ async function findRailwayWaitlistLeadByEmail(email) {
     return {
       status: 'matched',
       lead: {
-        source_identity: `glowlytics:lead:railway_waitlist:${id}`,
+        source_identity: `glowlytics:lead:railway:${id}`,
       },
     };
   } catch (err) {

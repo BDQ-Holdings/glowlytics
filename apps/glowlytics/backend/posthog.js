@@ -23,7 +23,7 @@ const ACQUISITION_SOURCES = new Set(['instagram', 'tiktok', 'facebook', 'google'
 const ATTRIBUTION_QUALITIES = new Set(['utm', 'referrer', 'unknown', 'backfilled']);
 const FORM_PLACEMENTS = new Set(['hero', 'footer', 'modal', 'pricing', 'mobile_onboarding', 'unknown']);
 const SENSITIVE_VALUE_RE = /([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})|((api[_-]?key|api|secret|password|credential|bearer|access|refresh|id)?[_-]?token=?)|\b(api[_-]?key|secret|password|credential|bearer)\b|((gclid|gbraid|wbraid)=?)/i;
-const WAITLIST_SOURCE_ID_RE = /^glowlytics:lead:(?:d1:[1-9]\d*|railway(?:_waitlist)?:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/;
+const WAITLIST_SOURCE_ID_RE = /^glowlytics:lead:(?:d1:[1-9]\d*|railway:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/;
 
 function marketing(value, max = 256) {
   if (typeof value !== 'string') return null;

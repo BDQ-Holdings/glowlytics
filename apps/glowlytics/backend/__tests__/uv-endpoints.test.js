@@ -829,7 +829,7 @@ describe('POST /api/users — lead -> customer conversion hook', () => {
         distinct_id: 'glowlytics:user:dev-user',
         waitlist_match: true,
         waitlist_bypassed: false,
-        waitlist_source_identity: `glowlytics:lead:railway_waitlist:${railwayWaitlistId}`,
+        waitlist_source_identity: `glowlytics:lead:railway:${railwayWaitlistId}`,
       }),
     }));
     expect(JSON.stringify(posthog.captureAccountCreated.mock.calls[0][0])).not.toMatch(
@@ -849,7 +849,7 @@ describe('POST /api/users — lead -> customer conversion hook', () => {
       properties: expect.objectContaining({
         waitlist_match: true,
         waitlist_bypassed: false,
-        waitlist_source_identity: `glowlytics:lead:railway_waitlist:${railwayWaitlistId}`,
+        waitlist_source_identity: `glowlytics:lead:railway:${railwayWaitlistId}`,
       }),
     }));
     expect(profileState('dev-user').posthog_account_created_status).toBe('delivered');
