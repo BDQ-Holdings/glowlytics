@@ -18,11 +18,13 @@ import {
 } from '../src/services/skinInsights';
 import { useStore } from '../src/store/useStore';
 import { gateWithPaywall } from '../src/services/subscription';
+import { resolveScanEntryRoute } from '../src/utils/scanConsentRoute';
 
 export default function SkinMetricsScreen() {
   const router = useRouter();
   const modelOutputs = useStore((s) => s.modelOutputs);
   const dailyRecords = useStore((s) => s.dailyRecords);
+  const aiProcessingConsentGranted = useStore((s) => s.aiProcessingConsentGranted);
 
   const latestOutput = modelOutputs.length > 0 ? modelOutputs[modelOutputs.length - 1] : null;
   const baselineOutput = modelOutputs.length > 0 ? modelOutputs[0] : null;
@@ -73,11 +75,11 @@ export default function SkinMetricsScreen() {
         <View style={styles.emptyState}>
           <Text style={styles.emptyTitle}>Metrics appear after your first scan</Text>
           <Text style={styles.emptyCopy}>
-            Your first scan generates acne, sun damage, and skin age assessments — calibrated to you.
+            Your first scan generates acne, sun damage, and skin age assessments, calibrated to you.
           </Text>
           <Button title="Start your first scan" onPress={async () => {
             if (!(await gateWithPaywall())) return;
-            router.push('/scan/camera');
+            router.push(resolveScanEntryRoute(aiProcessingConsentGranted));
           }} />
         </View>
       )}

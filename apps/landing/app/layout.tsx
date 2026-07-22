@@ -1,6 +1,8 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
+import PostHogAttribution from "@/components/PostHogAttribution";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -40,6 +42,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body className="antialiased overflow-x-hidden">
+        <Suspense fallback={null}>
+          <PostHogAttribution />
+        </Suspense>
         <Nav />
         <main>{children}</main>
         <Footer />

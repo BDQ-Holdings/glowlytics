@@ -35,8 +35,8 @@ export default function RitualScreen() {
   const removeProduct = useStore((s) => s.removeProduct);
   const [showAddSheet, setShowAddSheet] = useState(false);
 
-  const today = useMemo(() => localDateStr(new Date()), []);
-  const steps = useMemo(() => buildRitualSteps(products), [products]);
+  const today = localDateStr(new Date());
+  const steps = useMemo(() => buildRitualSteps(products, today, Object.keys(ritualCompletions[today] ?? {})), [products, today, ritualCompletions]);
   const dayCompletions = ritualCompletions[today] ?? {};
 
   const grouped = useMemo(() => {
@@ -54,7 +54,7 @@ export default function RitualScreen() {
     total === 0
       ? 'Build your shelf.'
       : remaining === 0
-        ? 'Complete.'
+        ? 'Complete. Consistency looks good on you.'
         : `${remaining} small thing${remaining > 1 ? 's' : ''} left.`;
 
   const ringDetail =
@@ -64,7 +64,7 @@ export default function RitualScreen() {
 
   const handleToggle = (stepId: string) => {
     Haptics.selectionAsync();
-    toggleRitualStep(stepId);
+    toggleRitualStep(stepId, today);
   };
 
   const openAddSheet = () => {

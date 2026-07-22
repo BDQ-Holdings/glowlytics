@@ -4,26 +4,21 @@
     "slug": "Glowlytics",
     "version": "1.2.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "icon": "./assets/app-icons/og-rose.png",
+    "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "scheme": "glowlytics",
     "backgroundColor": "#FAFAF7",
-    "splash": {
-      "image": "./assets/logo-emblem.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#FAFAF7"
-    },
     "ios": {
       "supportsTablet": false,
       "requireFullScreen": true,
       "bundleIdentifier": "com.glowlytics.app",
-      "buildNumber": "18",
+      "buildNumber": "27",
       "usesAppleSignIn": true,
       "associatedDomains": [],
       "infoPlist": {
         "NSCameraUsageDescription": "Glowlytics uses the camera to capture guided skin scans and compare trends over time.",
-        "NSHealthShareUsageDescription": "Glowlytics reads sleep, heart rate, HRV, steps, mindful minutes, and menstrual flow from Apple Health to find patterns in your skin. This data stays on your device.",
+        "NSHealthShareUsageDescription": "Glowlytics reads sleep, heart rate, HRV, steps, mindful minutes, and menstrual flow from Apple Health to find patterns in your skin. Only aggregated multi-day summaries are used to personalize your skin insights.",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
@@ -73,14 +68,6 @@
           }
         }
       ],
-      [
-        "expo-asset",
-        {
-          "assets": [
-            "./assets/models"
-          ]
-        }
-      ],
       "expo-font",
       "expo-notifications",
       "expo-web-browser",
@@ -95,23 +82,63 @@
       [
         "@kingstinct/react-native-healthkit",
         {
-          "NSHealthShareUsageDescription": "Glowlytics reads sleep, heart rate, HRV, steps, mindful minutes, and menstrual flow from Apple Health to find patterns in your skin. This data stays on your device."
+          "NSHealthShareUsageDescription": "Glowlytics reads sleep, heart rate, HRV, steps, mindful minutes, and menstrual flow from Apple Health to find patterns in your skin. Only aggregated multi-day summaries are used to personalize your skin insights."
         }
       ],
       [
         "expo-alternate-app-icons",
         [
-          { "name": "OgSunset", "ios": "./assets/app-icons/og-sunset.png" },
-          { "name": "OgMeadow", "ios": "./assets/app-icons/og-meadow.png" },
-          { "name": "OgRose",   "ios": "./assets/app-icons/og-rose.png" },
-          { "name": "OgPlum",   "ios": "./assets/app-icons/og-plum.png" },
-          { "name": "Lowercase", "ios": "./assets/app-icons/lowercase-g.png" },
-          { "name": "Cursive",   "ios": "./assets/app-icons/cursive-g.png" }
+          {
+            "name": "OgSunset",
+            "ios": "./assets/app-icons/og-sunset.png"
+          },
+          {
+            "name": "OgMeadow",
+            "ios": "./assets/app-icons/og-meadow.png"
+          },
+          {
+            "name": "OgDusk",
+            "ios": "./assets/app-icons/og-dusk.png"
+          },
+          {
+            "name": "OgPlum",
+            "ios": "./assets/app-icons/og-plum.png"
+          },
+          {
+            "name": "Lowercase",
+            "ios": "./assets/app-icons/lowercase-g.png"
+          },
+          {
+            "name": "Cursive",
+            "ios": "./assets/app-icons/cursive-g.png"
+          }
         ]
+      ],
+      [
+        "@sentry/react-native/expo",
+        {
+          "organization": "bdq-holdings",
+          "project": "react-native"
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/logo-emblem.png",
+          "imageWidth": 96,
+          "backgroundColor": "#F6ECEB",
+          "dark": {
+            "image": "./assets/logo-emblem.png",
+            "backgroundColor": "#1A1213"
+          }
+        }
       ]
     ],
     "runtimeVersion": {
       "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/f56f9712-7cc3-48a3-ba5d-710c5e469c3d"
     },
     "extra": {
       "eas": {

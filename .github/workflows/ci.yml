@@ -75,7 +75,7 @@ jobs:
     name: Backend · Verify ONNX Model URLs
     runs-on: ubuntu-latest
     env:
-      GH_BASE: https://raw.githubusercontent.com/RadianceIQ/glowlytics/18966b9/apps/glowlytics/backend/models
+      GH_BASE: https://raw.githubusercontent.com/BDQ-Holdings/glowlytics/18966b9/RadianceIQ/backend/models
     steps:
       - name: Check skin_signals_v2.onnx
         run: |

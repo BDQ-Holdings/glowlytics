@@ -119,8 +119,12 @@ export const FontFamily = {
   sansMedium: 'Switzer-Medium',
   sansSemiBold: 'Switzer-Bold',
   sansBold: 'Switzer-Bold',
-  serif: 'Switzer-Regular',
-  serifBold: 'Switzer-Bold',
+  // Instrument Serif — the design's editorial voice. Italic carries every
+  // editorial moment (headlines, feelings, observations). Never bold — the
+  // serifBold alias intentionally maps to regular weight.
+  serif: 'InstrumentSerif-Regular',
+  serifItalic: 'InstrumentSerif-Italic',
+  serifBold: 'InstrumentSerif-Regular',
   // Glow accent — used as the italic-feeling display accent for one-word
   // emphases ("radiant", "Five", "still"). Mirrors the design's `<em>` slots.
   accent: 'DancingScript',
@@ -161,6 +165,42 @@ export const Shadows = {
       shadowOffset: { width: 0, height: 4 },
     },
   }),
+  /** Handoff elevation tier — resting cards that need lift without a hairline. */
+  subtle: Platform.select({
+    ios: {
+      shadowColor: '#2A1F2D',
+      shadowOpacity: 0.05,
+      shadowRadius: 12,
+      shadowOffset: { width: 0, height: 4 },
+    },
+    android: {
+      elevation: 3,
+    },
+    default: {
+      shadowColor: '#2A1F2D',
+      shadowOpacity: 0.05,
+      shadowRadius: 12,
+      shadowOffset: { width: 0, height: 4 },
+    },
+  }),
+  /** Handoff elevation tier — hero/floating surfaces. Never stack with a border. */
+  lifted: Platform.select({
+    ios: {
+      shadowColor: '#2A1F2D',
+      shadowOpacity: 0.1,
+      shadowRadius: 32,
+      shadowOffset: { width: 0, height: 12 },
+    },
+    android: {
+      elevation: 8,
+    },
+    default: {
+      shadowColor: '#2A1F2D',
+      shadowOpacity: 0.1,
+      shadowRadius: 32,
+      shadowOffset: { width: 0, height: 12 },
+    },
+  }),
 };
 
 export const Motion = {
@@ -175,7 +215,7 @@ export const Motion = {
 /**
  * Glow design language — palette + motion tokens for the redesign.
  *
- * Three palettes (Dusk default) keep the new "glow companion" tone consistent;
+ * Three palettes (Rose default) keep the new "glow companion" tone consistent;
  * `Glow.motion` mirrors the calm staggered cadence (150/280/380/480ms) and
  * 3.2s breathing glow specified in the design hand-off.
  */
@@ -204,7 +244,7 @@ export const GlowPalettesDark: Record<'dusk' | 'meadow' | 'rose', GlowPalette> =
 };
 
 export const Glow = {
-  palette: GlowPalettes.dusk,
+  palette: GlowPalettes.rose,
   motion: {
     stagger: [0, 150, 280, 380, 480, 580, 680, 780] as const,
     fadeUp: 700,

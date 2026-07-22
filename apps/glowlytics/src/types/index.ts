@@ -31,7 +31,7 @@ export type AppearancePaletteId = 'dusk' | 'meadow' | 'rose' | 'auto';
 export type AppearanceMode = 'light' | 'dark' | 'auto';
 
 /**
- * Alternate iOS app icon. `og-dusk` is the bundle's primary icon (no native
+ * Alternate iOS app icon. `og-rose` is the bundle's primary icon (no native
  * swap needed). The other six map to the names in
  * `app.json > plugins > expo-alternate-app-icons`.
  */
@@ -72,10 +72,11 @@ export type HandWashingFrequency = 'rarely' | 'few_daily' | 'after_meals' | 'ver
 export type BirthControlType = 'pill' | 'iud' | 'patch' | 'ring' | 'injection' | 'implant';
 
 export type OnboardingScreenName =
-  | 'welcome' | 'age-range' | 'sex' | 'location' | 'skin-goal'
+  | 'welcome' | 'how-it-works' | 'name' | 'age-range' | 'sex' | 'location' | 'skin-goal'
   | 'products' | 'menstrual' | 'cycle-details' | 'supplements' | 'exercise'
   | 'shower-frequency' | 'hand-washing' | 'scan-reminder'
-  | 'camera-permission' | 'health-permission' | 'ready' | 'preview' | 'paywall';
+  | 'camera-permission' | 'health-permission' | 'privacy' | 'ready' | 'preview' | 'paywall'
+  | 'done';
 
 export interface HealthConnectionState {
   status: PermissionStatus;
@@ -134,6 +135,8 @@ export interface ProductEntry {
   end_date?: string;
   notes?: string;
   brand?: string;
+  /** Product image from barcode/search lookups; null for photo/manual adds. */
+  image_url?: string | null;
 }
 
 export interface DailyRecord {
@@ -191,7 +194,7 @@ export interface ModelOutput {
 // Bone-structure / Harmony types
 // ---------------------------------------------------------------------------
 
-export type BoneMeshSource = 'arkit' | 'mediapipe';
+export type BoneMeshSource = 'arkit' | 'mediapipe' | 'canonical';
 
 export type BoneDomain = 'symmetry' | 'periorbital' | 'mandibular' | 'midface' | 'nose' | 'brow';
 
@@ -206,7 +209,9 @@ export type BoneFindingCode =
   | 'bitemporal_narrow' | 'bitemporal_wide' | 'midface_flat'
   | 'alar_wide' | 'nasolabial_acute' | 'nasolabial_obtuse'
   | 'brow_low' | 'brow_high' | 'brow_apex_misplaced'
-  | 'thirds_uneven' | 'fifths_uneven' | 'asymmetry_elevated';
+  | 'thirds_uneven' | 'fifths_uneven' | 'asymmetry_elevated'
+  | 'face_long' | 'face_short' | 'mouth_narrow' | 'mouth_wide'
+  | 'lip_ratio_high' | 'lip_ratio_low';
 
 export interface BoneFinding {
   findingCode: BoneFindingCode;
@@ -237,6 +242,7 @@ export interface CapturedFaceMesh {
   indices?: number[];          // optional triangle indices
   normals?: number[];          // flat xyz triples, optional
   blendShapes?: Record<string, number>;
+  transform?: number[];
   source: BoneMeshSource;
   capturedAt: string;
 }
@@ -247,6 +253,9 @@ export interface BoneStructureResult {
   domain_scores: Partial<Record<BoneDomain, number | null>>;
   scored_metrics: Record<string, number>;
   metrics: Record<string, { value: number; raw?: Record<string, unknown> }>;
+  estimate: boolean;
+  confidence: 'high' | 'medium' | 'low';
+  landmark_source: 'indexed' | 'derived' | 'template';
   findings: BoneFinding[];
   interventions: InterventionBundle;
   dominant_driver: BoneDomain | null;
@@ -314,6 +323,10 @@ export interface SubscriptionState {
 export interface NotificationSettings {
   notifications_enabled: boolean;
   notification_time: string | null; // HH:MM format
+  ritual_am_enabled: boolean;
+  ritual_am_time: string | null; // HH:MM format
+  ritual_pm_enabled: boolean;
+  ritual_pm_time: string | null; // HH:MM format
 }
 
 export interface PatternNotificationsState {
@@ -439,6 +452,10 @@ export interface GeneratedInsights {
   zone_findings: ZoneFinding[];
   product_guidance: ProductGuidance;
   action_plan: string[];
+  /** Where the insight text came from: 'remote' = GPT-4o enrichment,
+   *  'local' = on-device deterministic fallback (reduced depth — results
+   *  surfaces a quick-read cue). Absent on pre-tagging scans. */
+  source?: 'remote' | 'local';
 }
 
 // ─── Pattern Engine types ───────────────────────────────────────────────

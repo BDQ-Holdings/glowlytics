@@ -38,6 +38,24 @@ jest.mock('react-native-purchases-ui', () => ({
   },
 }));
 
+// Mock env hermetically: jest-expo injects the real .env, so
+// EXPO_PUBLIC_REVENUECAT_API_KEY leaks into src/config/env and the
+// `!env.REVENUECAT_API_KEY` guards in subscription.ts never trip. Every test
+// in this file is written against an EMPTY key (see the gateWithPaywall
+// comment below), so pin the whole config to deterministic values.
+jest.mock('../../config/env', () => ({
+  env: {
+    CLERK_PUBLISHABLE_KEY: '',
+    CLERK_INSTANCE_HOST: 'unknown',
+    CLERK_KEY_ENV: 'unknown',
+    API_BASE_URL: 'http://localhost:3001',
+    REVENUECAT_API_KEY: '',
+    POSTHOG_API_KEY: '',
+    ENABLE_APPLE_OAUTH: true,
+    ENABLE_GOOGLE_OAUTH: true,
+  },
+}));
+
 import {
   canScan,
   isTrialActive,

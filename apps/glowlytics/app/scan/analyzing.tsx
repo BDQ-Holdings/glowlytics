@@ -5,7 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
 import * as FileSystemLegacy from 'expo-file-system/legacy';
 import Svg, { Path } from 'react-native-svg';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID as uuidv4 } from 'expo-crypto';
 import Animated, {
   type SharedValue,
   useSharedValue,
@@ -26,6 +26,7 @@ import { localDateStr } from '../../src/utils/localDate';
 import { useStore } from '../../src/store/useStore';
 import { analyzeWithFallback } from '../../src/services/skinAnalysis';
 import { streamInsights } from '../../src/services/visionAPI';
+import { compressImageForUpload } from '../../src/services/imageUpload';
 import { buildInsightsFromDeterministic } from '../../src/services/onDeviceInsightsFallback';
 import type { GeneratedInsights, DailyRecord, ZoneSeverity } from '../../src/types';
 import { buildHealthkitRollup } from '../../src/services/healthSync';
@@ -180,15 +181,15 @@ const STAGES: Stage[] = [
 
 // Status messages — specific to the 3-layer analysis pipeline
 const STAGE_MESSAGES = [
-  'Measuring skin signals...',
-  'Mapping dermal structure...',
-  'Checking hydration levels...',
-  'Detecting inflammation markers...',
-  'Scanning for lesions...',
-  'Cross-checking clinical guidance...',
-  'Building your analysis...',
-  'Scoring your signals...',
-  'Preparing your results...',
+  'Measuring skin signals',
+  'Mapping dermal structure',
+  'Checking hydration levels',
+  'Detecting inflammation markers',
+  'Scanning for lesions',
+  'Cross-checking clinical guidance',
+  'Building your analysis',
+  'Scoring your signals',
+  'Almost there. Good reads take a moment.',
 ];
 
 const messageForStage = (stage: number): string =>
@@ -222,10 +223,10 @@ function stageStory(stage: number): Array<{ label: string; done: boolean | 'live
 
 // Orbiting findings — fade in as stages progress.
 const ORBIT_FINDINGS: Array<{ text: string; color: string; x: number; y: number; minStage: number }> = [
-  { text: 'Hydration · +4',  color: Glow.palette.accent2, x: -130, y: -90,  minStage: 1 },
-  { text: 'Tone · steady',   color: Glow.palette.glow,    x: 130,  y: -50,  minStage: 2 },
-  { text: 'No new redness',  color: Glow.palette.accent2, x: -150, y: 40,   minStage: 4 },
-  { text: 'Pores · soft',    color: Glow.palette.glow,    x: 140,  y: 90,   minStage: 5 },
+  { text: 'Mapping T-zone',              color: Glow.palette.accent2, x: -130, y: -90, minStage: 1 },
+  { text: 'Scoring hydration',           color: Glow.palette.glow,    x: 130, y: -50,  minStage: 2 },
+  { text: 'Checking barrier signals',    color: Glow.palette.accent2, x: -150, y: 40,  minStage: 4 },
+  { text: 'Comparing to your last scan', color: Glow.palette.glow,    x: 140, y: 90,   minStage: 5 },
 ];
 
 // ---------------------------------------------------------------------------
@@ -245,6 +246,7 @@ export default function AnalyzingScreen() {
   const addDailyRecord = useStore((s) => s.addDailyRecord);
   const addModelOutput = useStore((s) => s.addModelOutput);
   const clearPendingPhotoBase64 = useStore((s) => s.clearPendingPhotoBase64);
+  const aiProcessingConsentGranted = useStore((s) => s.aiProcessingConsentGranted);
 
   const [currentStage, setCurrentStage] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -453,13 +455,14 @@ export default function AnalyzingScreen() {
       let bonePromise: Promise<unknown> = Promise.resolve();
       if (analysis.signal_scores) {
         const attachInsights = (insights: GeneratedInsights, source: 'remote' | 'local') => {
-          insightsRef.current = insights;
+          const sourcedInsights = { ...insights, source };
+          insightsRef.current = sourcedInsights;
           const currentOutputs = useStore.getState().modelOutputs;
           if (currentOutputs.length > 0) {
             const updated = [...currentOutputs];
             updated[updated.length - 1] = {
               ...updated[updated.length - 1],
-              generated_insights: insights,
+              generated_insights: sourcedInsights,
             };
             useStore.setState({ modelOutputs: updated });
             useStore.getState().persistData();
@@ -545,11 +548,12 @@ export default function AnalyzingScreen() {
           return;
         }
 
-        if (firstResult.persisted === false) {
+        if (firstResult.persisted === false && firstResult.status !== 'no_face') {
           enqueueSync({
             label: 'bone-structure persist',
             run: async () => {
               const retry = await analyzeBoneStructure({ mesh: captured!.mesh, dailyId, sexOverride });
+              if (retry.status === 'no_face') return;
               if (retry.persisted === false) {
                 throw new Error('bone-structure not yet persisted on server');
               }
@@ -615,6 +619,10 @@ export default function AnalyzingScreen() {
     return () => {
       mountedRef.current = false;
       timers.current.forEach(clearTimeout);
+      // Free the multi-MB pending photo base64 if the screen unmounts
+      // mid-analysis (completion in persistAndNavigate and the error paths
+      // clear it too — this covers navigating away before either fires).
+      useStore.getState().clearPendingPhotoBase64();
     };
   }, []);
 
@@ -663,6 +671,11 @@ export default function AnalyzingScreen() {
   // ---------------------------------------------------------------------------
   useEffect(() => {
     if (hasStarted.current || !user || !protocol) return;
+    if (!aiProcessingConsentGranted) {
+      clearPendingPhotoBase64();
+      router.replace('/scan/ai-consent');
+      return;
+    }
     hasStarted.current = true;
     abortedRef.current = false;
 
@@ -746,12 +759,18 @@ export default function AnalyzingScreen() {
       const encodePromise: Promise<string | undefined> = (async () => {
         if (!params.photoUri) return undefined;
         try {
-          const { imageToBase64 } = await import('../../src/services/visionAPI');
-          const b = await imageToBase64(params.photoUri);
+          // Compress before upload: a full-resolution capture is multi-MB and
+          // slows the POST /api/vision/analyze round-trip. Only the SERVER
+          // payload is compressed — on-device consumers (skin-signals below,
+          // face-mesh/bone paths) keep reading the original params.photoUri.
+          // compressImageForUpload degrades internally to the raw base64 when
+          // the native manipulator fails, so compression never breaks a scan.
+          const b = await compressImageForUpload(params.photoUri, { maxWidth: 1024, quality: 0.8 });
           useStore.getState().setPendingPhotoBase64(b);
           return b;
-        } catch {
-          // Encoding failed — analysis will try again without a pre-encoded base64
+        } catch (err: unknown) {
+          // Encoding failed — warn and let analysis try again without a pre-encoded base64
+          if (__DEV__) console.warn('[Glowlytics] Photo compress/encode failed:', errMsg(err));
           return undefined;
         }
       })();
@@ -860,7 +879,7 @@ export default function AnalyzingScreen() {
         setError(err instanceof Error && err.message ? err.message : 'Something went wrong. Please try again.');
       });
 
-  }, [user, protocol, retryCount]);
+  }, [aiProcessingConsentGranted, clearPendingPhotoBase64, router, user, protocol, retryCount]);
 
   // ---------------------------------------------------------------------------
   // Animated styles

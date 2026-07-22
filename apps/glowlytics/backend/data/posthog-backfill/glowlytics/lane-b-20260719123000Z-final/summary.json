@@ -1,0 +1,94 @@
+{
+  "schema_version": "glowlytics-posthog-backfill-v1",
+  "artifact_mode": "final",
+  "live_send_enabled": false,
+  "artifact_root": "data/posthog-backfill/glowlytics",
+  "artifact_dir": "data/posthog-backfill/glowlytics/lane-b-20260719123000Z-final",
+  "artifact_run_id": "lane-b-20260719123000Z-final",
+  "cutover_at": "2026-07-19T12:30:00.000Z",
+  "source_cutoff_at": "2026-07-19T12:30:00.000Z",
+  "cutover_source": "glowlytics-source-audited-retroactive:2026-07-19T12:30:00Z",
+  "sources": {
+    "glowlytics_d1_waitlist": {
+      "baseline_pre_cutoff": 4,
+      "eligible": 4,
+      "total": 4,
+      "rejected": 0,
+      "deferred_48h": 0,
+      "post_cutoff": 0,
+      "malformed": 0,
+      "waitlist_matched": 0,
+      "waitlist_bypassed": 0,
+      "waitlist_unlinked": 4
+    },
+    "glowlytics_railway_waitlist": {
+      "baseline_pre_cutoff": 36,
+      "eligible": 36,
+      "total": 36,
+      "rejected": 0,
+      "deferred_48h": 0,
+      "post_cutoff": 0,
+      "malformed": 0,
+      "waitlist_matched": 0,
+      "waitlist_bypassed": 0,
+      "waitlist_unlinked": 36
+    },
+    "glowlytics_railway_user_profiles": {
+      "baseline_pre_cutoff": 142,
+      "eligible": 142,
+      "total": 142,
+      "rejected": 0,
+      "deferred_48h": 0,
+      "post_cutoff": 0,
+      "malformed": 0,
+      "waitlist_matched": 0,
+      "waitlist_bypassed": 0,
+      "waitlist_unlinked": 142
+    },
+    "glowlytics_railway_uv_leads": {
+      "enrichment_rows": 0,
+      "deterministic_profile_matches": 0
+    }
+  },
+  "waitlist_sources": {
+    "d1_waitlist": 4,
+    "railway_waitlist": 36,
+    "total_waitlist": 40
+  },
+  "source_coverage": {
+    "glowlytics_d1_waitlist": "4 verified pre-cutover Cloudflare D1 waitlist rows expected",
+    "glowlytics_railway_waitlist": "36 verified pre-cutover Railway waitlist rows expected",
+    "glowlytics_railway_user_profiles": "142 verified pre-cutover Railway profiles expected",
+    "glowlytics_railway_uv_leads": "verified current source has 0 UV enrichment rows; deterministic UV links are required for any historical account match flags"
+  },
+  "unique_lead_semantics": "one waitlist_submitted per pre-cutover source waitlist.id row; D1 identities use glowlytics:lead:d1:<id>, Railway waitlist identities use glowlytics:lead:railway:<id>; no inferred cross-source joins or dedupe; no synthetic waitlist events for profile accounts",
+  "account_delivery_contract": "forward account_created waits for conclusive matched or unmatched reconciliation before freezing UUID/original timestamp/canonical distinct_id/PII-free properties; unavailable lookup never becomes bypass; historical rows remain strictly before the cutover and use deterministic UUIDv5",
+  "approved_baseline": {
+    "d1_waitlist": 4,
+    "railway_waitlist": 36,
+    "total_waitlist": 40,
+    "railway_profiles": 142,
+    "uv_matches": 0
+  },
+  "coverage_check": "structurally valid source rows with timestamp < cutover must equal approved baseline before rollout; 48-hour deferrals, post-cutoff rows, and malformed rejects are reported separately for reviewed reconciliation",
+  "historical_send_ready_at": "2026-07-21T12:30:00.000Z",
+  "deferred_48h": 0,
+  "final_gate": {
+    "artifact_mode": "final",
+    "expected_linkage": {
+      "matched": 0,
+      "bypassed": 0
+    },
+    "actual_linkage": {
+      "matched": 0,
+      "bypassed": 0,
+      "unlinked": 142
+    },
+    "ready": true,
+    "error": null
+  },
+  "coverage_error": null,
+  "source_integrity_error": null,
+  "batch_events": 182,
+  "rejects": 0
+}

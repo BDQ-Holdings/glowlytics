@@ -6,11 +6,13 @@ MODELS_DIR="$SCRIPT_DIR/../models"
 mkdir -p "$MODELS_DIR"
 MODELS_DIR="$(cd "$MODELS_DIR" && pwd)"
 
-# Pin to an immutable HuggingFace revision by exporting HF_MODEL_REV=<commit-sha>.
-# Defaults to the moving "main" ref so existing setups keep working unchanged;
-# operators SHOULD pin a commit SHA and commit a models.sha256 manifest so a
-# force-updated branch or compromised repo cannot swap in a tampered model.
-HF_MODEL_REV="${HF_MODEL_REV:-main}"
+# Pinned HuggingFace revision of mufasabrownie/glowlytics-skin-models — an
+# immutable commit SHA, so a force-pushed branch or compromised repo cannot
+# swap in a tampered model (defense in depth with the models.sha256 manifest).
+# To bump: export HF_MODEL_REV=<new-commit-sha> (or edit the default here),
+# then regenerate ../models/models.sha256 from the freshly downloaded files
+# (cd backend/models && shasum -a 256 *.onnx > models.sha256) and commit both.
+HF_MODEL_REV="${HF_MODEL_REV:-a1bbdb624b6045bdb1503050c56045728f2efaf0}"
 HF_BASE="https://huggingface.co/mufasabrownie/glowlytics-skin-models/resolve/$HF_MODEL_REV"
 
 echo "[download-models] Downloading ONNX models to $MODELS_DIR (rev: $HF_MODEL_REV)"
@@ -50,14 +52,16 @@ download() {
 # Manifest format: one "<sha256>  <filename>" line per file (i.e. `shasum -a 256`
 # output, filenames matching the local names below). On a mismatch the tampered
 # file is deleted and the script exits non-zero so a bad model never reaches the
-# inference path. When the manifest is absent we fall back to the wc -c size-floor
-# guard in download() and warn that integrity is unverified.
+# inference path. The manifest is committed (backend/models/models.sha256), so
+# its absence means an incomplete deploy: we warn loudly that integrity is
+# unverified and fall back to the wc -c size-floor guard in download().
 verify_checksums() {
   local manifest="$MODELS_DIR/models.sha256"
 
   if [ ! -f "$manifest" ]; then
-    echo "[download-models] ⚠ No models.sha256 manifest found — model integrity UNVERIFIED (size-floor check only)."
-    echo "                  Pin HF_MODEL_REV to a commit SHA and commit a models.sha256 manifest to harden this."
+    echo "[download-models] ⚠ models.sha256 manifest MISSING — model integrity UNVERIFIED (size-floor check only)."
+    echo "                  The manifest is committed at backend/models/models.sha256; its absence means the"
+    echo "                  deploy is incomplete or it was deleted. Restore it to re-enable verification."
     return 0
   fi
 

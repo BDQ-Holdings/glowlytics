@@ -13,6 +13,10 @@
  *   4. Yaw and roll angles must be within +/-20 degrees.
  */
 
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
+import * as FileSystemLegacy from 'expo-file-system/legacy';
+import { decode as decodeJpeg } from 'jpeg-js';
+
 import type { DetectedFace } from './faceTracking';
 
 export interface PhotoQualityResult {
@@ -24,10 +28,82 @@ export interface PhotoQualityResult {
   issues: string[];
 }
 
-// Thresholds
+// Face / pose thresholds
 const MIN_FILL_PERCENT = 20;
 const CENTER_TOLERANCE = 0.50;
 const MAX_ANGLE = 20;
+
+// Capture-time luma thresholds. We downscale to ~64px wide, then read the JPEG
+// in JS; this gives a cheap global exposure/contrast gate without delaying the
+// scan hand-off. Mean luma is on the standard 0..255 scale. The bounds leave
+// room for normal skin tones and bathroom lighting, while rejecting frames that
+// are too dark to analyze (<45), blown out (>225), or nearly flat (stddev <12).
+const QUALITY_SAMPLE_WIDTH = 64;
+const MIN_MEAN_LUMA = 45;
+const MAX_MEAN_LUMA = 225;
+const MIN_LUMA_STDDEV = 12;
+
+export type PhotoQualityIssueCode = 'too_dark' | 'too_bright' | 'low_contrast';
+
+export interface PhotoQualityDependencies {
+  manipulateAsync: typeof manipulateAsync;
+  decodeJpeg: typeof decodeJpeg;
+}
+
+const defaultPhotoQualityDependencies: PhotoQualityDependencies = {
+  manipulateAsync,
+  decodeJpeg,
+};
+
+function base64ToUint8Array(base64: string): Uint8Array {
+  const raw = globalThis.atob(base64);
+  const bytes = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+  return bytes;
+}
+
+export function evaluateLumaQuality(lumaValues: ArrayLike<number>): PhotoQualityResult {
+  const count = lumaValues.length;
+  if (count === 0) {
+    return {
+      faceDetected: true,
+      centered: true,
+      fillPercent: 100,
+      angleValid: true,
+      overallPass: true,
+      issues: [],
+    };
+  }
+
+  let sum = 0;
+  for (let i = 0; i < count; i++) sum += lumaValues[i];
+  const mean = sum / count;
+
+  let variance = 0;
+  for (let i = 0; i < count; i++) {
+    const delta = lumaValues[i] - mean;
+    variance += delta * delta;
+  }
+  const stddev = Math.sqrt(variance / count);
+
+  const issues: PhotoQualityIssueCode[] = [];
+  if (mean < MIN_MEAN_LUMA) {
+    issues.push('too_dark');
+  } else if (mean > MAX_MEAN_LUMA) {
+    issues.push('too_bright');
+  } else if (stddev < MIN_LUMA_STDDEV) {
+    issues.push('low_contrast');
+  }
+
+  return {
+    faceDetected: true,
+    centered: true,
+    fillPercent: 100,
+    angleValid: true,
+    overallPass: issues.length === 0,
+    issues,
+  };
+}
 
 /**
  * Check photo quality from pre-detected face data.
@@ -101,24 +177,61 @@ export function checkPhotoQualityFromFaces(
 }
 
 /**
- * Legacy async wrapper for backward compatibility.
- * Accepts a photo URI but currently passes through since live detection
- * from VisionCamera provides faces directly during the scan flow.
+ * Capture-time photo quality check.
+ *
+ * VisionCamera still handles face pose/alignment during preview. This final
+ * gate cheaply verifies exposure and contrast on the actual captured JPEG so a
+ * dark, blown-out, or flat frame cannot slip through between preview and save.
+ * It is fail-open by design: decoder/native failures warn and allow the scan,
+ * because blocking analysis on a local pixel-read failure would be worse UX.
  */
 export async function checkPhotoQuality(
   photoUri: string,
   frameWidth: number,
   frameHeight: number,
+  deps: PhotoQualityDependencies = defaultPhotoQualityDependencies,
 ): Promise<PhotoQualityResult> {
-  // Without expo-face-detector, we pass through. The live VisionCamera
-  // frame processor handles real-time quality checks during preview.
-  // This function is only called on the final captured photo.
-  return {
-    faceDetected: true,
-    centered: true,
-    fillPercent: 100,
-    angleValid: true,
-    overallPass: true,
-    issues: [],
-  };
+  void frameWidth;
+  void frameHeight;
+
+  try {
+    const processed = await deps.manipulateAsync(
+      photoUri,
+      [{ resize: { width: QUALITY_SAMPLE_WIDTH } }],
+      { format: SaveFormat.JPEG, base64: true, compress: 0.75 },
+    );
+
+    if (!processed.base64) {
+      throw new Error('Photo quality sample did not include base64 data');
+    }
+
+    const decoded = deps.decodeJpeg(base64ToUint8Array(processed.base64), {
+      useTArray: true,
+      formatAsRGBA: true,
+    });
+    const rgba = decoded.data as unknown as Uint8Array;
+    const pixelCount = Math.min(decoded.width * decoded.height, Math.floor(rgba.length / 4));
+    const lumaValues = new Float32Array(pixelCount);
+
+    for (let i = 0; i < pixelCount; i++) {
+      const offset = i * 4;
+      lumaValues[i] = rgba[offset] * 0.2126 + rgba[offset + 1] * 0.7152 + rgba[offset + 2] * 0.0722;
+    }
+
+    if (processed.uri && processed.uri !== photoUri) {
+      FileSystemLegacy.deleteAsync(processed.uri, { idempotent: true }).catch(() => {});
+    }
+
+    return evaluateLumaQuality(lumaValues);
+  } catch (err) {
+    console.warn('[PhotoQuality] Capture quality check failed open:', err);
+    return {
+      faceDetected: true,
+      centered: true,
+      fillPercent: 100,
+      angleValid: true,
+      overallPass: true,
+      issues: [],
+    };
+  }
 }

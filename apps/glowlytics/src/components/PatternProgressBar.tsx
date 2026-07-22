@@ -45,7 +45,7 @@ export const PatternProgressBar: React.FC = () => {
       <Text style={styles.footer}>
         {dataDays >= 14
           ? 'Real patterns unlocked · keep scanning'
-          : `Day ${dataDays} of 14 — real patterns unlock soon`}
+          : `Day ${dataDays} of 14. Real patterns unlock soon`}
       </Text>
     </View>
   );

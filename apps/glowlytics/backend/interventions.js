@@ -174,6 +174,19 @@ const FINDING_TO_SUGGESTIONS = {
     interventional:  ['malar_implant', 'deep_cheek_filler'],
   },
 
+  // Facial index — global length/width proportion. Bone-level; only soft-tissue
+  // envelope and contour options are honest to suggest.
+  face_long: {
+    lifestyle:       ['weight_optimisation', 'posture_neck'],
+    pharmacological: ['topical_tretinoin'],
+    interventional:  ['deep_cheek_filler'],
+  },
+  face_short: {
+    lifestyle:       ['posture_neck'],
+    pharmacological: [],
+    interventional:  ['chin_filler'],
+  },
+
   // ---- Nose ----
   alar_wide: {
     lifestyle:       [],
@@ -189,6 +202,29 @@ const FINDING_TO_SUGGESTIONS = {
     lifestyle:       [],
     pharmacological: [],
     interventional:  ['rhinoplasty_consult'],
+  },
+  // Mouth width relative to nasal base — width mismatch reads as either a
+  // narrow mouth or a wide nasal base; both directions get the nasal consult.
+  mouth_narrow: {
+    lifestyle:       [],
+    pharmacological: [],
+    interventional:  ['asymmetric_filler'],
+  },
+  mouth_wide: {
+    lifestyle:       [],
+    pharmacological: [],
+    interventional:  ['rhinoplasty_consult'],
+  },
+  // Upper:lower lip vertical balance.
+  lip_ratio_high: {
+    lifestyle:       [],
+    pharmacological: ['topical_peptides'],
+    interventional:  ['asymmetric_filler'],
+  },
+  lip_ratio_low: {
+    lifestyle:       [],
+    pharmacological: ['topical_peptides'],
+    interventional:  ['asymmetric_filler'],
   },
 
   // ---- Brow ----

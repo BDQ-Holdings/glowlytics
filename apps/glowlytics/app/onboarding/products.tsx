@@ -1,134 +1,216 @@
-import React, { useState } from 'react';
-import { Alert, View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import Svg, { Defs, RadialGradient, Stop, Rect, Circle, Path, Ellipse } from 'react-native-svg';
-import { Feather } from '@expo/vector-icons';
-import { OnboardingTransition } from '../../src/components/OnboardingTransition';
+import React, { useMemo, useState } from 'react';
+import { Alert, View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { GlowIcon, type GlowIconName } from '../../src/components/glow/GlowIcons';
+import { FadeUp } from '../../src/components/glow/GlowPrimitives';
+import { ProgressDots } from '../../src/components/ProgressDots';
 import { ProductCard } from '../../src/components/ProductCard';
 import { AddProductSheet } from '../../src/components/AddProductSheet';
 import { useStore } from '../../src/store/useStore';
 import { useOnboardingNavigation } from '../../src/hooks/useOnboardingNavigation';
-import { Colors, Glow, FontFamily, FontSize, Spacing, BorderRadius } from '../../src/constants/theme';
+import { Glow, FontFamily, Spacing } from '../../src/constants/theme';
+import { ONBOARDING_PROGRESS_DOT_COUNT } from '../../src/services/onboardingFlow';
+import { activeProducts } from '../../src/services/ritual';
 
-function ProductsIllustration() {
-  return (
-    <Svg width={200} height={160} viewBox="0 0 200 160">
-      <Defs>
-        <RadialGradient id="prodGlow" cx="50%" cy="50%" r="50%">
-          <Stop offset="0%" stopColor="#3A9E8F" stopOpacity={0.5} />
-          <Stop offset="60%" stopColor="#3A9E8F" stopOpacity={0.1} />
-          <Stop offset="100%" stopColor="#3A9E8F" stopOpacity={0} />
-        </RadialGradient>
-        <RadialGradient id="prodAmber" cx="50%" cy="50%" r="50%">
-          <Stop offset="0%" stopColor="#C07B2A" stopOpacity={0.45} />
-          <Stop offset="60%" stopColor="#C07B2A" stopOpacity={0.1} />
-          <Stop offset="100%" stopColor="#C07B2A" stopOpacity={0} />
-        </RadialGradient>
-      </Defs>
-      {/* Background glow */}
-      <Ellipse cx={100} cy={80} rx={80} ry={65} fill="url(#prodGlow)" />
-      {/* Serum dropper bottle */}
-      <Rect x={55} y={50} width={22} height={55} rx={6} fill="#3A9E8F" fillOpacity={0.3} />
-      <Rect x={55} y={50} width={22} height={55} rx={6} fill="none" stroke="#3A9E8F" strokeWidth={1} strokeOpacity={0.5} />
-      <Rect x={62} y={38} width={8} height={14} rx={2} fill="#3A9E8F" fillOpacity={0.4} />
-      <Circle cx={66} cy={34} r={3} fill="#3A9E8F" fillOpacity={0.5} />
-      {/* Pump bottle */}
-      <Rect x={88} y={42} width={24} height={62} rx={7} fill="#C07B2A" fillOpacity={0.25} />
-      <Rect x={88} y={42} width={24} height={62} rx={7} fill="none" stroke="#C07B2A" strokeWidth={1} strokeOpacity={0.45} />
-      <Rect x={96} y={30} width={8} height={14} rx={2} fill="#C07B2A" fillOpacity={0.35} />
-      <Path d="M100 30 L108 26 L112 26" stroke="#C07B2A" strokeWidth={1.2} strokeOpacity={0.4} strokeLinecap="round" fill="none" />
-      {/* Wide jar */}
-      <Rect x={123} y={60} width={28} height={44} rx={8} fill="#3A9E8F" fillOpacity={0.2} />
-      <Rect x={123} y={60} width={28} height={44} rx={8} fill="none" stroke="#3A9E8F" strokeWidth={1} strokeOpacity={0.4} />
-      <Rect x={125} y={55} width={24} height={8} rx={4} fill="#3A9E8F" fillOpacity={0.3} />
-      {/* Accent particles */}
-      <Circle cx={45} cy={40} r={2} fill="#3A9E8F" fillOpacity={0.3} />
-      <Circle cx={160} cy={45} r={2} fill="#C07B2A" fillOpacity={0.3} />
-      <Circle cx={40} cy={110} r={1.5} fill="#C07B2A" fillOpacity={0.2} />
-      <Circle cx={165} cy={115} r={2} fill="#3A9E8F" fillOpacity={0.25} />
-      <Circle cx={100} cy={125} r={1.5} fill="#3A9E8F" fillOpacity={0.2} />
-    </Svg>
-  );
-}
+// Add-product methods surfaced as shelf cards. Both wire to the screen's one
+// real entry point — the AddProductSheet — via its `initialMode` prop:
+// scanning jumps to the label-photo flow, search to the by-name flow. The
+// handoff's third "Browse popular" row has no backing action here, so it is
+// intentionally omitted.
+type ShelfMethod = {
+  mode: 'photo' | 'search';
+  icon: GlowIconName;
+  title: string;
+  body: string;
+  fastest?: boolean;
+};
+
+const METHODS: ShelfMethod[] = [
+  { mode: 'photo',  icon: 'camera', title: 'Scan a bottle',  body: 'Point at the label — we read the rest.', fastest: true },
+  { mode: 'search', icon: 'search', title: 'Search by name', body: 'Type a brand or product.' },
+];
 
 export default function Products() {
-  const { advance, goBack, onboardingFlow, onboardingFlowIndex } = useOnboardingNavigation();
-  const products = useStore((s) => s.products);
+  const { advance, goBack, onboardingFlowIndex } = useOnboardingNavigation();
+  const insets = useSafeAreaInsets();
+  const P = Glow.palette;
+
+  const allProducts = useStore((s) => s.products);
+  const products = useMemo(() => activeProducts(allProducts), [allProducts]);
   const removeProduct = useStore((s) => s.removeProduct);
 
   const [showSheet, setShowSheet] = useState(false);
+  const [sheetMode, setSheetMode] = useState<'photo' | 'search'>('photo');
 
-  const handleContinue = () => {
-    advance();
+  const openSheet = (mode: 'photo' | 'search') => {
+    setSheetMode(mode);
+    setShowSheet(true);
   };
 
+  const confirmRemove = (id: string, name: string) =>
+    Alert.alert('Remove product?', name, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: () => removeProduct(id) },
+    ]);
+
+  const hasProducts = products.length > 0;
+  // Stagger slot offset so method rows fall after the heading (and the product
+  // list, when present).
+  const methodBase = hasProducts ? 2 : 1;
+
   return (
-    <OnboardingTransition
-      illustration={<ProductsIllustration />}
-      heading="What's in your routine right now?"
-      subtext="Adding your products helps us track what's working. You can always update this later."
-      primaryLabel={products.length > 0 ? 'Continue' : 'Skip for now'}
-      primaryOnPress={handleContinue}
-      secondaryLabel={products.length > 0 ? 'Skip for now' : undefined}
-      secondaryOnPress={products.length > 0 ? handleContinue : undefined}
-      showProgress
-      totalSteps={onboardingFlow.length}
-      currentStep={onboardingFlowIndex}
-      showBack
-      onBack={goBack}
+    <View
+      style={[
+        styles.screen,
+        { backgroundColor: P.bg, paddingTop: insets.top + 8, paddingBottom: insets.bottom + 12 },
+      ]}
     >
-      {products.length > 0 && (
-        <View style={styles.productList}>
-          {products.map((p) => (
-            <ProductCard
-              key={p.user_product_id}
-              product={p}
-              onPress={() => Alert.alert(
-                'Remove product?',
-                p.product_name,
-                [
-                  { text: 'Cancel', style: 'cancel' },
-                  { text: 'Remove', style: 'destructive', onPress: () => removeProduct(p.user_product_id) },
-                ],
-              )}
-            />
-          ))}
+      {/* Header chrome — back + step dots. Skip lives in the bottom pill. */}
+      <View style={styles.header}>
+        <TouchableOpacity
+          onPress={goBack}
+          style={styles.backBtn}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+        >
+          <GlowIcon name="back" size={20} color={P.ink} stroke={1.8} />
+        </TouchableOpacity>
+        <View style={styles.dotsWrap}>
+          <ProgressDots total={ONBOARDING_PROGRESS_DOT_COUNT} current={Math.max(onboardingFlowIndex - 1, 0)} />
         </View>
-      )}
+        <View style={styles.headerSpacer} />
+      </View>
 
-      <TouchableOpacity
-        style={styles.addButton}
-        onPress={() => setShowSheet(true)}
-        activeOpacity={0.7}
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
       >
-        <Feather name="plus" size={18} color={Colors.primaryLight} />
-        <Text style={styles.addButtonText}>Add a product</Text>
-      </TouchableOpacity>
+        <FadeUp index={0}>
+          <Text style={[styles.heading, { color: P.ink }]}>What's on{'\n'}your shelf?</Text>
+          <Text style={[styles.sub, { color: P.muted }]}>
+            Add what you use now — or leave it empty and build as you go.
+          </Text>
+        </FadeUp>
 
-      <AddProductSheet visible={showSheet} onClose={() => setShowSheet(false)} />
-    </OnboardingTransition>
+        {hasProducts && (
+          <FadeUp index={1}>
+            <View style={styles.productList}>
+              {products.map((p) => (
+                <ProductCard
+                  key={p.user_product_id}
+                  product={p}
+                  onPress={() => confirmRemove(p.user_product_id, p.product_name)}
+                />
+              ))}
+            </View>
+          </FadeUp>
+        )}
+
+        <View style={styles.methods}>
+          {METHODS.map((m, i) => (
+            <FadeUp key={m.mode} index={methodBase + i}>
+              <TouchableOpacity
+                style={[styles.methodCard, { backgroundColor: P.surface, borderColor: P.glow }]}
+                activeOpacity={0.85}
+                onPress={() => openSheet(m.mode)}
+                accessibilityRole="button"
+                accessibilityLabel={m.title}
+              >
+                <View style={[styles.iconTile, { backgroundColor: P.bg }]}>
+                  <GlowIcon name={m.icon} size={20} color={P.accent} stroke={1.6} />
+                </View>
+                <View style={styles.methodText}>
+                  <View style={styles.methodTitleRow}>
+                    <Text style={[styles.methodTitle, { color: P.ink }]}>{m.title}</Text>
+                    {m.fastest && (
+                      <View style={[styles.fastChip, { backgroundColor: P.accent + '18' }]}>
+                        <Text style={[styles.fastChipText, { color: P.accent }]}>fastest</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={[styles.methodBody, { color: P.muted }]}>{m.body}</Text>
+                </View>
+                <GlowIcon name="chevron" size={16} color={P.muted} stroke={1.6} />
+              </TouchableOpacity>
+            </FadeUp>
+          ))}
+
+          <FadeUp index={methodBase + METHODS.length}>
+            <Text style={[styles.microcopy, { color: P.muted }]}>
+              <Text style={[styles.microcopyEm, { color: P.muted }]}>Three to five is plenty</Text>
+              {' to start. Most people add their fifth in week two.'}
+            </Text>
+          </FadeUp>
+        </View>
+      </ScrollView>
+
+      <View style={styles.footer}>
+        <TouchableOpacity
+          style={[styles.ghostPill, { borderColor: P.glow }]}
+          activeOpacity={0.86}
+          onPress={advance}
+          accessibilityRole="button"
+          accessibilityLabel="I'll do this later"
+        >
+          <Text style={[styles.ghostPillText, { color: P.ink }]}>I'll do this later</Text>
+        </TouchableOpacity>
+      </View>
+
+      <AddProductSheet visible={showSheet} initialMode={sheetMode} onClose={() => setShowSheet(false)} />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  productList: {
-    gap: Spacing.sm,
-  },
-  addButton: {
+  screen: { flex: 1 },
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.sm,
-    paddingVertical: Spacing.lg,
-    paddingHorizontal: Spacing.lg,
-    borderRadius: BorderRadius.xl,
-    borderWidth: 1.5,
-    borderColor: Glow.palette.glow,
-    borderStyle: 'dashed',
-    backgroundColor: Glow.palette.surface,
+    paddingHorizontal: 24,
+    paddingTop: 4,
+    paddingBottom: 4,
   },
-  addButtonText: {
-    color: Glow.palette.accent,
-    fontFamily: FontFamily.sansSemiBold,
-    fontSize: FontSize.md,
+  backBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  dotsWrap: { flex: 1, alignItems: 'center' },
+  headerSpacer: { width: 36 },
+  scroll: { flex: 1 },
+  scrollContent: { paddingHorizontal: 24, paddingTop: 16, paddingBottom: 24 },
+  heading: {
+    fontFamily: FontFamily.serifItalic,
+    fontSize: 34,
+    lineHeight: 38,
+    letterSpacing: -0.5,
+    paddingHorizontal: 4,
   },
+  sub: {
+    fontFamily: FontFamily.sans,
+    fontSize: 14,
+    lineHeight: 21,
+    marginTop: 10,
+    paddingHorizontal: 4,
+  },
+  productList: { gap: Spacing.sm, marginTop: 20 },
+  methods: { marginTop: 20, gap: 10 },
+  methodCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 16,
+  },
+  iconTile: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  methodText: { flex: 1, minWidth: 0 },
+  methodTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  methodTitle: { fontFamily: FontFamily.sansSemiBold, fontSize: 15 },
+  fastChip: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999 },
+  fastChipText: { fontFamily: FontFamily.sansMedium, fontSize: 10, letterSpacing: 0.8, textTransform: 'uppercase' },
+  methodBody: { fontFamily: FontFamily.sans, fontSize: 12, lineHeight: 16, marginTop: 2 },
+  microcopy: { fontFamily: FontFamily.sans, fontSize: 12, lineHeight: 18, textAlign: 'center', marginTop: 8 },
+  microcopyEm: { fontFamily: FontFamily.serifItalic },
+  footer: { paddingHorizontal: 24, paddingTop: 12 },
+  ghostPill: { borderWidth: 1.5, borderRadius: 999, paddingVertical: 14, alignItems: 'center' },
+  ghostPillText: { fontFamily: FontFamily.sansMedium, fontSize: 14 },
 });

@@ -16,6 +16,7 @@ const CURATED_PRODUCTS = [
   },
   {
     name: 'PanOxyl Acne Foaming Wash 4%',
+    image_url: 'https://images.openbeautyfacts.org/images/products/030/316/022/8551/front_ar.4.400.jpg',
     brand: 'PanOxyl',
     barcode: '011822307239',
     ingredients: ['Benzoyl Peroxide 4%', 'Water', 'Sodium C14-16 Olefin Sulfonate', 'Cocamidopropyl Betaine', 'Glycerin', 'Sodium Chloride', 'Carbomer', 'Sodium Hydroxide', 'Disodium EDTA'],
@@ -23,6 +24,7 @@ const CURATED_PRODUCTS = [
   },
   {
     name: 'PanOxyl Acne Creamy Wash',
+    image_url: 'https://images.openbeautyfacts.org/images/products/030/316/022/7066/front_en.3.400.jpg',
     brand: 'PanOxyl',
     barcode: '011822307253',
     ingredients: ['Benzoyl Peroxide 4%', 'Water', 'Cetyl Alcohol', 'Stearyl Alcohol', 'Lactic Acid', 'Glycerin', 'PEG-100 Stearate', 'Glyceryl Stearate', 'Potassium Cetyl Phosphate', 'Cocamidopropyl Betaine', 'Sodium Hydroxide', 'Carbomer', 'Disodium EDTA'],
@@ -44,6 +46,7 @@ const CURATED_PRODUCTS = [
   // ==================== Byoma ====================
   {
     name: 'Byoma Moisturizing Gel Cream',
+    image_url: 'https://images.openbeautyfacts.org/images/products/000/000/618/3981/front_en.3.400.jpg',
     brand: 'Byoma',
     barcode: '5060734580010',
     ingredients: ['Water', 'Glycerin', 'Caprylic/Capric Triglyceride', 'Cetearyl Alcohol', 'Cetyl Alcohol', 'Ceramide NP', 'Ceramide AP', 'Ceramide EOP', 'Phytosphingosine', 'Cholesterol', 'Niacinamide', 'Squalane', 'Sodium Hyaluronate', 'Panthenol', 'Allantoin', 'Tocopherol', 'Carbomer', 'Xanthan Gum', 'Sodium Lauroyl Lactylate', 'Sodium Hydroxide', 'Disodium EDTA', 'Phenoxyethanol', 'Ethylhexylglycerin'],
@@ -81,6 +84,7 @@ const CURATED_PRODUCTS = [
   },
   {
     name: 'Byoma Moisturizing Cream',
+    image_url: 'https://images.openbeautyfacts.org/images/products/000/000/618/3981/front_en.3.400.jpg',
     brand: 'Byoma',
     ingredients: ['Water', 'Glycerin', 'Caprylic/Capric Triglyceride', 'Cetearyl Alcohol', 'Cetyl Alcohol', 'Ceramide NP', 'Ceramide AP', 'Ceramide EOP', 'Phytosphingosine', 'Cholesterol', 'Niacinamide', 'Squalane', 'Shea Butter', 'Sodium Hyaluronate', 'Panthenol', 'Allantoin', 'Tocopherol', 'Dimethicone', 'Carbomer', 'Xanthan Gum', 'Sodium Lauroyl Lactylate', 'Sodium Hydroxide', 'Disodium EDTA', 'Phenoxyethanol', 'Ethylhexylglycerin'],
     category: 'moisturizer',
@@ -140,6 +144,7 @@ const CURATED_PRODUCTS = [
   // ==================== CeraVe ====================
   {
     name: 'CeraVe Foaming Facial Cleanser',
+    image_url: 'https://images.openbeautyfacts.org/images/products/360/600/053/7194/front_en.4.400.jpg',
     brand: 'CeraVe',
     barcode: '301871371054',
     ingredients: ['Water', 'Cocamidopropyl Hydroxysultaine', 'Glycerin', 'Sodium Lauroyl Sarcosinate', 'Niacinamide', 'Ceramide NP', 'Ceramide AP', 'Ceramide EOP', 'Phytosphingosine', 'Cholesterol', 'Sodium Hyaluronate', 'Sodium Methyl Cocoyl Taurate', 'PEG-150 Pentaerythrityl Tetrastearate', 'Propylene Glycol', 'Citric Acid', 'Sodium Chloride', 'Sodium Lauroyl Lactylate', 'Disodium EDTA', 'Methylparaben', 'Propylparaben'],
@@ -147,6 +152,7 @@ const CURATED_PRODUCTS = [
   },
   {
     name: 'CeraVe Moisturizing Cream',
+    image_url: 'https://images.openbeautyfacts.org/images/products/360/600/053/7743/front_en.37.400.jpg',
     brand: 'CeraVe',
     barcode: '301871371160',
     ingredients: ['Water', 'Glycerin', 'Cetearyl Alcohol', 'Caprylic/Capric Triglyceride', 'Cetyl Alcohol', 'Ceteareth-20', 'Petrolatum', 'Ceramide NP', 'Ceramide AP', 'Ceramide EOP', 'Phytosphingosine', 'Cholesterol', 'Sodium Hyaluronate', 'Dimethicone', 'Potassium Phosphate', 'Dipotassium Phosphate', 'Sodium Lauroyl Lactylate', 'Disodium EDTA', 'Phenoxyethanol', 'Methylparaben', 'Propylparaben', 'Carbomer', 'Xanthan Gum'],
@@ -154,6 +160,7 @@ const CURATED_PRODUCTS = [
   },
   {
     name: 'CeraVe Hydrating Facial Cleanser',
+    image_url: 'https://images.openbeautyfacts.org/images/products/360/600/053/7675/front_en.3.400.jpg',
     brand: 'CeraVe',
     barcode: '301871371047',
     ingredients: ['Water', 'Glycerin', 'Cetearyl Alcohol', 'PEG-40 Stearate', 'Stearyl Alcohol', 'Ceramide NP', 'Ceramide AP', 'Ceramide EOP', 'Phytosphingosine', 'Cholesterol', 'Sodium Hyaluronate', 'Niacinamide', 'Behentrimonium Methosulfate', 'Ceteareth-20', 'Polysorbate 20', 'Sodium Lauroyl Lactylate', 'Disodium EDTA', 'Methylparaben', 'Propylparaben', 'Carbomer', 'Xanthan Gum'],
@@ -161,6 +168,7 @@ const CURATED_PRODUCTS = [
   },
   {
     name: 'CeraVe PM Facial Moisturizing Lotion',
+    image_url: 'https://images.openbeautyfacts.org/images/products/360/600/053/7453/front_en.3.400.jpg',
     brand: 'CeraVe',
     barcode: '301871371085',
     ingredients: ['Water', 'Glycerin', 'Niacinamide', 'Cetearyl Alcohol', 'Caprylic/Capric Triglyceride', 'Ceramide NP', 'Ceramide AP', 'Ceramide EOP', 'Phytosphingosine', 'Cholesterol', 'Sodium Hyaluronate', 'Dimethicone', 'Ceteareth-20', 'Polyglyceryl-3 Diisostearate', 'Potassium Phosphate', 'Dipotassium Phosphate', 'Sodium Lauroyl Lactylate', 'Disodium EDTA', 'Phenoxyethanol', 'Methylparaben', 'Propylparaben', 'Carbomer', 'Xanthan Gum'],
@@ -168,6 +176,7 @@ const CURATED_PRODUCTS = [
   },
   {
     name: 'CeraVe AM Facial Moisturizing Lotion SPF 30',
+    image_url: 'https://images.openbeautyfacts.org/images/products/079/337/924/5584/front_en.3.400.jpg',
     brand: 'CeraVe',
     barcode: '301871371092',
     ingredients: ['Homosalate 10%', 'Meradimate 5%', 'Octinoxate 5%', 'Octocrylene 2%', 'Zinc Oxide 6.3%', 'Water', 'Glycerin', 'Niacinamide', 'Ceramide NP', 'Ceramide AP', 'Ceramide EOP', 'Phytosphingosine', 'Cholesterol', 'Sodium Hyaluronate', 'Dimethicone', 'Cetearyl Alcohol', 'Behentrimonium Methosulfate', 'Sodium Lauroyl Lactylate', 'Disodium EDTA', 'Phenoxyethanol'],
@@ -175,24 +184,28 @@ const CURATED_PRODUCTS = [
   },
   {
     name: 'CeraVe Renewing SA Cleanser',
+    image_url: 'https://images.openbeautyfacts.org/images/products/009/044/315/6556/front_en.3.400.jpg',
     brand: 'CeraVe',
     ingredients: ['Salicylic Acid', 'Water', 'Sodium Lauroyl Sarcosinate', 'Cocamidopropyl Hydroxysultaine', 'Glycerin', 'Niacinamide', 'Ceramide NP', 'Ceramide AP', 'Ceramide EOP', 'Phytosphingosine', 'Cholesterol', 'Sodium Hyaluronate', 'Sodium Methyl Cocoyl Taurate', 'Sodium Chloride', 'Sodium Lauroyl Lactylate', 'Citric Acid', 'Disodium EDTA', 'Methylparaben', 'Propylparaben'],
     category: 'cleanser',
   },
   {
     name: 'CeraVe Healing Ointment',
+    image_url: 'https://images.openbeautyfacts.org/images/products/360/600/053/7217/front_fr.3.400.jpg',
     brand: 'CeraVe',
     ingredients: ['Petrolatum', 'Mineral Oil', 'Ceresin', 'Paraffin', 'Ceramide NP', 'Ceramide AP', 'Ceramide EOP', 'Phytosphingosine', 'Cholesterol', 'Dimethicone', 'Tocopheryl Acetate', 'Panthenol', 'Sodium Lauroyl Lactylate', 'Alumina', 'Phenoxyethanol'],
     category: 'ointment',
   },
   {
     name: 'CeraVe Hydrating Cream-to-Foam Cleanser',
+    image_url: 'https://images.openbeautyfacts.org/images/products/333/787/574/3563/front_fr.12.400.jpg',
     brand: 'CeraVe',
     ingredients: ['Water', 'Glycerin', 'Sodium Cocoyl Glycinate', 'Coco-Betaine', 'Disodium Cocoyl Glutamate', 'Ceramide NP', 'Ceramide AP', 'Ceramide EOP', 'Phytosphingosine', 'Cholesterol', 'Niacinamide', 'Sodium Hyaluronate', 'Amino Acid Complex', 'Sodium Lauroyl Lactylate', 'Sodium Chloride', 'Citric Acid', 'Disodium EDTA', 'Phenoxyethanol', 'Ethylhexylglycerin'],
     category: 'cleanser',
   },
   {
     name: 'CeraVe Retinol Serum',
+    image_url: 'https://images.openbeautyfacts.org/images/products/333/787/582/9007/front_en.9.400.jpg',
     brand: 'CeraVe',
     ingredients: ['Water', 'Dimethicone', 'Retinol', 'Niacinamide', 'Ceramide NP', 'Ceramide AP', 'Ceramide EOP', 'Phytosphingosine', 'Cholesterol', 'Sodium Hyaluronate', 'Glycerin', 'Cetearyl Alcohol', 'Ceteareth-20', 'Sodium Lauroyl Lactylate', 'Tocopheryl Acetate', 'Polysorbate 20', 'BHT', 'Disodium EDTA', 'Phenoxyethanol', 'Ethylhexylglycerin'],
     category: 'serum',
@@ -214,6 +227,7 @@ const CURATED_PRODUCTS = [
   },
   {
     name: 'The Ordinary Hyaluronic Acid 2% + B5',
+    image_url: 'https://images.openbeautyfacts.org/images/products/076/991/519/0199/front_en.10.400.jpg',
     brand: 'The Ordinary',
     barcode: '769915190257',
     ingredients: ['Water', 'Sodium Hyaluronate', 'Panthenol', 'Ahnfeltia Concinna Extract', 'Glycerin', 'Pentylene Glycol', 'Propanediol', 'Sodium Hyaluronate Crosspolymer', 'PPG-26-Buteth-26', 'PEG-40 Hydrogenated Castor Oil', 'Trisodium Ethylenediamine Disuccinate', 'Citric Acid', 'Ethoxydiglycol', 'Caprylyl Glycol', 'Hexylene Glycol', 'Phenoxyethanol', 'Chlorphenesin'],
@@ -234,6 +248,7 @@ const CURATED_PRODUCTS = [
   },
   {
     name: 'The Ordinary Glycolic Acid 7% Toning Solution',
+    image_url: 'https://images.openbeautyfacts.org/images/products/076/991/519/0977/front_en.21.400.jpg',
     brand: 'The Ordinary',
     barcode: '769915190349',
     ingredients: ['Water', 'Glycolic Acid', 'Rosa Damascena Flower Water', 'Centaurea Cyanus Flower Water', 'Aloe Barbadensis Leaf Water', 'Propanediol', 'Glycerin', 'Triethanolamine', 'Aminomethyl Propanol', 'Panthenol', 'Sodium Hyaluronate Crosspolymer', 'Tasmannia Lanceolata Fruit/Leaf Extract', 'Phenoxyethanol', 'Chlorphenesin'],
@@ -267,6 +282,7 @@ const CURATED_PRODUCTS = [
   },
   {
     name: 'The Ordinary Caffeine Solution 5% + EGCG',
+    image_url: 'https://images.openbeautyfacts.org/images/products/076/991/519/0670/front_en.21.400.jpg',
     brand: 'The Ordinary',
     ingredients: ['Water', 'Caffeine', 'Epigallocatechin Gallatyl Glucoside', 'Glycerin', 'Propanediol', 'Maltodextrin', 'Galactoarabinan', 'Hyaluronic Acid', 'Oxidized Glutathione', 'Melanin', 'Hydroxypropyl Cyclodextrin', 'Pentylene Glycol', 'Dimethyl Isosorbide', 'PPG-26-Buteth-26', 'PEG-40 Hydrogenated Castor Oil', 'Citric Acid', 'Phenoxyethanol', 'Chlorphenesin'],
     category: 'serum',
@@ -279,6 +295,7 @@ const CURATED_PRODUCTS = [
   },
   {
     name: 'The Ordinary Natural Moisturizing Factors + HA',
+    image_url: 'https://images.openbeautyfacts.org/images/products/076/991/519/0731/front_en.3.400.jpg',
     brand: 'The Ordinary',
     ingredients: ['Water', 'Caprylic/Capric Triglyceride', 'Cetyl Alcohol', 'Cetearyl Isononanoate', 'Glycerin', 'Sodium Hyaluronate', 'Arginine', 'Aspartic Acid', 'Glycine', 'Alanine', 'Serine', 'Valine', 'Isoleucine', 'Proline', 'Threonine', 'Histidine', 'Phenylalanine', 'PCA', 'Sodium PCA', 'Urea', 'Allantoin', 'Trehalose', 'Polyquaternium-51', 'Sodium Lactate', 'Ceteareth-20', 'Cetearyl Alcohol', 'Dimethicone', 'Isocetyl Stearoyl Stearate', 'Behentrimonium Methosulfate', 'Polysorbate 60', 'Sorbitan Stearate', 'Sodium Chloride', 'Sodium Hydroxide', 'Citric Acid', 'Phenoxyethanol', 'Chlorphenesin'],
     category: 'moisturizer',
@@ -287,6 +304,7 @@ const CURATED_PRODUCTS = [
   // ==================== Neutrogena ====================
   {
     name: 'Neutrogena Hydro Boost Water Gel',
+    image_url: 'https://images.openbeautyfacts.org/images/products/357/466/128/8345/front_en.9.400.jpg',
     brand: 'Neutrogena',
     barcode: '070501110331',
     ingredients: ['Water', 'Dimethicone', 'Glycerin', 'Dimethicone/Vinyl Dimethicone Crosspolymer', 'Sodium Hyaluronate', 'Polyacrylamide', 'Cetearyl Olivate', 'Sorbitan Olivate', 'Phenoxyethanol', 'C13-14 Isoparaffin', 'Dimethiconol', 'Chlorphenesin', 'Ceteareth-20', 'Laureth-7', 'Carbomer', 'Ethylhexylglycerin', 'Sodium Hydroxide'],
@@ -307,6 +325,7 @@ const CURATED_PRODUCTS = [
   },
   {
     name: 'Neutrogena Oil-Free Acne Wash',
+    image_url: 'https://images.openbeautyfacts.org/images/products/088/777/711/1111/front_xx.7.400.jpg',
     brand: 'Neutrogena',
     ingredients: ['Salicylic Acid 2%', 'Water', 'Sodium C14-16 Olefin Sulfonate', 'Cocamidopropyl Betaine', 'Sodium Chloride', 'PEG-80 Sorbitan Laurate', 'C12-15 Alkyl Lactate', 'Cocamide MEA', 'Disodium EDTA', 'Aloe Barbadensis Leaf Extract', 'Anthemis Nobilis Flower Extract', 'Chamomilla Recutita Flower Extract', 'Citric Acid', 'Yellow 5', 'Red 40'],
     category: 'cleanser',
@@ -328,6 +347,7 @@ const CURATED_PRODUCTS = [
   },
   {
     name: 'La Roche-Posay Toleriane Hydrating Gentle Cleanser',
+    image_url: 'https://images.openbeautyfacts.org/images/products/333/787/554/5778/front_en.9.400.jpg',
     brand: 'La Roche-Posay',
     barcode: '883140500902',
     ingredients: ['Water', 'Glycerin', 'Pentaerythrityl Tetraethylhexanoate', 'Niacinamide', 'Propylene Glycol', 'Ceramide NP', 'Coco-Betaine', 'Sodium Methyl Cocoyl Taurate', 'Acrylates/C10-30 Alkyl Acrylate Crosspolymer', 'Sodium Hydroxide', 'Disodium EDTA', 'Panthenol', 'Tocopherol', 'Sodium Chloride', 'Citric Acid'],
@@ -341,6 +361,7 @@ const CURATED_PRODUCTS = [
   },
   {
     name: 'La Roche-Posay Cicaplast Baume B5+',
+    image_url: 'https://images.openbeautyfacts.org/images/products/333/787/551/7300/front_fr.6.400.jpg',
     brand: 'La Roche-Posay',
     ingredients: ['Water', 'Hydrogenated Polyisobutene', 'Dimethicone', 'Glycerin', 'Panthenol', 'Butyrospermum Parkii Butter', 'Propanediol', 'Cetearyl Alcohol', 'Aluminum Starch Octenylsuccinate', 'Madecassoside', 'Manganese Gluconate', 'Copper Gluconate', 'Zinc Gluconate', 'Tristearin', 'Sodium Lauroyl Lactylate', 'Citric Acid', 'Disodium EDTA', 'Phenoxyethanol'],
     category: 'moisturizer',
@@ -355,6 +376,7 @@ const CURATED_PRODUCTS = [
   // ==================== Differin ====================
   {
     name: 'Differin Adapalene Gel 0.1%',
+    image_url: 'https://images.openbeautyfacts.org/images/products/030/299/388/9182/front_en.3.400.jpg',
     brand: 'Differin',
     barcode: '302993889182',
     ingredients: ['Adapalene 0.1%', 'Water', 'Carbomer 940', 'Edetate Disodium', 'Methylparaben', 'Poloxamer 182', 'Propylene Glycol', 'Sodium Hydroxide'],
@@ -440,6 +462,7 @@ const CURATED_PRODUCTS = [
   // ==================== Cetaphil ====================
   {
     name: 'Cetaphil Gentle Skin Cleanser',
+    image_url: 'https://images.openbeautyfacts.org/images/products/030/299/392/7167/front_en.5.400.jpg',
     brand: 'Cetaphil',
     barcode: '302993927167',
     ingredients: ['Water', 'Cetyl Alcohol', 'Propylene Glycol', 'Sodium Lauryl Sulfate', 'Stearyl Alcohol', 'Methylparaben', 'Propylparaben', 'Butylparaben'],
@@ -453,6 +476,7 @@ const CURATED_PRODUCTS = [
   },
   {
     name: 'Cetaphil Moisturizing Cream',
+    image_url: 'https://images.openbeautyfacts.org/images/products/030/299/391/7564/front_en.4.400.jpg',
     brand: 'Cetaphil',
     ingredients: ['Water', 'Glycerin', 'Petrolatum', 'Dicaprylyl Ether', 'Dimethicone', 'Glyceryl Stearate', 'Cetyl Alcohol', 'Prunus Amygdalus Dulcis Oil', 'PEG-30 Stearate', 'Panthenol', 'Niacinamide', 'Tocopheryl Acetate', 'Dimethiconol', 'Phenoxyethanol', 'Acrylates/C10-30 Alkyl Acrylate Crosspolymer', 'Benzyl Alcohol', 'Citric Acid', 'Disodium EDTA'],
     category: 'moisturizer',
@@ -468,6 +492,7 @@ const CURATED_PRODUCTS = [
   },
   {
     name: 'Eucerin Advanced Repair Cream',
+    image_url: 'https://images.openbeautyfacts.org/images/products/007/214/063/3820/front_en.15.400.jpg',
     brand: 'Eucerin',
     ingredients: ['Water', 'Glycerin', 'Urea', 'Cetearyl Alcohol', 'Caprylic/Capric Triglyceride', 'Ceramide NP', 'Gluco-Glycerol', 'Dimethicone', 'Glyceryl Stearate SE', 'Sunflower Seed Oil', 'Sodium Lactate', 'Sodium Hyaluronate', 'PEG-40 Stearate', 'Carbomer', 'Sodium Hydroxide', 'Lactic Acid', 'Phenoxyethanol', 'Benzyl Alcohol'],
     category: 'moisturizer',
@@ -476,6 +501,7 @@ const CURATED_PRODUCTS = [
   // ==================== Aveeno ====================
   {
     name: 'Aveeno Daily Moisturizing Lotion',
+    image_url: 'https://images.openbeautyfacts.org/images/products/038/137/003/8443/front_en.16.400.jpg',
     brand: 'Aveeno',
     barcode: '381370036005',
     ingredients: ['Water', 'Glycerin', 'Distearyldimonium Chloride', 'Petrolatum', 'Isopropyl Palmitate', 'Cetyl Alcohol', 'Dimethicone', 'Avena Sativa Kernel Flour', 'Benzyl Alcohol', 'Sodium Chloride'],
@@ -491,6 +517,7 @@ const CURATED_PRODUCTS = [
   // ==================== First Aid Beauty ====================
   {
     name: 'First Aid Beauty Ultra Repair Cream',
+    image_url: 'https://images.openbeautyfacts.org/images/products/085/193/900/2791/front_en.3.400.jpg',
     brand: 'First Aid Beauty',
     barcode: '818367010015',
     ingredients: ['Water', 'Stearic Acid', 'Glycerin', 'C12-15 Alkyl Benzoate', 'Caprylic/Capric Triglyceride', 'Glyceryl Stearate SE', 'Cetearyl Alcohol', 'Colloidal Oatmeal', 'Shea Butter', 'Ceramide NP', 'Allantoin', 'Dimethicone', 'Squalane', 'Phenoxyethanol', 'Caprylyl Glycol', 'Chrysanthemum Parthenium Extract', 'Eucalyptus Globulus Leaf Extract'],
@@ -526,6 +553,7 @@ const CURATED_PRODUCTS = [
   // ==================== Kiehl's ====================
   {
     name: "Kiehl's Ultra Facial Cream",
+    image_url: 'https://images.openbeautyfacts.org/images/products/360/597/502/8799/front_en.4.400.jpg',
     brand: "Kiehl's",
     ingredients: ['Water', 'Glycerin', 'Cyclohexasiloxane', 'Squalane', 'Bis-PEG-18 Methyl Ether Dimethyl Silane', 'Sucrose Stearate', 'Stearyl Alcohol', 'PEG-8 Stearate', 'Glyceryl Stearate', 'Imperata Cylindrica Root Extract', 'Trehalose', 'Prunus Persica Kernel Extract', 'Desmodium Gangeticum Leaf/Stem Extract', 'Phenoxyethanol', 'Disodium EDTA', 'Methylparaben', 'Propylparaben'],
     category: 'moisturizer',
@@ -603,6 +631,7 @@ const CURATED_PRODUCTS = [
   },
   {
     name: 'COSRX BHA Blackhead Power Liquid',
+    image_url: 'https://images.openbeautyfacts.org/images/products/880/941/647/0054/front_en.3.400.jpg',
     brand: 'COSRX',
     ingredients: ['Salix Alba Bark Water', 'Butylene Glycol', 'Betaine Salicylate', 'Niacinamide', 'Sodium Hyaluronate', 'Panthenol', 'Camellia Sinensis Leaf Extract', 'Salix Alba Bark Extract', '1,2-Hexanediol', 'Arginine', 'Ethyl Hexanediol', 'Polysorbate 60'],
     category: 'exfoliant',
@@ -626,6 +655,7 @@ const CURATED_PRODUCTS = [
   // ==================== Aquaphor ====================
   {
     name: 'Aquaphor Healing Ointment',
+    image_url: 'https://images.openbeautyfacts.org/images/products/007/214/045/2315/front_en.12.400.jpg',
     brand: 'Aquaphor',
     barcode: '072140004200',
     ingredients: ['Petrolatum 41%', 'Mineral Oil', 'Ceresin', 'Lanolin Alcohol', 'Panthenol', 'Glycerin', 'Bisabolol'],
@@ -657,6 +687,7 @@ const CURATED_PRODUCTS = [
   // ==================== Glow Recipe ====================
   {
     name: 'Glow Recipe Watermelon Glow Niacinamide Dew Drops',
+    image_url: 'https://images.openbeautyfacts.org/images/products/081/005/296/0166/front_en.3.400.jpg',
     brand: 'Glow Recipe',
     ingredients: ['Water', 'Glycerin', 'Niacinamide', 'Propanediol', 'Dimethicone', 'Watermelon Extract', 'Sodium Hyaluronate', 'Moringa Seed Oil', 'Betaine', 'Allantoin', 'Mica', 'Tin Oxide', 'Titanium Dioxide', 'Phenoxyethanol', 'Ethylhexylglycerin'],
     category: 'serum',
@@ -707,6 +738,7 @@ const CURATED_PRODUCTS = [
   },
   {
     name: 'Laneige Lip Sleeping Mask',
+    image_url: 'https://images.openbeautyfacts.org/images/products/880/964/305/3273/front_en.4.400.jpg',
     brand: 'Laneige',
     ingredients: ['Diisostearyl Malate', 'Hydrogenated Polyisobutene', 'Phytosteryl/Isostearyl/Cetyl/Stearyl/Behenyl Dimer Dilinoleate', 'Shea Butter', 'Coconut Oil', 'Murumuru Seed Butter', 'Beeswax', 'Vitamin C', 'Panthenol', 'Rubus Idaeus Seed Extract', 'Fragaria Vesca Fruit Extract', 'Vaccinium Macrocarpon Fruit Extract', 'Fragrance'],
     category: 'lip care',
@@ -737,6 +769,7 @@ const CURATED_PRODUCTS = [
   // ==================== Bioderma ====================
   {
     name: 'Bioderma Sensibio H2O Micellar Water',
+    image_url: 'https://images.openbeautyfacts.org/images/products/370/112/981/2112/front_en.3.400.jpg',
     brand: 'Bioderma',
     barcode: '3401396741275',
     ingredients: ['Water', 'PEG-6 Caprylic/Capric Glycerides', 'Fructooligosaccharides', 'Mannitol', 'Xylitol', 'Rhamnose', 'Cucumis Sativus Fruit Extract', 'Propylene Glycol', 'Disodium EDTA', 'Cetrimonium Bromide'],

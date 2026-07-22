@@ -18,7 +18,9 @@
     "seo:health": "node --import ./scripts/seo-engine/node_modules/tsx/dist/loader.mjs ./scripts/seo-engine/src/health.ts",
     "seo:reseed": "node --import ./scripts/seo-engine/node_modules/tsx/dist/loader.mjs ./scripts/seo-engine/src/reseed.ts",
     "seo:report": "node --import ./scripts/seo-engine/node_modules/tsx/dist/loader.mjs ./scripts/seo-engine/src/report.ts",
-    "seo:test": "node --import ./scripts/seo-engine/node_modules/tsx/dist/loader.mjs --test ./scripts/seo-engine/src/lib/__tests__/*.test.ts"
+    "seo:test": "node --import ./scripts/seo-engine/node_modules/tsx/dist/loader.mjs --test ./scripts/seo-engine/src/lib/__tests__/*.test.ts",
+    "test:first-touch": "node --import ./scripts/seo-engine/node_modules/tsx/dist/loader.mjs --test ./lib/__tests__/posthogAttribution.test.ts ./components/__tests__/PostHogAttribution.config.test.ts",
+    "test:attribution": "node --import ./scripts/seo-engine/node_modules/tsx/dist/loader.mjs --test ./lib/__tests__/posthogAttribution.test.ts ./functions/api/__tests__/waitlist-attribution.test.ts ./functions/api/__tests__/waitlist-lookup.test.ts ./components/__tests__/WaitlistForm.attribution.test.ts ./app/uv-scan/__tests__/lib.test.ts"
   },
   "keywords": [],
   "author": "",
@@ -35,6 +37,7 @@
     "next": "^16.2.3",
     "next-mdx-remote": "^6.0.0",
     "postcss": "^8.5.9",
+    "posthog-js": "^1.396.5",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "reading-time": "^1.5.0",
@@ -46,6 +49,7 @@
     "typescript": "^6.0.2"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260523.1"
+    "@cloudflare/workers-types": "^4.20260523.1",
+    "@types/node": "^22.20.1"
   }
 }

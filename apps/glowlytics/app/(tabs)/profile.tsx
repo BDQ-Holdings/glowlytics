@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,6 +17,7 @@ import {
   buildOverallSkinInsight,
   getLatestDailyForOutput,
 } from '../../src/services/skinInsights';
+import { activeProducts } from '../../src/services/ritual';
 
 let useUser: (() => { user: { firstName?: string | null; primaryEmailAddress?: { emailAddress?: string } } | null | undefined }) | undefined;
 try {
@@ -38,15 +39,20 @@ interface MeGoal {
   progress: number; // 0-100
 }
 
-const SETTINGS_ROWS = [
-  { key: 'all',           label: 'All settings',           route: '/settings' as const },
-  { key: 'skin',          label: 'Skin profile',           route: '/settings/skin-profile' as const },
-  { key: 'notifications', label: 'Notifications',          route: '/settings/notifications' as const },
-  { key: 'camera',        label: 'Camera & photos',        route: '/settings/camera' as const },
-  { key: 'privacy',       label: 'Privacy & data',         route: '/settings/privacy' as const },
-  { key: 'appearance',    label: 'Appearance',             route: '/settings/appearance' as const },
-  { key: 'export',        label: 'Export your data',       route: '/settings/export' as const },
-  { key: 'help',          label: 'Help & feedback',        route: '/settings/help' as const },
+type SettingsRow =
+  | { key: string; label: string; route: string }
+  | { key: string; label: string; action: () => void };
+
+const SETTINGS_ROWS: readonly SettingsRow[] = [
+  { key: 'skin',          label: 'Skin profile',     route: '/settings/skin-profile' },
+  { key: 'notifications', label: 'Notifications',     route: '/settings/notifications' },
+  { key: 'camera',        label: 'Camera & photos',   action: () => { Linking.openSettings().catch(() => {}); } },
+  { key: 'privacy',       label: 'Privacy & data',    route: '/settings/privacy' },
+  { key: 'appearance',    label: 'Appearance',        route: '/settings/appearance' },
+  { key: 'export',        label: 'Export your data',  route: '/settings/export' },
+  { key: 'help',          label: 'Help & feedback',   route: '/settings/help' },
+  { key: 'clinical',      label: 'Clinical sources',  route: '/settings/clinical-sources' },
+  { key: 'about',         label: 'About',             route: '/settings/about' },
 ];
 
 export default function MeTab() {
@@ -56,7 +62,8 @@ export default function MeTab() {
 
   const user = useStore((s) => s.user);
   const dailyRecords = useStore((s) => s.dailyRecords);
-  const products = useStore((s) => s.products);
+  const allProducts = useStore((s) => s.products);
+  const products = useMemo(() => activeProducts(allProducts), [allProducts]);
   const modelOutputs = useStore((s) => s.modelOutputs);
   // Future: surface user-defined goals from store; the redesign falls back to
   // sensible defaults derived from streak + onboarding data when none exist.
@@ -244,7 +251,7 @@ export default function MeTab() {
               <TouchableOpacity
                 key={row.key}
                 activeOpacity={0.7}
-                onPress={() => router.push(row.route as any)}
+                onPress={() => ('action' in row ? row.action() : router.push(row.route))}
                 style={[
                   s.settingsRow,
                   i < SETTINGS_ROWS.length - 1 && { borderBottomWidth: 1, borderBottomColor: palette.bg },

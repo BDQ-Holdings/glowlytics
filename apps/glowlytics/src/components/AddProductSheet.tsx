@@ -14,6 +14,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { localDateStr } from '../utils/localDate';
+import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { GlowIcon } from './glow/GlowIcons';
 import { FadeUp } from './glow/GlowPrimitives';
@@ -50,6 +51,10 @@ import type { CaptureMethod, UsageSchedule } from '../types';
 interface Props {
   visible: boolean;
   onClose: () => void;
+  /** Optional mode to open directly into (e.g. 'photo' or 'search' from the
+   *  shelf's method rows). Omitted → the full add-a-product menu, so existing
+   *  callers are untouched. */
+  initialMode?: SheetMode;
 }
 
 type SheetMode = 'menu' | 'search' | 'barcode' | 'photo' | 'manual' | 'schedule';
@@ -58,6 +63,7 @@ interface SelectedProduct {
   name: string;
   ingredients: string[];
   brand?: string;
+  image_url?: string | null;
 }
 
 // Menu entry config — keeps the JSX flat and the entries trivially reorderable.
@@ -70,21 +76,22 @@ interface MenuEntry {
 }
 
 const MENU: MenuEntry[] = [
-  { id: 'photo',   label: 'Snap the bottle',  desc: 'AI reads the label — no barcode needed', icon: 'camera' },
+  { id: 'photo',   label: 'Snap the bottle',  desc: 'AI reads the label, no barcode needed', icon: 'camera' },
   { id: 'barcode', label: 'Scan barcode',     desc: 'Fastest path when there is one',          icon: 'sparkle', feather: 'maximize' },
   { id: 'search',  label: 'Search by name',   desc: 'Pull from our curated database',          icon: 'sparkle', feather: 'search' },
   { id: 'manual',  label: 'Enter manually',   desc: 'Type the name and ingredients',           icon: 'plus',    feather: 'edit-3' },
 ];
 
-export const AddProductSheet: React.FC<Props> = ({ visible, onClose }) => {
+export const AddProductSheet: React.FC<Props> = ({ visible, onClose, initialMode }) => {
   const addProduct = useStore((s) => s.addProduct);
+  const router = useRouter();
   const { hasPermission, requestPermission } = useCameraPermissionHook();
   const device = useCameraDeviceHook('back');
 
   const [mode, setMode] = useState<SheetMode>('menu');
   const [originMode, setOriginMode] = useState<SheetMode>('menu');
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<Array<{ name: string; brand?: string; ingredients: string[] }>>([]);
+  const [searchResults, setSearchResults] = useState<Array<{ name: string; brand?: string; ingredients: string[]; image_url?: string | null }>>([]);
   const [searching, setSearching] = useState(false);
   const [selected, setSelected] = useState<SelectedProduct | null>(null);
   const [schedule, setSchedule] = useState<UsageSchedule>('AM');
@@ -221,8 +228,8 @@ export const AddProductSheet: React.FC<Props> = ({ visible, onClose }) => {
     }, 220);
   }, []);
 
-  const handleSelectResult = (product: { name: string; brand?: string; ingredients: string[] }) => {
-    goToSchedule({ name: product.name, brand: product.brand, ingredients: product.ingredients }, 'search');
+  const handleSelectResult = (product: { name: string; brand?: string; ingredients: string[]; image_url?: string | null }) => {
+    goToSchedule({ name: product.name, brand: product.brand, ingredients: product.ingredients, image_url: product.image_url ?? null }, 'search');
   };
 
   const handleBarcodeScan = async (barcode: string) => {
@@ -236,7 +243,7 @@ export const AddProductSheet: React.FC<Props> = ({ visible, onClose }) => {
       const result = await lookupBarcode(barcode);
       if (result) {
         trackEvent('product_barcode_scanned', { found: true });
-        goToSchedule({ name: result.name, brand: result.brand, ingredients: result.ingredients }, 'barcode');
+        goToSchedule({ name: result.name, brand: result.brand, ingredients: result.ingredients, image_url: result.image_url ?? null }, 'barcode');
       } else {
         trackEvent('product_barcode_scanned', { found: false });
         setBarcodeFound(false);
@@ -303,19 +310,42 @@ export const AddProductSheet: React.FC<Props> = ({ visible, onClose }) => {
     goToSchedule({ name: manualName.trim(), ingredients }, 'manual');
   };
 
-  const handleConfirmAdd = () => {
+  const handleConfirmAdd = (allowDuplicate = false) => {
     if (!selected) return;
     const captureMethod: CaptureMethod =
       originMode === 'barcode' ? 'barcode' :
       originMode === 'photo' ? 'photo' : 'search';
-    addProduct({
+    const result = addProduct({
       product_name: selected.name,
       brand: selected.brand,
       product_capture_method: captureMethod,
       ingredients_list: selected.ingredients,
       usage_schedule: schedule,
       start_date: localDateStr(),
-    });
+      image_url: selected.image_url ?? null,
+    }, { allowDuplicate });
+    if (result.status === 'duplicate') {
+      Alert.alert(
+        'Already on your shelf',
+        `${result.duplicate.product_name} is already in your shelf.`,
+        [
+          {
+            text: 'View shelf',
+            onPress: () => {
+              handleClose();
+              router.replace('/(tabs)/products');
+            },
+          },
+          { text: 'Add anyway', onPress: () => handleConfirmAdd(true) },
+          { text: 'Cancel', style: 'cancel' },
+        ],
+      );
+      return;
+    }
+    if (result.status === 'ignored') {
+      handleClose();
+      return;
+    }
     trackEvent('product_added', { product_name: selected.name, capture_method: captureMethod, schedule });
     handleClose();
   };
@@ -329,6 +359,27 @@ export const AddProductSheet: React.FC<Props> = ({ visible, onClose }) => {
     setPhotoIdentifying(false);
     setMode(target);
   };
+
+  // When opened with an explicit initial mode, jump straight into it instead
+  // of the menu. Photo/barcode still route through the camera-permission gate;
+  // other modes switch directly. Ref-guarded so it fires once per open and
+  // never fights the user's in-sheet navigation. Strictly additive — callers
+  // that omit initialMode keep the default menu behavior.
+  const openedRef = useRef(false);
+  useEffect(() => {
+    if (!visible) {
+      openedRef.current = false;
+      return;
+    }
+    if (openedRef.current) return;
+    openedRef.current = true;
+    if (!initialMode || initialMode === 'menu') return;
+    if (initialMode === 'photo' || initialMode === 'barcode') {
+      void requestCameraAndGo(initialMode);
+    } else {
+      setMode(initialMode);
+    }
+  }, [visible, initialMode]);
 
   const titleFor = (m: SheetMode) => {
     switch (m) {
@@ -488,7 +539,7 @@ export const AddProductSheet: React.FC<Props> = ({ visible, onClose }) => {
                       Nothing came up
                     </Text>
                     <Text style={[styles.emptyBody, { color: palette.muted }]}>
-                      Try a shorter query — or add it manually and we'll learn it for next time.
+                      Try a shorter query, or add it manually and we'll learn it for next time.
                     </Text>
                     <TouchableOpacity
                       style={[styles.emptyBtn, { borderColor: palette.muted }]}
@@ -696,7 +747,7 @@ export const AddProductSheet: React.FC<Props> = ({ visible, onClose }) => {
 
                 <TouchableOpacity
                   style={[styles.confirmButton, { backgroundColor: palette.ink }]}
-                  onPress={handleConfirmAdd}
+                  onPress={() => handleConfirmAdd()}
                   activeOpacity={0.85}
                 >
                   <Text style={[styles.confirmText, { color: palette.surface }]}>Add to shelf</Text>

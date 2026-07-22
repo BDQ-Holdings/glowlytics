@@ -50,7 +50,7 @@ export const BoneCaptureSexPrompt: React.FC<Props> = ({ visible, onChoose }) => 
             <Text style={styles.eyebrow}>Quick question</Text>
             <Text style={styles.title}>Which baseline should we use?</Text>
             <Text style={styles.body}>
-              A few measurements — jaw angle, brow position, columella — have meaningfully different healthy ranges by sex. Tell us which one to compare you to.
+              A few measurements (jaw angle, brow position, columella) have meaningfully different healthy ranges by sex. Tell us which one to compare you to.
             </Text>
 
             <View style={styles.choices}>
@@ -73,7 +73,7 @@ export const BoneCaptureSexPrompt: React.FC<Props> = ({ visible, onChoose }) => 
             </View>
 
             <Button
-              title="Skip — use a unisex baseline"
+              title="Skip and use a unisex baseline"
               variant="secondary"
               onPress={() => onChoose('prefer_not')}
               size="lg"

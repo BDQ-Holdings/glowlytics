@@ -83,7 +83,7 @@ export default function ConsideringScreen(): React.ReactElement {
           <FadeUp index={1} delay={0} style={styles.emptyWrap}>
             <Text style={[styles.emptyTitle, { color: palette.ink }]}>Nothing saved yet</Text>
             <Text style={[styles.emptyBody, { color: palette.muted }]}>
-              Scan a product in the advisor and tap &ldquo;Save to considering&rdquo; to keep it here.
+              Deliberating in the aisle is a skill. Scan a product in the advisor and tap &ldquo;Save to considering&rdquo; and we’ll hold it here.
             </Text>
             <Pressable
               onPress={() => router.replace('/shop-advisor')}

@@ -1,3 +1,5 @@
+import type { AuthRouteDecision } from './authRoute';
+
 /**
  * Pure decision for the root `DailyQuoteRouter` (app/_layout.tsx): whether to
  * route the user to /quote on this render.
@@ -35,4 +37,56 @@ export function shouldRouteToDailyQuote(p: DailyQuoteRouteParams): boolean {
   // Already shown today.
   if (p.dailyQuoteSeenDate === p.today) return false;
   return true;
+}
+
+/** The two screens a settled, tabs-bound user can land on at launch. */
+export type EntryTarget = '/quote' | '/(tabs)/today';
+
+export interface EntryTargetParams {
+  /** The `resolveAuthRoute` verdict for this render. */
+  authDecision: AuthRouteDecision;
+  /** Whether the daily quote is due (see `shouldRouteToDailyQuote`). */
+  quoteDue: boolean;
+}
+
+/**
+ * Folds the first-open-of-day quote decision into the auth redirect so the
+ * quote arrives as the FIRST screen after the splash instead of flashing the
+ * home tabs first. Only a `tabs` decision may divert to /quote; every other
+ * decision keeps its own destination (this helper is a no-op for them).
+ */
+export function resolveEntryTarget({ authDecision, quoteDue }: EntryTargetParams): EntryTarget {
+  return authDecision === 'tabs' && quoteDue ? '/quote' : '/(tabs)/today';
+}
+
+export interface QuoteRedirectRenderedParams {
+  /** The `resolveAuthRoute` verdict for this render. */
+  authDecision: AuthRouteDecision;
+  /** The folded entry target (see `resolveEntryTarget`). */
+  entryTarget: EntryTarget;
+  /**
+   * True when the __DEV__ onboarding review hatch is active — AuthRedirector
+   * returns null (renders NOTHING, so no navigation happens) even though the
+   * decision is `tabs`. Passed in so the daily-quote guard is never claimed on
+   * a render that doesn't actually mount the /quote Redirect.
+   */
+  devOnboardingHatchActive: boolean;
+}
+
+/**
+ * Whether AuthRedirector actually renders the `/quote` Redirect on this pass.
+ *
+ * The daily-quote session guard must be claimed ONLY when this is true — not
+ * merely when the entry target resolved to `/quote`. The __DEV__ onboarding
+ * hatch can short-circuit AuthRedirector to `null` (no navigation) first, and
+ * claiming the guard there would silently swallow the real first-open-of-day
+ * quote on the next render.
+ */
+export function isQuoteRedirectRendered({
+  authDecision,
+  entryTarget,
+  devOnboardingHatchActive,
+}: QuoteRedirectRenderedParams): boolean {
+  if (devOnboardingHatchActive) return false;
+  return authDecision === 'tabs' && entryTarget === '/quote';
 }

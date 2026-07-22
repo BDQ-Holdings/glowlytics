@@ -4,6 +4,7 @@ import {
   lookupUPCitemdb,
   lookupBarcode,
   searchProductsMultiSource,
+  __clearProductSearchCache,
   identifyProductPhoto,
 } from '../productLookup';
 
@@ -53,6 +54,7 @@ beforeEach(() => {
   mockApiLookup.mockReset();
   mockApiSearch.mockReset();
   mockApiIdentify.mockReset();
+  __clearProductSearchCache();
 });
 
 describe('lookupOpenBeautyFacts', () => {
@@ -147,6 +149,50 @@ describe('lookupBarcode (backend-first + waterfall)', () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
+  it('carries the backend image_url through to the result', async () => {
+    mockApiLookup.mockResolvedValueOnce({
+      name: 'CeraVe Moisturizing Cream',
+      brands: 'CeraVe',
+      ingredients: 'Ceramides',
+      image_url: 'https://img.example/cerave.png',
+      source: 'curated',
+    });
+
+    const result = await lookupBarcode('301871371160');
+    expect(result!.image_url).toBe('https://img.example/cerave.png');
+  });
+
+  it('normalizes a missing backend image to null', async () => {
+    mockApiLookup.mockResolvedValueOnce({
+      name: 'No Image Product',
+      brands: '',
+      ingredients: '',
+      image_url: null,
+      source: 'curated',
+    });
+
+    const result = await lookupBarcode('000000000');
+    expect(result!.image_url).toBeNull();
+  });
+
+  it('surfaces the product image from the OBF waterfall fallback', async () => {
+    mockApiLookup.mockRejectedValueOnce(new Error('API 404'));
+    mockFetch.mockResolvedValueOnce(mockResponse({
+      json: {
+        status: 1,
+        product: {
+          product_name: 'Tretinoin Cream',
+          ingredients_text: 'Tretinoin 0.025%',
+          image_front_url: 'https://img.obf/tret.jpg',
+        },
+      },
+    }));
+
+    const result = await lookupBarcode('123456789');
+    expect(result!.name).toBe('Tretinoin Cream');
+    expect(result!.image_url).toBe('https://img.obf/tret.jpg');
+  });
+
   it('falls back to waterfall when backend fails', async () => {
     mockApiLookup.mockRejectedValueOnce(new Error('API 404'));
 
@@ -202,6 +248,31 @@ describe('searchProductsMultiSource', () => {
     expect(results[0].name).toBe('PanOxyl Acne Wash');
     expect(results[0].brand).toBe('PanOxyl');
     expect(results[0].ingredients).toEqual(['Benzoyl Peroxide', 'Water']);
+  });
+
+  it('carries image_url through from backend search results', async () => {
+    mockApiSearch.mockResolvedValueOnce([
+      { name: 'PanOxyl Acne Wash', brands: 'PanOxyl', ingredients: 'Benzoyl Peroxide', image_url: 'https://img.example/panoxyl.png', source: 'curated' },
+      { name: 'No Image Product', brands: '', ingredients: '', image_url: null, source: 'curated' },
+    ]);
+
+    const results = await searchProductsMultiSource('panoxyl acne wash');
+    expect(results[0].image_url).toBe('https://img.example/panoxyl.png');
+    expect(results[1].image_url).toBeNull();
+  });
+
+  it('surfaces images from the OBF search fallback', async () => {
+    mockApiSearch.mockRejectedValueOnce(new Error('Network error'));
+    mockFetch.mockResolvedValueOnce(mockResponse({
+      json: {
+        products: [
+          { product_name: 'Some Product', ingredients_text: 'Water', image_front_url: 'https://img.obf/some.jpg' },
+        ],
+      },
+    }));
+
+    const results = await searchProductsMultiSource('some product query');
+    expect(results[0].image_url).toBe('https://img.obf/some.jpg');
   });
 
   it('falls back to OBF when backend is unreachable', async () => {

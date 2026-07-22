@@ -33,7 +33,15 @@ export type GlowIconName =
   | 'heart'
   | 'share'
   | 'x'
-  | 'calendar';
+  | 'calendar'
+  | 'lock'
+  | 'bell'
+  | 'search'
+  | 'apple'
+  | 'mail'
+  | 'health'
+  | 'shield'
+  | 'close';
 
 export interface GlowIconProps {
   name: GlowIconName;
@@ -207,6 +215,7 @@ function renderGlyph(name: GlowIconName, c: any, color: string) {
         </G>
       );
     case 'x':
+    case 'close':
       return (
         <G {...c}>
           <Path d="M5 5 L19 19" />
@@ -218,6 +227,55 @@ function renderGlyph(name: GlowIconName, c: any, color: string) {
         <G {...c}>
           <Rect x="4" y="6" width="16" height="14" rx="2" />
           <Path d="M4 10 h16 M8 3 v4 M16 3 v4" />
+        </G>
+      );
+    case 'lock':
+      return (
+        <G {...c}>
+          <Rect x="5" y="11" width="14" height="9" rx="2" />
+          <Path d="M8 11 V8 a4 4 0 0 1 8 0 v3" />
+        </G>
+      );
+    case 'bell':
+      return (
+        <G {...c}>
+          <Path d="M6 17 v-5 a6 6 0 0 1 12 0 v5 h1 l-1 2 h-12 l-1-2 h1 z" />
+          <Path d="M10 20 a2 2 0 0 0 4 0" />
+        </G>
+      );
+    case 'search':
+      return (
+        <G {...c}>
+          <Circle cx="11" cy="11" r="6" />
+          <Path d="M16 16 l4 4" />
+        </G>
+      );
+    case 'apple':
+      return (
+        <G {...c}>
+          <Path d="M14.5 3 c-.5 1.5 -2 2.5 -3.5 2.3 -.2 -1.5 .8 -3 2 -3.7 1 -.4 1.5 -.1 1.5 1.4 z" />
+          <Path d="M17.5 16 c-.7 1.5 -1.5 3 -2.7 3 -1.2 0 -1.6 -.8 -3 -.8 s-1.8 .8 -3 .8 c-1.2 0 -2.1 -1.6 -2.7 -3 -1.3 -2.7 -1.2 -7 1.5 -8 1.4 -.5 2.5 .4 3.2 .4 .7 0 1.6 -.5 2.8 -.4 1.2 .1 2.2 .6 2.8 1.5 -2.5 1.4 -2.1 4.6 .1 5.5 z" />
+        </G>
+      );
+    case 'mail':
+      return (
+        <G {...c}>
+          <Rect x="3" y="5" width="18" height="14" rx="2" />
+          <Path d="M3 7 L12 14 L21 7" />
+        </G>
+      );
+    case 'health':
+      return (
+        <G {...c}>
+          <Path d="M12 7 v-2 M7 12 h-2 M19 12 h-2 M12 19 v-2" />
+          <Path d="M12 19 c4 -3 6 -6 6 -10 a3 3 0 0 0 -6 0 a3 3 0 0 0 -6 0 c0 4 2 7 6 10 z" />
+        </G>
+      );
+    case 'shield':
+      return (
+        <G {...c}>
+          <Path d="M12 3 l8 3 v6 c0 5 -3.5 8 -8 9 -4.5 -1 -8 -4 -8 -9 V6 l8-3 z" />
+          <Path d="M9 12 l2 2 l4-4" />
         </G>
       );
   }

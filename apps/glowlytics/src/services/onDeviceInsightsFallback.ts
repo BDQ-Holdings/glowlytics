@@ -213,7 +213,7 @@ export function buildInsightsFromDeterministic({
   const overall_score_context =
     (scan_count ?? 0) <= 1
       ? 'This is your baseline. Future scans will show how each signal moves over time.'
-      : `Your composite is ${overall < 60 ? 'in the watch range' : overall < 75 ? 'stable' : 'strong'} — focus on ${SIGNAL_LABELS[weakest].toLowerCase()} for the biggest near-term gain.`;
+      : `Your composite is ${overall < 60 ? 'in the watch range' : overall < 75 ? 'stable' : 'strong'}. Focus on ${SIGNAL_LABELS[weakest].toLowerCase()} for the biggest near-term gain.`;
 
   const signal_insights: GeneratedInsights['signal_insights'] = {};
   for (const k of SIGNAL_KEYS) {
@@ -252,8 +252,8 @@ export function buildInsightsFromDeterministic({
       continue: 'Maintain your current SPF and cleansing routine.',
     },
     action_plan: [
-      `Priority 1: Address ${SIGNAL_LABELS[weakest].toLowerCase()} — ${SIGNAL_ACTIONS[weakest]}`,
-      `Priority 2: Support ${SIGNAL_LABELS[secondWeakest].toLowerCase()} — ${SIGNAL_ACTIONS[secondWeakest]}`,
+      `Priority 1: Address ${SIGNAL_LABELS[weakest].toLowerCase()}. ${SIGNAL_ACTIONS[weakest]}`,
+      `Priority 2: Support ${SIGNAL_LABELS[secondWeakest].toLowerCase()}. ${SIGNAL_ACTIONS[secondWeakest]}`,
       'Priority 3: Daily broad-spectrum SPF 30+ and 7–9 hours of sleep.',
     ],
   };

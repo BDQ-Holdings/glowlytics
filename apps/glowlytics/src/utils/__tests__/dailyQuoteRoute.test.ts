@@ -1,4 +1,9 @@
-import { shouldRouteToDailyQuote, type DailyQuoteRouteParams } from '../dailyQuoteRoute';
+import {
+  shouldRouteToDailyQuote,
+  resolveEntryTarget,
+  isQuoteRedirectRendered,
+  type DailyQuoteRouteParams,
+} from '../dailyQuoteRoute';
 
 const base: DailyQuoteRouteParams = {
   isLoaded: true,
@@ -39,5 +44,67 @@ describe('shouldRouteToDailyQuote', () => {
 
   it('routes when the quote has never been seen (null)', () => {
     expect(shouldRouteToDailyQuote({ ...base, dailyQuoteSeenDate: null })).toBe(true);
+  });
+});
+
+describe('resolveEntryTarget', () => {
+  it('sends a tabs-bound user straight to /quote when the quote is due', () => {
+    expect(resolveEntryTarget({ authDecision: 'tabs', quoteDue: true })).toBe('/quote');
+  });
+
+  it('sends a tabs-bound user to /(tabs)/today when no quote is due', () => {
+    expect(resolveEntryTarget({ authDecision: 'tabs', quoteDue: false })).toBe('/(tabs)/today');
+  });
+
+  it('never diverts to /quote for a non-tabs decision, even if a quote is due', () => {
+    for (const authDecision of ['hold', 'sign-in', 'onboarding'] as const) {
+      expect(resolveEntryTarget({ authDecision, quoteDue: true })).toBe('/(tabs)/today');
+    }
+  });
+});
+
+describe('isQuoteRedirectRendered', () => {
+  it('claims the guard when a tabs decision folds into a /quote redirect', () => {
+    expect(
+      isQuoteRedirectRendered({
+        authDecision: 'tabs',
+        entryTarget: '/quote',
+        devOnboardingHatchActive: false,
+      }),
+    ).toBe(true);
+  });
+
+  it('does NOT claim when the entry target stays on the tabs home', () => {
+    expect(
+      isQuoteRedirectRendered({
+        authDecision: 'tabs',
+        entryTarget: '/(tabs)/today',
+        devOnboardingHatchActive: false,
+      }),
+    ).toBe(false);
+  });
+
+  it('does NOT claim when the __DEV__ onboarding hatch swallows the render (no navigation)', () => {
+    // decision is tabs and the quote is due (entryTarget === '/quote'), but the
+    // dev hatch returns null so the /quote Redirect is never actually rendered.
+    expect(
+      isQuoteRedirectRendered({
+        authDecision: 'tabs',
+        entryTarget: '/quote',
+        devOnboardingHatchActive: true,
+      }),
+    ).toBe(false);
+  });
+
+  it('never claims for a non-tabs decision', () => {
+    for (const authDecision of ['hold', 'sign-in', 'onboarding'] as const) {
+      expect(
+        isQuoteRedirectRendered({
+          authDecision,
+          entryTarget: '/(tabs)/today',
+          devOnboardingHatchActive: false,
+        }),
+      ).toBe(false);
+    }
   });
 });

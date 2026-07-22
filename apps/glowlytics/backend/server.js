@@ -7,24 +7,17 @@ const { attachPoolErrorHandler } = require('./pg-resilience');
 
 const PORT = process.env.PORT || 3001;
 
-// Auto-initialize database tables on startup using shared schema from db-init.js
 async function initDB() {
-  if (!process.env.DATABASE_URL) {
-    console.log('  [DB] No DATABASE_URL — skipping schema init');
-    return;
-  }
-  const pool = new Pool({
+  if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required');
+  const migrationPool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: poolSsl(),
   });
-  attachPoolErrorHandler(pool, 'server-init');
+  attachPoolErrorHandler(migrationPool, 'server-init');
   try {
-    await initSchema(pool);
-    console.log('  [DB] Schema initialized');
-  } catch (err) {
-    console.error('  [DB] Schema init error:', err.message);
+    await initSchema(migrationPool);
   } finally {
-    await pool.end();
+    await migrationPool.end();
   }
 }
 
@@ -42,23 +35,48 @@ process.on('uncaughtException', (e) => {
   console.error('[server] uncaughtException (continuing):', e?.message ?? e);
 });
 
-app.listen(PORT, '0.0.0.0', async () => {
-  console.log(`Glowlytics API running on port ${PORT}`);
-  if (!process.env.CLERK_ISSUER_URL) {
-    console.log('  WARNING: CLERK_ISSUER_URL not set -- JWT verification disabled (dev mode)');
+async function startServer() {
+  await initDB();
+  const cutoverMs = Date.parse(process.env.GLOWLYTICS_CUTOVER_AT || '');
+  if (!Number.isFinite(cutoverMs)) throw new Error('GLOWLYTICS_CUTOVER_AT missing or invalid');
+  const server = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Glowlytics API running on port ${PORT}`);
+    if (!process.env.CLERK_ISSUER_URL) {
+      console.log('  WARNING: CLERK_ISSUER_URL not set -- JWT verification disabled (dev mode)');
+    }
+  });
+  let retryRunning = false;
+  const runAccountRetry = async () => {
+    if (retryRunning) return;
+    retryRunning = true;
+    try {
+      await app._retryPendingAccountCreatedDeliveries({ limit: 100 });
+    } finally {
+      retryRunning = false;
+    }
+  };
+  runAccountRetry().catch((err) => console.error('[posthog] initial retry worker failed:', err?.message || err));
+  const retryTimer = setInterval(
+    () => runAccountRetry().catch((err) => console.error('[posthog] retry worker failed:', err?.message || err)),
+    60_000
+  );
+  if (retryTimer && typeof retryTimer.unref === 'function') retryTimer.unref();
+  if (server && typeof server.close === 'function') {
+    const originalClose = server.close.bind(server);
+    server.close = (...args) => {
+      clearInterval(retryTimer);
+      return originalClose(...args);
+    };
   }
-  // Best-effort startup: schema init + signal models are optional for core API
-  // availability. A failure here (missing model artifacts on the deploy — the
-  // postinstall download is best-effort — or a slow DB) must not crash the
-  // server and 502 every request. Core auth/users/scans/products keep working.
-  try {
-    await initDB();
-  } catch (err) {
-    console.error('  [DB] init failed (continuing):', err?.message ?? err);
-  }
-  try {
-    await signalModels.initModels();
-  } catch (err) {
-    console.error('  [models] init failed (continuing, signal features degraded):', err?.message ?? err);
-  }
-});
+  signalModels.initModels().catch((err) => console.error('[models] init failed:', err?.message || err));
+  return server;
+}
+
+if (require.main === module) {
+  startServer().catch((err) => {
+    console.error('[server] fatal startup failure:', err?.message || err);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = { startServer };

@@ -1,8 +1,9 @@
 /**
  * On-device YOLOv8 lesion detection via ONNX Runtime.
  *
- * Model is bundled as an app asset via expo-asset plugin.
- * Falls back to document directory cache if bundled asset unavailable.
+ * Model downloads once on demand via modelDownload.ts (rev-pinned URL,
+ * exact-size verified) and is cached in the document directory — it no
+ * longer ships inside the IPA (was 42.7MB of the bundle).
  * Runs inference on camera frames with per-class NMS post-processing.
  *
  * Pipeline V2 improvements:
@@ -17,11 +18,9 @@ import { InferenceSession, Tensor } from 'onnxruntime-react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import type { DetectedLesion, LesionClass, FacialRegion } from '../types';
 import { trackEvent } from './analytics';
+import { ensureModel, isModelCached } from './modelDownload';
 
 const TAG = '[LesionDetection]';
-
-const MODELS_DIR = `${FileSystem.documentDirectory}models/`;
-const MODEL_PATH = `${MODELS_DIR}acne_detector.onnx`;
 
 const INPUT_SIZE = 640;
 const NUM_CLASSES = 1;
@@ -46,37 +45,16 @@ let tensorBuffer: Float32Array | null = null;
 // ---------------------------------------------------------------------------
 
 /**
- * Resolve model path: try bundled asset first, then check document cache.
- * Lazy-imports expo-asset so this module doesn't crash in Expo Go.
+ * Resolve model path: valid cached file, else on-demand download (bounded —
+ * a timed-out download continues in the background and the next init picks
+ * up the finished file). Camera detection falls back to the server endpoint
+ * while the model is unavailable, so null is always safe here.
  */
-async function resolveModelPath(): Promise<string | null> {
-  // 1. Try bundled asset (native builds only — expo-asset crashes in Expo Go)
-  try {
-    const { Asset } = await import('expo-asset');
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const asset = Asset.fromModule(require('../../assets/models/acne_detector.onnx'));
-    await asset.downloadAsync();
-    if (asset.localUri) {
-      console.log(TAG, 'Using bundled model at:', asset.localUri);
-      return asset.localUri;
-    }
-  } catch (err) {
-    console.warn(TAG, 'Bundled asset not available (expected in Expo Go):', err);
-  }
-
-  // 2. Check if model was previously downloaded to document directory
-  try {
-    const info = await FileSystem.getInfoAsync(MODEL_PATH);
-    if (info.exists && !info.isDirectory) {
-      console.log(TAG, 'Using cached model at:', MODEL_PATH);
-      return MODEL_PATH;
-    }
-  } catch {
-    // Not cached
-  }
-
-  console.warn(TAG, 'No model available — on-device detection disabled');
-  return null;
+async function resolveModelPath(): Promise<{ path: string | null; cached: boolean }> {
+  const cached = await isModelCached('acne_detector');
+  const path = await ensureModel('acne_detector', { timeoutMs: 60_000 });
+  if (!path) console.warn(TAG, 'No model available — on-device detection disabled');
+  return { path, cached };
 }
 
 /** Ensure model is ready: resolve path, load ONNX session, run warmup. */
@@ -95,7 +73,7 @@ export async function initLesionDetection(
   loadingPromise = (async () => {
     try {
       console.log(TAG, 'Initializing...');
-      const modelPath = await resolveModelPath();
+      const { path: modelPath, cached } = await resolveModelPath();
       if (!modelPath) return false;
 
       console.log(TAG, 'Creating ONNX inference session...');
@@ -118,7 +96,7 @@ export async function initLesionDetection(
         console.warn(TAG, 'Warmup inference failed (non-fatal):', warmupErr?.message);
       }
 
-      trackEvent('lesion_model_loaded', { source: modelPath.includes('ExponentAsset') ? 'bundled' : 'cached' });
+      trackEvent('lesion_model_loaded', { source: cached ? 'cached' : 'downloaded' });
       return true;
     } catch (err: any) {
       console.error(TAG, 'Init failed:', err?.message || err);

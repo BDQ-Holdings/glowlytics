@@ -10,13 +10,18 @@ describe('onboardingFlow', () => {
     it('builds base flow with essential screens including health-permission', () => {
       const flow = buildOnboardingFlow();
       expect(flow).toContain('welcome');
+      expect(flow).toContain('how-it-works');
+      expect(flow).toContain('name');
       expect(flow).toContain('age-range');
       expect(flow).toContain('sex');
       expect(flow).toContain('skin-goal');
-      expect(flow).toContain('camera-permission');
+      expect(flow).toContain('products');
+      expect(flow).toContain('privacy');
+      expect(flow).not.toContain('camera-permission');
       expect(flow).toContain('health-permission');
       expect(flow).toContain('preview');
       expect(flow).toContain('paywall');
+      expect(flow).toContain('done');
       expect(flow).not.toContain('menstrual');
       expect(flow).not.toContain('cycle-details');
     });
@@ -24,7 +29,6 @@ describe('onboardingFlow', () => {
     it('does not include deferred screens', () => {
       const flow = buildOnboardingFlow();
       expect(flow).not.toContain('location');
-      expect(flow).not.toContain('products');
       expect(flow).not.toContain('supplements');
       expect(flow).not.toContain('exercise');
       expect(flow).not.toContain('shower-frequency');
@@ -33,18 +37,38 @@ describe('onboardingFlow', () => {
       expect(flow).not.toContain('ready');
     });
 
-    it('places health-permission immediately after camera-permission', () => {
+    it('walks the hand-off order up to health-permission', () => {
       const flow = buildOnboardingFlow();
-      const cameraIndex = flow.indexOf('camera-permission');
-      const healthIndex = flow.indexOf('health-permission');
-      expect(healthIndex).toBe(cameraIndex + 1);
+      expect(flow.slice(0, 9)).toEqual([
+        'welcome',
+        'how-it-works',
+        'name',
+        'age-range',
+        'sex',
+        'skin-goal',
+        'products',
+        'privacy',
+        'health-permission',
+      ]);
     });
 
-    it('places camera-permission after skin-goal for base flow', () => {
-      const flow = buildOnboardingFlow();
-      const goalIndex = flow.indexOf('skin-goal');
-      const cameraIndex = flow.indexOf('camera-permission');
-      expect(cameraIndex).toBe(goalIndex + 1);
+    it('omits camera-permission from every flow variant', () => {
+      const flows = [
+        buildOnboardingFlow(),
+        buildOnboardingFlow('male'),
+        buildOnboardingFlow('female'),
+        buildOnboardingFlow('female', 'regular'),
+        buildOnboardingFlow('female', 'irregular'),
+        buildOnboardingFlow('female', 'no'),
+        buildOnboardingFlow('female', 'prefer_not'),
+        buildOnboardingFlow('female', 'regular', true),
+        buildOnboardingFlow('other'),
+        buildOnboardingFlow('prefer_not'),
+      ];
+
+      for (const flow of flows) {
+        expect(flow).not.toContain('camera-permission');
+      }
     });
 
     it('builds male flow without menstrual screens', () => {
@@ -94,7 +118,7 @@ describe('onboardingFlow', () => {
       expect(flow).not.toContain('cycle-details');
     });
 
-    it('always starts with welcome and ends with paywall', () => {
+    it('always starts with welcome and ends with paywall → done', () => {
       const flows = [
         buildOnboardingFlow(),
         buildOnboardingFlow('male'),
@@ -104,17 +128,26 @@ describe('onboardingFlow', () => {
       ];
       for (const flow of flows) {
         expect(flow[0]).toBe('welcome');
-        expect(flow[flow.length - 1]).toBe('paywall');
+        expect(flow[flow.length - 2]).toBe('paywall');
+        expect(flow[flow.length - 1]).toBe('done');
       }
     });
 
     it('has correct length for each path', () => {
-      expect(buildOnboardingFlow().length).toBe(9);
-      expect(buildOnboardingFlow('male').length).toBe(9);
-      expect(buildOnboardingFlow('female').length).toBe(10);
-      expect(buildOnboardingFlow('female', 'regular').length).toBe(11);
-      expect(buildOnboardingFlow('female', 'irregular').length).toBe(11);
-      expect(buildOnboardingFlow('female', 'no').length).toBe(10);
+      expect(buildOnboardingFlow().length).toBe(13);
+      expect(buildOnboardingFlow('male').length).toBe(13);
+      expect(buildOnboardingFlow('female').length).toBe(14);
+      expect(buildOnboardingFlow('female', 'regular').length).toBe(15);
+      expect(buildOnboardingFlow('female', 'irregular').length).toBe(15);
+      expect(buildOnboardingFlow('female', 'no').length).toBe(14);
+    });
+
+    it('keeps the longest possible flow as the stable progress denominator', () => {
+      const longestPossibleFlowLength = buildOnboardingFlow('female', 'regular').length;
+      expect(longestPossibleFlowLength).toBe(15);
+      expect(buildOnboardingFlow('female', 'irregular').length).toBe(longestPossibleFlowLength);
+      expect(buildOnboardingFlow().length).toBeLessThan(longestPossibleFlowLength);
+      expect(buildOnboardingFlow('male').length).toBeLessThan(longestPossibleFlowLength);
     });
 
     it('skips menstrual + cycle-details for female when HealthKit cycle detected', () => {
@@ -146,31 +179,34 @@ describe('onboardingFlow', () => {
       const flow = buildOnboardingFlow('male', undefined, true);
       expect(flow).not.toContain('menstrual');
       expect(flow).not.toContain('cycle-details');
-      expect(flow.length).toBe(9);
+      expect(flow.length).toBe(13);
     });
 
     it('has correct length when HealthKit skips menstrual', () => {
-      expect(buildOnboardingFlow('female', 'regular', true).length).toBe(9);
-      expect(buildOnboardingFlow('female', 'irregular', true).length).toBe(9);
+      expect(buildOnboardingFlow('female', 'regular', true).length).toBe(13);
+      expect(buildOnboardingFlow('female', 'irregular', true).length).toBe(13);
     });
   });
 
   describe('screenToRoute', () => {
     it('converts screen name to route path', () => {
       expect(screenToRoute('welcome')).toBe('/onboarding/welcome');
+      expect(screenToRoute('how-it-works')).toBe('/onboarding/how-it-works');
+      expect(screenToRoute('name')).toBe('/onboarding/name');
+      expect(screenToRoute('privacy')).toBe('/onboarding/privacy');
       expect(screenToRoute('age-range')).toBe('/onboarding/age-range');
-      expect(screenToRoute('camera-permission')).toBe('/onboarding/camera-permission');
       expect(screenToRoute('health-permission')).toBe('/onboarding/health-permission');
       expect(screenToRoute('preview')).toBe('/onboarding/preview');
       expect(screenToRoute('paywall')).toBe('/onboarding/paywall');
+      expect(screenToRoute('done')).toBe('/onboarding/done');
     });
   });
 
   describe('getNextScreen', () => {
     it('returns next screen in flow', () => {
       const flow = buildOnboardingFlow();
-      expect(getNextScreen(flow, 0)).toBe('age-range');
-      expect(getNextScreen(flow, 1)).toBe('sex');
+      expect(getNextScreen(flow, 0)).toBe('how-it-works');
+      expect(getNextScreen(flow, 1)).toBe('name');
     });
 
     it('returns null at end of flow', () => {
@@ -183,7 +219,7 @@ describe('onboardingFlow', () => {
     it('returns previous screen in flow', () => {
       const flow = buildOnboardingFlow();
       expect(getPreviousScreen(flow, 1)).toBe('welcome');
-      expect(getPreviousScreen(flow, 2)).toBe('age-range');
+      expect(getPreviousScreen(flow, 2)).toBe('how-it-works');
     });
 
     it('returns null at start of flow', () => {

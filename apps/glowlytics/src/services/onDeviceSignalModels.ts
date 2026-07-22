@@ -1,11 +1,12 @@
 /**
  * On-device skin signals model (Layer 2) via ONNX Runtime.
  *
- * Loads `skin_signals_v2.onnx` (EfficientNet-B0, multi-head) bundled as an
- * Expo asset and runs inference locally with the CoreML execution provider
- * on iOS (falls back to CPU). Preprocessing matches the backend pipeline in
- * `backend/signal-models.js` exactly: resize shortest side to 256, center
- * crop 224x224, ImageNet normalize.
+ * Loads `skin_signals_v2.onnx` (EfficientNet-B0, multi-head) — downloaded
+ * once on demand via modelDownload.ts (rev-pinned URL, exact-size verified,
+ * ~19MB; no longer bundled in the IPA) — and runs inference locally with the
+ * CoreML execution provider on iOS (falls back to CPU). Preprocessing matches
+ * the backend pipeline in `backend/signal-models.js` exactly: resize shortest
+ * side to 256, center crop 224x224, ImageNet normalize.
  *
  * Why this exists:
  *   - The Railway backend's L2 path (`onnxruntime-node` on shared-CPU
@@ -24,6 +25,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import { InferenceSession, Tensor } from 'onnxruntime-react-native';
 import { trackEvent } from './analytics';
+import { ensureModel, isModelCached } from './modelDownload';
 import type { SignalConfidence, SignalScores } from '../types';
 
 const TAG = '[SignalModels]';
@@ -52,24 +54,16 @@ let tensorBuffer: Float32Array | null = null;
 // ---------------------------------------------------------------------------
 
 /**
- * Resolve the model path via the bundled Expo asset. We don't fall back to
- * a remote download here: the model ships in the IPA and an empty asset
- * would mean a corrupted build.
+ * Resolve the model path: valid cached file, else on-demand download. The
+ * wait is bounded to 20s because the scan pipeline awaits this init inline
+ * (analyzing.tsx) — past that the scan proceeds on the backend L2 fallback
+ * while the download finishes in the background for the next scan.
  */
-async function resolveModelPath(): Promise<string | null> {
-  try {
-    const { Asset } = await import('expo-asset');
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const asset = Asset.fromModule(require('../../assets/models/skin_signals_v2.onnx'));
-    await asset.downloadAsync();
-    if (asset.localUri) {
-      if (__DEV__) console.log(TAG, 'Using bundled model at:', asset.localUri);
-      return asset.localUri;
-    }
-  } catch (err) {
-    console.warn(TAG, 'Bundled asset not available (expected in Expo Go):', err);
-  }
-  return null;
+async function resolveModelPath(): Promise<{ path: string | null; cached: boolean }> {
+  const cached = await isModelCached('skin_signals_v2');
+  const path = await ensureModel('skin_signals_v2', { timeoutMs: 20_000 });
+  if (!path) console.warn(TAG, 'No model available — on-device L2 disabled for this scan');
+  return { path, cached };
 }
 
 /**
@@ -82,7 +76,7 @@ export async function initSignalModels(): Promise<boolean> {
 
   loadingPromise = (async () => {
     try {
-      const modelPath = await resolveModelPath();
+      const { path: modelPath, cached } = await resolveModelPath();
       if (!modelPath) return false;
 
       session = await InferenceSession.create(modelPath, {
@@ -105,7 +99,7 @@ export async function initSignalModels(): Promise<boolean> {
         console.warn(TAG, 'Warmup failed (non-fatal):', warmErr?.message);
       }
 
-      trackEvent('signal_model_loaded', { source: 'bundled' });
+      trackEvent('signal_model_loaded', { source: cached ? 'cached' : 'downloaded' });
       return true;
     } catch (err: any) {
       console.error(TAG, 'Init failed:', err?.message || err);

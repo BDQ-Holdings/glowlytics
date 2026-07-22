@@ -17,6 +17,7 @@ import {
   formatMetricValue,
   HARMONY_ACCENT,
   METRIC_BY_KEY,
+  interpretMetricScore,
   type BoneMetricKey,
 } from '../../src/constants/boneStructure';
 import { buildCanonicalMesh } from '../../src/services/canonicalFaceMesh';
@@ -62,8 +63,11 @@ export default function FindingDetail() {
   }
 
   const copy = FINDING_COPY[finding.findingCode];
-  const meshVerts = bone.downsampled_mesh?.vertices || buildCanonicalMesh();
-  const meshSource = bone.downsampled_mesh?.source || 'mediapipe';
+  // Finding drill-ins use the bundled canonical topology so metric overlays
+  // always land on true MediaPipe anatomy; raw ARKit meshes are metre-scale and
+  // do not share these landmark indices.
+  const meshVerts = buildCanonicalMesh();
+  const meshSource = 'canonical' as const;
   const filteredBundle = filterInterventionsTo(bone.interventions, finding);
   const viewerSize = Math.min(320, screenW - Spacing.lg * 2);
   const value = bone.metrics?.[finding.metric]?.value;
@@ -98,6 +102,7 @@ export default function FindingDetail() {
             mode="measurements"
             size={viewerSize}
             bone={{ ...bone, findings: [finding] }}
+            highlightMetric={finding.metric as BoneMetricKey}
           />
         </View>
 
@@ -119,6 +124,23 @@ export default function FindingDetail() {
             </Text>
           </View>
         </View>
+
+        {Number.isFinite(finding.score) && (() => {
+          const interp = interpretMetricScore(finding.metric as BoneMetricKey, finding.score);
+          const ideal = interp.band === 'ideal';
+          return (
+            <View style={styles.interpretCard}>
+              <View style={styles.interpretHead}>
+                <Text style={styles.interpretLabel}>{interp.label}</Text>
+                <View style={[styles.bandChip, ideal ? styles.bandChipIdeal : styles.bandChipBelow]}>
+                  <Text style={[styles.bandChipText, ideal ? styles.bandChipTextIdeal : styles.bandChipTextBelow]}>{interp.bandLabel}</Text>
+                </View>
+              </View>
+              <Text style={styles.interpretIdeal}>{interp.idealText}</Text>
+              <Text style={styles.interpretMeaning}>{interp.meaning}</Text>
+            </View>
+          );
+        })()}
 
         {metricMeta && (
           <Text style={styles.hint}>{metricMeta.hint}</Text>
@@ -163,6 +185,13 @@ const FINDING_SUGGESTION_IDS: Partial<Record<BoneFindingCode, Record<BoneInterve
   thirds_uneven:            { lifestyle: ['posture_neck', 'sleep_side_rotation'], pharmacological: ['topical_tretinoin'], interventional: [] },
   fifths_uneven:            { lifestyle: ['posture_neck'], pharmacological: [], interventional: ['asymmetric_filler'] },
   asymmetry_elevated:       { lifestyle: ['sleep_side_rotation', 'unilateral_chew_avoid', 'posture_neck'], pharmacological: [], interventional: ['asymmetric_filler'] },
+  // Mirrors backend/interventions.js for the contracted new metrics.
+  face_long:                { lifestyle: ['weight_optimisation', 'posture_neck'], pharmacological: ['topical_tretinoin'], interventional: ['deep_cheek_filler'] },
+  face_short:               { lifestyle: ['posture_neck'], pharmacological: [], interventional: ['chin_filler'] },
+  mouth_narrow:             { lifestyle: [], pharmacological: [], interventional: ['asymmetric_filler'] },
+  mouth_wide:               { lifestyle: [], pharmacological: [], interventional: ['rhinoplasty_consult'] },
+  lip_ratio_high:           { lifestyle: [], pharmacological: ['topical_peptides'], interventional: ['asymmetric_filler'] },
+  lip_ratio_low:            { lifestyle: [], pharmacological: ['topical_peptides'], interventional: ['asymmetric_filler'] },
 };
 
 function filterInterventionsTo(bundle: InterventionBundle, finding: BoneFinding): InterventionBundle {
@@ -268,4 +297,20 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: Spacing.md,
   },
+  interpretCard: {
+    backgroundColor: Glow.palette.surface,
+    borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Glow.palette.glow,
+    paddingVertical: Spacing.md, paddingHorizontal: Spacing.md, gap: Spacing.xxs,
+    marginTop: Spacing.md,
+  },
+  interpretHead: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  interpretLabel: { flex: 1, color: Glow.palette.ink, fontFamily: FontFamily.sansSemiBold, fontSize: FontSize.md },
+  interpretIdeal: { color: Glow.palette.muted, fontFamily: FontFamily.sans, fontSize: FontSize.xs },
+  interpretMeaning: { color: Colors.textSecondary, fontFamily: FontFamily.sans, fontSize: FontSize.sm, lineHeight: 20 },
+  bandChip: { paddingHorizontal: Spacing.xs + 2, paddingVertical: 2, borderRadius: BorderRadius.full },
+  bandChipBelow: { backgroundColor: Colors.warning + '1E' },
+  bandChipIdeal: { backgroundColor: Colors.success + '1E' },
+  bandChipText: { fontFamily: FontFamily.sansSemiBold, fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.6 },
+  bandChipTextBelow: { color: Colors.warning },
+  bandChipTextIdeal: { color: Colors.success },
 });

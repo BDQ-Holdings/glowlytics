@@ -1,9 +1,109 @@
-import type { DailyRecord, ModelOutput, ProductEntry, UserProfile, ScanProtocol, GamificationState } from '../types';
+import type {
+  DailyRecord,
+  ModelOutput,
+  ProductEntry,
+  UserProfile,
+  ScanProtocol,
+  GamificationState,
+  SignalScores,
+  BoneStructureResult,
+  BoneFinding,
+  BoneDomain,
+} from '../types';
+import { recommendInterventions } from './boneInterventions';
 
 const daysAgo = (n: number): string => {
   const d = new Date();
   d.setDate(d.getDate() - n);
   return d.toISOString().split('T')[0];
+};
+
+const clampSignal = (v: number): number => Math.round(Math.max(0, Math.min(100, v)));
+
+// Seeded PRNG (mulberry32) so demo score/signal values are byte-identical every
+// run — screenshots, snapshot tests, and tester sessions never drift. A fresh
+// generator is minted per createDemoHistory() call from a fixed seed, so two
+// calls replay the same sequence. Dates still anchor to `new Date()` (daysAgo)
+// so the demo always reads as "today".
+const mulberry32 = (seed: number): (() => number) => {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+};
+
+const DEMO_SEED = 0x5eed1e;
+
+/**
+ * Build a complete, believable facial-structure read for a demo scan. Attached
+ * to the newest few demo outputs so testers land on fully-populated
+ * FacialStructure / share StructureCard / bone-results surfaces instead of the
+ * empty "take a face read" state — with no "estimated" badge, since these read
+ * as real indexed ARKit captures.
+ *
+ * `offset` is days-back from today (0 = newest); harmony and domain scores
+ * trend slightly up toward today. The shape matches `BoneStructureResult`
+ * exactly, and interventions come from the real on-device lookup so the copy
+ * is authentic rather than invented.
+ */
+const buildDemoBoneStructure = (offset: number, generatedAt: string): BoneStructureResult => {
+  const step = offset; // 0 = newest → highest scores
+  const domain_scores: Partial<Record<BoneDomain, number | null>> = {
+    symmetry: 84 - step,
+    periorbital: 76 - step,
+    mandibular: 70 - step,
+    midface: 62 - step, // lowest domain → dominant driver
+    nose: 79 - step,
+    brow: 77 - step,
+  };
+  const canthalScore = 74 - step;
+  const gonialScore = 67 - step;
+  const zygomaticScore = 62 - step;
+  const scored_metrics: Record<string, number> = {
+    facial_thirds: 80 - step,
+    facial_index: 81 - step,
+    canthal_tilt: canthalScore,
+    gonial_angle: gonialScore,
+    zygomatic_projection: zygomaticScore,
+    chin_projection: 72 - step,
+  };
+  const metrics: BoneStructureResult['metrics'] = {
+    facial_thirds: { value: 0.94, raw: { t1: 0.33, t2: 0.34, t3: 0.33 } },
+    facial_index: { value: 1.58 },
+    canthal_tilt: { value: 3.8 },
+    gonial_angle: { value: 123 },
+    zygomatic_projection: { value: 2.9 },
+    chin_projection: { value: 1.2 },
+  };
+  // Only metrics below the "in range" bar surface as findings; these three sit
+  // in the moderate band. Sorted worst-first to match the analyzer's output.
+  const findings: BoneFinding[] = ([
+    { findingCode: 'midface_flat', metric: 'zygomatic_projection', value: 2.9, score: zygomaticScore, severity: 'moderate' },
+    { findingCode: 'gonial_angle_obtuse', metric: 'gonial_angle', value: 123, score: gonialScore, severity: 'moderate' },
+    { findingCode: 'canthal_tilt_negative', metric: 'canthal_tilt', value: 3.8, score: canthalScore, severity: 'moderate' },
+  ] satisfies BoneFinding[]).sort((a, b) => a.score - b.score);
+  return {
+    harmony: 73 - step,
+    status: 'ok',
+    domain_scores,
+    scored_metrics,
+    metrics,
+    findings,
+    interventions: recommendInterventions(findings),
+    dominant_driver: 'midface',
+    downsampled_mesh: null,
+    source: 'arkit',
+    sex: 'female',
+    estimate: false,
+    confidence: 'high',
+    landmark_source: 'indexed',
+    generated_at: generatedAt,
+    latency_ms: 180,
+    persisted: true,
+  };
 };
 
 export const createDemoUser = (): UserProfile => ({
@@ -85,6 +185,8 @@ export const createDemoProducts = (): ProductEntry[] => [
 export const createDemoHistory = (): { records: DailyRecord[]; outputs: ModelOutput[] } => {
   const records: DailyRecord[] = [];
   const outputs: ModelOutput[] = [];
+  // Fresh generator per call → deterministic, reproducible sequence.
+  const rng = mulberry32(DEMO_SEED);
 
   // 21 days of history for a 30-year-old female
   // Story arc: started with moderate acne, saw cycle-related bump around day 7-12,
@@ -109,13 +211,13 @@ export const createDemoHistory = (): { records: DailyRecord[]; outputs: ModelOut
 
     // Acne trajectory: gradual improvement with cycle bump and purge blip
     let acneShift = -dayNumber * 0.9; // overall downward trend
-    if (isCycleWindow) acneShift += 6 + Math.random() * 4;
+    if (isCycleWindow) acneShift += 6 + rng() * 4;
     if (isLutealPeak) acneShift += 3;
-    if (differinPurge) acneShift += 5 + Math.random() * 3;
+    if (differinPurge) acneShift += 5 + rng() * 3;
     if (onDifferin && !differinPurge) acneShift -= 2;
 
     // Sun damage: mostly flat, slight improvement with consistent sunscreen
-    const usedSunscreen = i <= 2 ? true : Math.random() > 0.2; // more consistent recently
+    const usedSunscreen = i <= 2 ? true : rng() > 0.2; // more consistent recently
     let sunShift = -dayNumber * 0.15;
     if (!usedSunscreen) sunShift += 3;
 
@@ -123,17 +225,32 @@ export const createDemoHistory = (): { records: DailyRecord[]; outputs: ModelOut
     let ageShift = -dayNumber * 0.3;
 
     // Sleep and stress patterns
-    const sleptWell = Math.random() > 0.25;
-    const stressed = Math.random() > 0.65;
+    const sleptWell = rng() > 0.25;
+    const stressed = rng() > 0.65;
     if (!sleptWell) { acneShift += 2; ageShift += 1; }
     if (stressed) acneShift += 2;
 
     const acneScore = Math.round(Math.max(18, Math.min(82,
-      baseAcne + acneShift + (Math.random() * 4 - 2))));
+      baseAcne + acneShift + (rng() * 4 - 2))));
     const sunScore = Math.round(Math.max(12, Math.min(65,
-      baseSunDamage + sunShift + (Math.random() * 3 - 1.5))));
+      baseSunDamage + sunShift + (rng() * 3 - 1.5))));
     const ageScore = Math.round(Math.max(22, Math.min(55,
-      baseSkinAge + ageShift + (Math.random() * 3 - 1.5))));
+      baseSkinAge + ageShift + (rng() * 3 - 1.5))));
+
+    const inflammationIndex = Math.max(10, Math.min(80, 42 + acneShift * 0.6 + (rng() * 10 - 5)));
+    const pigmentationIndex = Math.max(10, Math.min(70, 28 + sunShift * 0.8 + (rng() * 8 - 4)));
+    const textureIndex = Math.max(10, Math.min(70, 35 + ageShift * 0.7 + (rng() * 8 - 4)));
+
+    // Derive the five skin signals ("higher = better") from the same per-day
+    // scores that drive the arc, so the facet tiles mirror the acne/sun/skin-age
+    // story: as those problem scores fall, calm/even/bounce/etc. rise.
+    const signal_scores: SignalScores = {
+      structure: clampSignal(88 - (ageScore - 22) * 0.6),
+      hydration: clampSignal(100 - textureIndex),
+      inflammation: clampSignal(100 - acneScore),
+      sunDamage: clampSignal(100 - sunScore),
+      elasticity: clampSignal(100 - ageScore),
+    };
 
     records.push({
       daily_id: dailyId,
@@ -141,18 +258,18 @@ export const createDemoHistory = (): { records: DailyRecord[]; outputs: ModelOut
       date: daysAgo(i),
       scanner_reading_id: `demo_scan_${i}`,
       scanner_indices: {
-        inflammation_index: Math.max(10, Math.min(80, 42 + acneShift * 0.6 + (Math.random() * 10 - 5))),
-        pigmentation_index: Math.max(10, Math.min(70, 28 + sunShift * 0.8 + (Math.random() * 8 - 4))),
-        texture_index: Math.max(10, Math.min(70, 35 + ageShift * 0.7 + (Math.random() * 8 - 4))),
+        inflammation_index: inflammationIndex,
+        pigmentation_index: pigmentationIndex,
+        texture_index: textureIndex,
       },
-      scanner_quality_flag: Math.random() > 0.05 ? 'pass' : 'warn',
+      scanner_quality_flag: rng() > 0.05 ? 'pass' : 'warn',
       scan_region: 'left_cheek',
       sunscreen_used: usedSunscreen,
       new_product_added: dayNumber === 11,
       period_status_confirmed: 'accurate',
       cycle_day_estimated: cycleDay,
-      sleep_quality: sleptWell ? (Math.random() > 0.5 ? 'great' : 'ok') : 'poor',
-      stress_level: stressed ? 'high' : (Math.random() > 0.5 ? 'med' : 'low'),
+      sleep_quality: sleptWell ? (rng() > 0.5 ? 'great' : 'ok') : 'poor',
+      stress_level: stressed ? 'high' : (rng() > 0.5 ? 'med' : 'low'),
     });
 
     // Determine primary driver and action
@@ -174,7 +291,7 @@ export const createDemoHistory = (): { records: DailyRecord[]; outputs: ModelOut
       action = 'Sleep and stress both flagged. Focus on recovery tonight for better signal tomorrow.';
     } else if (acneScore < 40) {
       primaryDriver = 'routine adherence';
-      action = 'Your routine is working. Acne signal is trending down — stay consistent.';
+      action = 'Your routine is working. Acne signal is trending down. Stay consistent.';
     } else {
       primaryDriver = 'general tracking';
       action = 'Continue daily scans. The trend is building and will sharpen over the next week.';
@@ -186,7 +303,7 @@ export const createDemoHistory = (): { records: DailyRecord[]; outputs: ModelOut
       if (Math.abs(acneScore - prev.acne_score) > 18) escalation = true;
     }
 
-    outputs.push({
+    const output: ModelOutput = {
       output_id: `demo_output_${i}`,
       daily_id: dailyId,
       acne_score: acneScore,
@@ -196,7 +313,13 @@ export const createDemoHistory = (): { records: DailyRecord[]; outputs: ModelOut
       primary_driver: primaryDriver,
       recommended_action: action,
       escalation_flag: escalation,
-    });
+      signal_scores,
+    };
+    // The three most recent scans also carry a full facial-structure read.
+    if (i <= 2) {
+      output.bone_structure = buildDemoBoneStructure(i, daysAgo(i) + 'T09:12:00.000Z');
+    }
+    outputs.push(output);
   }
 
   return { records, outputs };

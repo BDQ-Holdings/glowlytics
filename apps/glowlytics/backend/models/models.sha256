@@ -1,0 +1,14 @@
+# SHA-256 integrity manifest for the backend ONNX models, consumed by
+# scripts/download-models.sh (verify_checksums) as `shasum -a 256 -c` lines.
+# Digests are the HuggingFace LFS oids at the pinned HF_MODEL_REV
+# (a1bbdb624b6045bdb1503050c56045728f2efaf0). Regenerate when bumping the rev:
+#   cd backend/models && shasum -a 256 *.onnx > models.sha256
+0f6bc1c943e9ef09248c2def6775ae13ea90f1b8b9e7f008b32c1a334f0d25f0  structure.onnx
+0baafe48cf5376bbef56ce82758fcc08d581a4b0bf7ec343ed28d7f79979045f  hydration.onnx
+44815cf377d4f3e798e760f9f77d5f0051dc321cdd665f941c1a5476ed4d217a  elasticity.onnx
+fcd60873fe5c4964d38f833b791890ee2a0b6507130890e005520625c872e5c6  skin_signals.onnx
+de7b25f3d1e2af69ee18f2b55cb6d93edf3c8dd29662a1c64cf8d903c3fa8526  acne_detector.onnx
+# NOTE: skin_signals_v2.onnx is downloaded at RUNTIME by signal-models.js from
+# GitHub raw (commit 18966b9), not by download-models.sh; listed for reference
+# and verified inline by ensureModel().
+c11efc295efd118e654434abd27a817bd527038f40476a06c801d12444ad2883  skin_signals_v2.onnx

@@ -5,6 +5,8 @@
  * Field names mirror the frozen HTTP contract in `.local/uv-feature-plan.md`
  * ("HTTP contract" + "Vision method"). Do not rename — backend agrees on these.
  */
+import type { FirstTouchSnapshot } from "@/lib/posthogAttribution";
+
 
 /** Public Express backend (cross-origin from landing; CORS is permissive). */
 export const API_BASE =
@@ -184,17 +186,114 @@ export async function postAnalyze(
   return r.json();
 }
 
+export interface LeadAttributionOptions {
+  firstTouch?: FirstTouchSnapshot | null;
+  formPlacement?: string | null;
+  source?: string | null;
+  posthogSessionId?: string | null;
+}
+
+type LeadOptionsOrSource = string | LeadAttributionOptions;
+
+type LeadRequestBody = {
+  email: string;
+  scan_id: string;
+  claim_token: string;
+  source: string;
+  acquisition_source: string;
+  acquisition_medium: string;
+  attribution_model: "first_touch";
+  attribution_quality: string;
+  form_placement: string;
+  utm_source?: string;
+  utm_medium?: string;
+  utm_campaign?: string;
+  utm_term?: string;
+  utm_content?: string;
+  google_click_id_present: boolean;
+  referrer_host?: string;
+  landing_path?: string;
+  posthog_session_id?: string;
+};
+
+const SENSITIVE_MARKETING_VALUE_RE =
+  /([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})|((api[_-]?key|api|secret|password|credential|bearer|access|refresh|id)?[_-]?token=?)|\b(api[_-]?key|secret|password|credential|bearer)\b|((gclid|gbraid|wbraid)=?)/i;
+const POSTHOG_SESSION_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function safePostHogSessionId(value: string | null | undefined): string | undefined {
+  return typeof value === "string" && POSTHOG_SESSION_ID_RE.test(value)
+    ? value.toLowerCase()
+    : undefined;
+}
+
+
+function safeMarketingValue(value: string | null | undefined, max: number): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim().slice(0, max);
+  return trimmed && !SENSITIVE_MARKETING_VALUE_RE.test(trimmed) ? trimmed : undefined;
+}
+
+function withSafeMarketingValue<K extends keyof LeadRequestBody>(
+  body: LeadRequestBody,
+  key: K,
+  value: string | null | undefined,
+  max: number,
+) {
+  const safe = safeMarketingValue(value, max);
+  if (safe) body[key] = safe as LeadRequestBody[K];
+}
+
+function resolveLeadOptions(input: LeadOptionsOrSource | undefined): LeadAttributionOptions {
+  return typeof input === "string" ? { source: input, formPlacement: input } : input || {};
+}
+
+function leadBody(
+  email: string,
+  scanId: string,
+  claimToken: string,
+  optionsOrSource?: LeadOptionsOrSource,
+): LeadRequestBody {
+  const options = resolveLeadOptions(optionsOrSource);
+  const firstTouch = options.firstTouch;
+  const body: LeadRequestBody = {
+    email,
+    scan_id: scanId,
+    claim_token: claimToken,
+    source: safeMarketingValue(options.source, 64) || SOURCE,
+    acquisition_source: firstTouch?.acquisition_source || "unknown",
+    acquisition_medium: safeMarketingValue(firstTouch?.acquisition_medium, 64) || "unknown",
+    attribution_model: "first_touch",
+    attribution_quality: firstTouch?.attribution_quality || "unknown",
+    form_placement: safeMarketingValue(options.formPlacement, 64) || SOURCE,
+    google_click_id_present: firstTouch?.google_click_id_present === true,
+  };
+
+  withSafeMarketingValue(body, "utm_source", firstTouch?.utm_source, 128);
+  withSafeMarketingValue(body, "utm_medium", firstTouch?.utm_medium, 128);
+  withSafeMarketingValue(body, "utm_campaign", firstTouch?.utm_campaign, 256);
+  withSafeMarketingValue(body, "utm_term", firstTouch?.utm_term, 256);
+  withSafeMarketingValue(body, "utm_content", firstTouch?.utm_content, 256);
+  withSafeMarketingValue(body, "referrer_host", firstTouch?.referrer_host, 256);
+  withSafeMarketingValue(body, "landing_path", firstTouch?.landing_path, 256);
+
+  const sessionId = safePostHogSessionId(options.posthogSessionId);
+  if (sessionId) body.posthog_session_id = sessionId;
+
+  return body;
+}
+
 /** Email-for-report capture → enters the Loops nurture sequence. Returns the report token. */
 export async function postLead(
   email: string,
   scanId: string,
   claimToken: string,
-  source: string = SOURCE,
+  optionsOrSource?: LeadOptionsOrSource,
 ): Promise<string> {
   const r = await fetch(`${API_BASE}/api/uv/lead`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, scan_id: scanId, claim_token: claimToken, source }),
+    body: JSON.stringify(leadBody(email, scanId, claimToken, optionsOrSource)),
   });
   const body: LeadResponse = await r.json().catch(() => ({}));
   if (!r.ok || !body.report_token) throw new Error(body.error || `lead failed (${r.status})`);

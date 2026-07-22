@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, StyleSheet, Text, useWindowDimensions, View, ViewToken } from 'react-native';
+import { FlatList, LayoutChangeEvent, ScrollView, StyleSheet, Text, useWindowDimensions, View, ViewToken } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import Animated, {
+  cancelAnimation,
   Easing,
   FadeIn,
   FadeInDown,
@@ -18,6 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { Feather } from '@expo/vector-icons';
+import Svg, { Path, Text as SvgText } from 'react-native-svg';
 import { ActionCard } from '../../src/components/ActionCard';
 import { Button } from '../../src/components/Button';
 import { ClinicalSourcesCard } from '../../src/components/ClinicalSourcesCard';
@@ -31,10 +33,12 @@ import {
   FontFamily,
   FontSize,
   Glow,
+  Motion,
   Spacing,
   scoreColor,
 } from '../../src/constants/theme';
 import { SIGNAL_COLORS, SIGNAL_LABELS } from '../../src/constants/signals';
+import { TYPICAL_COMPOSITE } from '../../src/constants/scoreReference';
 import { getExplanation } from '../../src/services/skinAnalysis';
 import {
   buildOverallSkinInsight,
@@ -43,6 +47,103 @@ import {
 import { useStore } from '../../src/store/useStore';
 import { trackEvent } from '../../src/services/analytics';
 import { AnimatedFillBar } from '../../src/components/AnimatedFillBar';
+import type { PrimaryGoal } from '../../src/types';
+
+const GOAL_LABELS: Record<PrimaryGoal, string> = {
+  acne: 'acne clarity',
+  sun_damage: 'sun-damage repair',
+  skin_age: 'skin-age support',
+};
+const LEGAL_DISCLAIMER = 'For informational purposes only. Not medical advice. Consult a dermatologist for diagnosis and treatment.';
+const TYPICAL_RANGE_LABEL = `${TYPICAL_COMPOSITE.low}–${TYPICAL_COMPOSITE.high}`;
+
+const SWIPE_ICON_SIZE = 14;
+const SWIPE_LABEL_LINE_HEIGHT = 12;
+const DISCLAIMER_LINE_HEIGHT = 14;
+export const BOTTOM_OVERLAY_HEIGHT =
+  SWIPE_ICON_SIZE +
+  Spacing.xxs +
+  SWIPE_LABEL_LINE_HEIGHT +
+  Spacing.sm +
+  DISCLAIMER_LINE_HEIGHT * 2 +
+  Spacing.sm;
+
+const ARC_SIZE = 236;
+const ARC_CENTER = ARC_SIZE / 2;
+const ARC_RADIUS = 100;
+const ARC_STROKE = 8;
+const ARC_START_DEG = 135;
+const ARC_SWEEP_DEG = 270;
+
+const pluralizePoint = (points: number): string => `${points} point${points === 1 ? '' : 's'}`;
+
+export function buildTypicalRangeComparison(score: number): string {
+  const rounded = Math.round(score);
+  if (rounded < TYPICAL_COMPOSITE.low) {
+    return `${pluralizePoint(TYPICAL_COMPOSITE.low - rounded)} below the typical Glowlytics range (${TYPICAL_RANGE_LABEL})`;
+  }
+  if (rounded > TYPICAL_COMPOSITE.high) {
+    return `${pluralizePoint(rounded - TYPICAL_COMPOSITE.high)} above the typical Glowlytics range (${TYPICAL_RANGE_LABEL})`;
+  }
+  if (rounded === TYPICAL_COMPOSITE.mid) {
+    return `Right at the typical Glowlytics range (${TYPICAL_RANGE_LABEL})`;
+  }
+  return `Within the typical Glowlytics range (${TYPICAL_RANGE_LABEL})`;
+}
+
+function buildPracticalLeverCopy(signals: Record<keyof typeof SIGNAL_LABELS, number> | undefined): string | null {
+  if (!signals) return null;
+  const signalKeys = Object.keys(SIGNAL_LABELS) as Array<keyof typeof SIGNAL_LABELS>;
+  const lowest = signalKeys.reduce<{ key: keyof typeof SIGNAL_LABELS; score: number } | null>((current, key) => {
+    const score = signals[key];
+    if (!Number.isFinite(score)) return current;
+    if (!current || score < current.score) return { key, score };
+    return current;
+  }, null);
+  if (!lowest) return null;
+  const actions: Record<keyof typeof SIGNAL_LABELS, string> = {
+    structure: 'steady sleep and barrier support move it fastest',
+    hydration: 'a barrier-friendly moisturizer is the quickest win',
+    inflammation: 'a calm, unchanged routine helps it settle',
+    sunDamage: 'daily SPF moves it fastest',
+    elasticity: 'steady SPF and retinoid support help most',
+  };
+  return `Biggest near-term lever: ${SIGNAL_LABELS[lowest.key].toLowerCase()}. ${actions[lowest.key]}.`;
+}
+
+const clampScore = (value: number): number => Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0));
+
+const scoreToSweep = (score: number): number => (clampScore(score) / 100) * ARC_SWEEP_DEG;
+
+const easeOutExpo = (t: number): number => (t >= 1 ? 1 : 1 - Math.pow(2, -10 * t));
+
+const polarToCartesian = (radius: number, angleDeg: number) => {
+  const angleRad = (Math.PI / 180) * angleDeg;
+  return {
+    x: ARC_CENTER + radius * Math.cos(angleRad),
+    y: ARC_CENTER + radius * Math.sin(angleRad),
+  };
+};
+
+const describeArc = (radius: number, startDeg: number, sweepDeg: number): string => {
+  if (sweepDeg <= 0) return '';
+  const start = polarToCartesian(radius, startDeg);
+  const end = polarToCartesian(radius, startDeg + sweepDeg);
+  const largeArcFlag = sweepDeg > 180 ? 1 : 0;
+  return `M ${start.x.toFixed(3)} ${start.y.toFixed(3)} A ${radius} ${radius} 0 ${largeArcFlag} 1 ${end.x.toFixed(3)} ${end.y.toFixed(3)}`;
+};
+
+// The greeting name comes from Clerk (the store's UserProfile has no name
+// field). Lazy optional require — same pattern as app/(tabs)/profile.tsx —
+// so Expo Go / jest without the native Clerk module degrade to no greeting.
+let useClerkUser: (() => { user: { firstName?: string | null } | null | undefined }) | undefined;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const clerk = require('@clerk/clerk-expo');
+  useClerkUser = clerk.useUser;
+} catch {
+  // Clerk not available
+}
 
 // ---------------------------------------------------------------------------
 // Story page wrapper — each page fills the viewport
@@ -52,6 +153,19 @@ function StoryPage({ children, screenH, insets }: {
   screenH: number;
   insets: { top: number; bottom: number };
 }) {
+  // Each page fills the viewport and centers its content. When async content
+  // (action plans, clinical sources, the bone mesh + intervention drawer)
+  // loads in and exceeds the viewport, we enable scrolling so nothing clips
+  // off-screen. While content fits, scrolling stays OFF so the vertical swipe
+  // falls through to the parent paging FlatList and page snapping is unchanged.
+  const frameH = useRef(0);
+  const [scrollEnabled, setScrollEnabled] = useState(false);
+  const onLayout = useCallback((e: LayoutChangeEvent) => {
+    frameH.current = e.nativeEvent.layout.height;
+  }, []);
+  const onContentSizeChange = useCallback((_w: number, contentH: number) => {
+    setScrollEnabled(contentH > frameH.current + 1);
+  }, []);
   return (
     <View style={[storyStyles.page, { height: screenH }]}>
       <LinearGradient
@@ -60,20 +174,32 @@ function StoryPage({ children, screenH, insets }: {
         end={{ x: 0.95, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
-      <View style={[
-        storyStyles.pageContent,
-        { paddingTop: insets.top + Spacing.xl, paddingBottom: insets.bottom + Spacing.xxl },
-      ]}>
+      <ScrollView
+        style={storyStyles.scroll}
+        contentContainerStyle={[
+          storyStyles.pageContent,
+          // Reserve the full bottom overlay (swipe cue + legal copy + safe area)
+          // so content never collides with the persistent reviewer disclosure.
+          { paddingTop: insets.top + Spacing.xl, paddingBottom: insets.bottom + BOTTOM_OVERLAY_HEIGHT },
+        ]}
+        scrollEnabled={scrollEnabled}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+        nestedScrollEnabled
+        onLayout={onLayout}
+        onContentSizeChange={onContentSizeChange}
+      >
         {children}
-      </View>
+      </ScrollView>
     </View>
   );
 }
 
 const storyStyles = StyleSheet.create({
   page: { width: '100%' },
+  scroll: { flex: 1 },
   pageContent: {
-    flex: 1,
+    flexGrow: 1,
     paddingHorizontal: Spacing.lg,
     justifyContent: 'center',
   },
@@ -129,10 +255,15 @@ const dotStyles = StyleSheet.create({
 // ---------------------------------------------------------------------------
 const BREATHE_EASING = Easing.inOut(Easing.ease);
 
-function ScoreGlow({ color }: { color: string }) {
+function ScoreGlow({ color, reduceMotion }: { color: string; reduceMotion: boolean }) {
   const breathe = useSharedValue(1);
 
   useEffect(() => {
+    cancelAnimation(breathe);
+    if (reduceMotion) {
+      breathe.value = 1;
+      return;
+    }
     // Seamless cycle: 1 → 1.06 → 0.94 → 1 (symmetric, no seam on repeat)
     breathe.value = withDelay(600, withRepeat(
       withSequence(
@@ -142,7 +273,8 @@ function ScoreGlow({ color }: { color: string }) {
       ),
       -1,
     ));
-  }, []);
+    return () => cancelAnimation(breathe);
+  }, [breathe, reduceMotion]);
 
   // Normalize breathe (0.94–1.06) to 0–1 for opacity interpolation
   const outerStyle = useAnimatedStyle(() => {
@@ -175,6 +307,91 @@ function ScoreGlow({ color }: { color: string }) {
   );
 }
 
+function PercentileArc({ score, color, reduceMotion }: { score: number; color: string; reduceMotion: boolean }) {
+  const finalScore = clampScore(score);
+  const [displayedScore, setDisplayedScore] = useState(reduceMotion ? finalScore : 0);
+
+  useEffect(() => {
+    if (reduceMotion) {
+      setDisplayedScore(finalScore);
+      return;
+    }
+
+    let raf = 0;
+    const startedAt = Date.now();
+    setDisplayedScore(0);
+    const step = () => {
+      const elapsed = Date.now() - startedAt;
+      const t = Math.min(1, elapsed / Motion.dramatic);
+      // JavaScript equivalent of the design token's out-expo curve.
+      setDisplayedScore(finalScore * easeOutExpo(t));
+      if (t < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [finalScore, reduceMotion]);
+
+  const bandStartSweep = scoreToSweep(TYPICAL_COMPOSITE.low);
+  const bandSweep = scoreToSweep(TYPICAL_COMPOSITE.high) - bandStartSweep;
+  const foregroundSweep = scoreToSweep(displayedScore);
+  const midAngle = ARC_START_DEG + scoreToSweep(TYPICAL_COMPOSITE.mid);
+  const tickStart = polarToCartesian(ARC_RADIUS - 9, midAngle);
+  const tickEnd = polarToCartesian(ARC_RADIUS + 10, midAngle);
+  const label = polarToCartesian(ARC_RADIUS + 23, midAngle);
+
+  return (
+    <Svg
+      width={ARC_SIZE}
+      height={ARC_SIZE}
+      viewBox={`0 0 ${ARC_SIZE} ${ARC_SIZE}`}
+      style={styles.percentileArc}
+      pointerEvents="none"
+    >
+      <Path
+        d={describeArc(ARC_RADIUS, ARC_START_DEG, ARC_SWEEP_DEG)}
+        stroke={Glow.palette.glow}
+        strokeWidth={ARC_STROKE}
+        strokeLinecap="round"
+        fill="none"
+        opacity={0.9}
+      />
+      <Path
+        d={describeArc(ARC_RADIUS, ARC_START_DEG + bandStartSweep, bandSweep)}
+        stroke={Glow.palette.muted}
+        strokeWidth={ARC_STROKE + 5}
+        strokeLinecap="round"
+        fill="none"
+        opacity={0.22}
+      />
+      <Path
+        d={describeArc(ARC_RADIUS, ARC_START_DEG, foregroundSweep)}
+        stroke={color}
+        strokeWidth={ARC_STROKE + 1}
+        strokeLinecap="round"
+        fill="none"
+      />
+      <Path
+        d={`M ${tickStart.x.toFixed(3)} ${tickStart.y.toFixed(3)} L ${tickEnd.x.toFixed(3)} ${tickEnd.y.toFixed(3)}`}
+        stroke={Glow.palette.muted}
+        strokeWidth={1.4}
+        strokeLinecap="round"
+        fill="none"
+        opacity={0.75}
+      />
+      <SvgText
+        x={label.x}
+        y={label.y}
+        fill={Glow.palette.muted}
+        fontFamily={FontFamily.sansSemiBold}
+        fontSize={9}
+        textAnchor="middle"
+      >
+        typical
+      </SvgText>
+    </Svg>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main screen
 // ---------------------------------------------------------------------------
@@ -187,9 +404,17 @@ export default function Results({ hideBottomAction: hideBottomActionProp }: { hi
 
   const allOutputs = useStore((s) => s.modelOutputs);
   const dailyRecords = useStore((s) => s.dailyRecords);
+  const clerkUser = useClerkUser ? useClerkUser() : null;
+  const firstName = clerkUser?.user?.firstName?.trim().split(/\s+/)[0] || null;
+  const protocol = useStore((s) => s.protocol);
+  const getStreak = useStore((s) => s.getStreak);
+  const currentStreak = getStreak();
+  const reduceMotion = useStore((s) => s.appearance.reduceMotion);
   const latestOutput = allOutputs.length > 0 ? allOutputs[allOutputs.length - 1] : null;
+  const previousOutput = allOutputs.length >= 2 ? allOutputs[allOutputs.length - 2] : null;
   const baselineOutput = allOutputs.length > 0 ? allOutputs[0] : null;
   const latestDaily = getLatestDailyForOutput(latestOutput, dailyRecords);
+  const previousDaily = getLatestDailyForOutput(previousOutput, dailyRecords);
   const baselineDaily = getLatestDailyForOutput(baselineOutput, dailyRecords);
 
   const overallInsight = useMemo(
@@ -204,6 +429,22 @@ export default function Results({ hideBottomAction: hideBottomActionProp }: { hi
       serverLesions: latestOutput?.lesions,
     }),
     [latestOutput, baselineOutput, latestDaily, baselineDaily],
+  );
+
+  const previousOverallInsight = useMemo(
+    () => previousOutput
+      ? buildOverallSkinInsight({
+        latestOutput: previousOutput,
+        baselineOutput,
+        latestDaily: previousDaily,
+        baselineDaily,
+        serverSignalScores: previousOutput.signal_scores,
+        serverSignalFeatures: previousOutput.signal_features,
+        serverSignalConfidence: previousOutput.signal_confidence,
+        serverLesions: previousOutput.lesions,
+      })
+      : null,
+    [previousOutput, baselineOutput, previousDaily, baselineDaily],
   );
 
   useEffect(() => {
@@ -271,6 +512,14 @@ export default function Results({ hideBottomAction: hideBottomActionProp }: { hi
     const safeScore = Number.isFinite(overallInsight?.score) ? overallInsight!.score : 0;
     const accentColor = scoreColor(safeScore);
 
+    const goalLabel = protocol?.primary_goal ? GOAL_LABELS[protocol.primary_goal] : null;
+    const previousScore = Number.isFinite(previousOverallInsight?.score) ? previousOverallInsight!.score : null;
+    const scoreDelta = previousScore != null ? Math.round(safeScore - previousScore) : null;
+    const showQuickReadCue = generatedInsights?.source === 'local';
+    const rangeComparison = buildTypicalRangeComparison(safeScore);
+    const practicalLever = buildPracticalLeverCopy(overallInsight?.signals);
+
+
     const p: { key: string; render: () => React.ReactNode }[] = [];
 
     // Page 1: Score reveal
@@ -279,22 +528,59 @@ export default function Results({ hideBottomAction: hideBottomActionProp }: { hi
       render: () => (
         <StoryPage screenH={screenH} insets={stableInsets}>
           <Animated.View entering={ZoomIn.duration(600)} style={styles.scoreCenter}>
-            <ScoreGlow color={accentColor} />
-            <Text style={[styles.bigScore, { color: accentColor }]}>
-              {safeScore}
-            </Text>
+            {(firstName || goalLabel) && (
+              <View style={styles.scorePersonalization}>
+                {firstName ? <Text style={styles.scoreGreeting}>Hi, {firstName}</Text> : null}
+                {goalLabel ? <Text style={styles.scoreGoal}>Focused on {goalLabel}</Text> : null}
+              </View>
+            )}
+            <View style={styles.scoreOrb}>
+              <ScoreGlow color={accentColor} reduceMotion={reduceMotion} />
+              <PercentileArc score={safeScore} color={accentColor} reduceMotion={reduceMotion} />
+              <Text style={[styles.bigScore, { color: accentColor }]}>
+                {safeScore}
+              </Text>
+            </View>
             <Text style={styles.scoreStatus}>{overallInsight?.statusLabel}</Text>
+            {(scoreDelta != null || currentStreak > 1) && (
+              <View style={styles.headlineChipRow}>
+                {scoreDelta != null && (
+                  <View style={styles.headlineChip}>
+                    <Feather
+                      name={scoreDelta > 0 ? 'trending-up' : scoreDelta < 0 ? 'trending-down' : 'minus'}
+                      size={12}
+                      color={scoreDelta > 0 ? Colors.success : scoreDelta < 0 ? Colors.warning : Glow.palette.muted}
+                    />
+                    <Text style={[
+                      styles.headlineChipText,
+                      { color: scoreDelta > 0 ? Colors.success : scoreDelta < 0 ? Colors.warning : Glow.palette.muted },
+                    ]}>
+                      {scoreDelta === 0 ? 'No change' : `${scoreDelta > 0 ? '+' : ''}${scoreDelta} vs last scan`}
+                    </Text>
+                  </View>
+                )}
+                {currentStreak > 1 && (
+                  <View style={styles.headlineChip}>
+                    <Feather name="zap" size={12} color={Glow.palette.accent} />
+                    <Text style={[styles.headlineChipText, { color: Glow.palette.accent }]}>
+                      {currentStreak} day streak
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
           </Animated.View>
-          <Animated.View entering={FadeInUp.duration(500).delay(400)}>
+          <Animated.View entering={FadeInUp.duration(500).delay(400)} style={styles.scoreContext}>
+            <Text style={styles.scoreComparison}>{rangeComparison}</Text>
             <Text style={styles.scoreAction} numberOfLines={3}>
               {scanCount === 1
                 ? 'This is your baseline. Future scans will show how your skin changes.'
                 : generatedInsights?.overall_score_context || overallInsight?.actionStatement}
             </Text>
-          </Animated.View>
-          <Animated.View entering={FadeIn.duration(400).delay(800)} style={styles.swipeHint} accessibilityLabel="Swipe up for signal details">
-            <Feather name="chevron-up" size={14} color={Glow.palette.accent} />
-            <Text style={styles.swipeText}>Swipe up</Text>
+            {practicalLever ? <Text style={styles.practicalNextStep}>{practicalLever}</Text> : null}
+            {showQuickReadCue ? (
+              <Text style={styles.quickReadCue}>Quick read: full analysis unavailable this scan.</Text>
+            ) : null}
           </Animated.View>
         </StoryPage>
       ),
@@ -408,11 +694,11 @@ export default function Results({ hideBottomAction: hideBottomActionProp }: { hi
       ),
     });
 
-    // Page 4: 3D facial mesh — shows lesion dots on real mesh (or canonical
-    // fallback when no per-user mesh has been captured yet).
+    // Page 4: 3D facial mesh — render lesions on the canonical topology so
+    // feature dots/overlays use the same MediaPipe anatomy on every device.
     if (latestOutput.conditions?.length || (latestOutput.lesions && latestOutput.lesions.length > 0)) {
-      const meshVerts = latestOutput.bone_structure?.downsampled_mesh?.vertices || buildCanonicalMesh();
-      const meshSource = latestOutput.bone_structure?.downsampled_mesh?.source || 'mediapipe';
+      const meshVerts = buildCanonicalMesh();
+      const meshSource = 'canonical' as const;
       p.push({
         key: 'mesh3d',
         render: () => (
@@ -436,31 +722,36 @@ export default function Results({ hideBottomAction: hideBottomActionProp }: { hi
       });
     }
 
-    // Page 5: Facial architecture (conditional on bone analysis)
+    // Page 5: Facial architecture — keep measurements on the canonical mesh;
+    // raw ARKit vertices do not share the MediaPipe landmark topology.
     if (latestOutput.bone_structure?.harmony != null) {
       const bone = latestOutput.bone_structure;
-      const meshVerts = bone.downsampled_mesh?.vertices || buildCanonicalMesh();
-      const meshSource = bone.downsampled_mesh?.source || 'mediapipe';
+      const meshVerts = buildCanonicalMesh();
+      const meshSource = 'canonical' as const;
       p.push({
         key: 'architecture',
         render: () => (
           <StoryPage screenH={screenH} insets={stableInsets}>
-            <Text style={styles.pageTitle}>Facial architecture</Text>
-            <View style={styles.meshWrap}>
-              <Face3DViewer
-                vertices={meshVerts}
-                source={meshSource}
-                mode="measurements"
-                size={Math.min(360, screenH * 0.4)}
-                bone={bone}
-              />
-            </View>
-            <HarmonyScoreReveal
-              score={bone.harmony}
-              caption={bone.dominant_driver ? `Strongest opportunity: ${bone.dominant_driver}` : undefined}
-            />
-            <View style={styles.interventionWrap}>
-              <InterventionDrawer bundle={bone.interventions} />
+            <View style={styles.architectureStack}>
+              <Text style={[styles.pageTitle, styles.architectureTitle]}>Facial architecture</Text>
+              <View style={styles.architectureViewerWrap}>
+                <Face3DViewer
+                  vertices={meshVerts}
+                  source={meshSource}
+                  mode="measurements"
+                  size={Math.min(336, screenH * 0.34)}
+                  bone={bone}
+                />
+              </View>
+              <View style={styles.architectureScoreWrap}>
+                <HarmonyScoreReveal
+                  score={bone.harmony}
+                  caption={bone.dominant_driver ? `Strongest opportunity: ${bone.dominant_driver}` : undefined}
+                />
+              </View>
+              <View style={styles.interventionWrap}>
+                <InterventionDrawer bundle={bone.interventions} />
+              </View>
             </View>
           </StoryPage>
         ),
@@ -517,7 +808,7 @@ export default function Results({ hideBottomAction: hideBottomActionProp }: { hi
     });
 
     return p;
-  }, [latestOutput, overallInsight, latestDaily, allOutputs, screenH, stableInsets, hideBottomAction, router]);
+  }, [latestOutput, overallInsight, previousOverallInsight, latestDaily, allOutputs, firstName, protocol, currentStreak, screenH, stableInsets, hideBottomAction, router, reduceMotion]);
 
   const getItemLayout = useCallback(
     (_: unknown, index: number) => ({ length: screenH, offset: screenH * index, index }),
@@ -555,13 +846,14 @@ export default function Results({ hideBottomAction: hideBottomActionProp }: { hi
         getItemLayout={getItemLayout}
       />
       <ProgressDots count={pages.length} active={activePage} />
-      {/* Persistent disclaimer — visible on every results page so reviewers see it
-          regardless of where they land. Required for Apple Guideline 1.4.1
-          (medical/health apps must disclose informational-only nature). */}
-      <View style={styles.disclaimerBar} pointerEvents="none">
-        <Text style={styles.disclaimerText}>
-          For informational purposes only. Not medical advice. Consult a dermatologist for diagnosis and treatment.
-        </Text>
+      <View style={[styles.bottomOverlay, { paddingBottom: insetsBottom + Spacing.sm }]} pointerEvents="none">
+        {activePage < pages.length - 1 ? (
+          <View style={styles.bottomSwipeHint} accessibilityLabel="Swipe up for next results page">
+            <Feather name="chevron-up" size={SWIPE_ICON_SIZE} color={Glow.palette.accent} />
+            <Text style={styles.swipeText}>Swipe up</Text>
+          </View>
+        ) : null}
+        <Text style={styles.disclaimerText}>{LEGAL_DISCLAIMER}</Text>
       </View>
     </View>
   );
@@ -575,47 +867,85 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Glow.palette.bg,
   },
-  disclaimerBar: {
+  bottomOverlay: {
     position: 'absolute',
     left: 0,
     right: 0,
-    bottom: 8,
+    bottom: 0,
     paddingHorizontal: Spacing.lg,
     alignItems: 'center',
+  },
+  bottomSwipeHint: {
+    alignItems: 'center',
+    gap: Spacing.xxs,
+    marginBottom: Spacing.sm,
   },
   disclaimerText: {
     color: Glow.palette.muted,
     fontFamily: FontFamily.sans,
-    fontSize: 11,
-    lineHeight: 14,
+    fontSize: FontSize.xxs,
+    lineHeight: DISCLAIMER_LINE_HEIGHT,
     textAlign: 'center',
-    opacity: 0.85,
+    maxWidth: 320,
+    opacity: 0.86,
   },
   // Page 1: Score reveal
   scoreCenter: {
     alignItems: 'center',
-    marginBottom: Spacing.xxl,
+    marginBottom: Spacing.md,
+  },
+  scoreOrb: {
+    width: 280,
+    height: 188,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  percentileArc: {
+    position: 'absolute',
+    top: -24,
+    left: 22,
   },
   glowOuter: {
     position: 'absolute',
-    width: 280,
-    height: 280,
-    borderRadius: 140,
-    top: -87,
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    top: -36,
+    left: 10,
   },
   glowMid: {
     position: 'absolute',
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    top: -47,
+    width: 196,
+    height: 196,
+    borderRadius: 98,
+    top: -4,
+    left: 42,
   },
   glowInner: {
     position: 'absolute',
     width: 140,
     height: 140,
     borderRadius: 70,
-    top: -17,
+    top: 24,
+    left: 70,
+  },
+  scorePersonalization: {
+    alignItems: 'center',
+    gap: Spacing.xxs,
+    marginBottom: Spacing.lg,
+  },
+  scoreGreeting: {
+    color: Glow.palette.ink,
+    fontFamily: FontFamily.sansSemiBold,
+    fontSize: FontSize.lg,
+    letterSpacing: -0.2,
+  },
+  scoreGoal: {
+    color: Glow.palette.muted,
+    fontFamily: FontFamily.sansMedium,
+    fontSize: FontSize.xs,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
   },
   bigScore: {
     fontFamily: FontFamily.sansBold,
@@ -631,26 +961,71 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     marginTop: Spacing.xs,
   },
+  headlineChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: Spacing.xs,
+    marginTop: Spacing.md,
+  },
+  headlineChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xxs,
+    paddingVertical: 6,
+    paddingHorizontal: Spacing.sm + 2,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Glow.palette.surface,
+    borderWidth: 1,
+    borderColor: Glow.palette.glow,
+  },
+  headlineChipText: {
+    fontFamily: FontFamily.sansSemiBold,
+    fontSize: FontSize.xs,
+    letterSpacing: 0.2,
+  },
+  scoreContext: {
+    alignItems: 'center',
+    alignSelf: 'center',
+    maxWidth: 320,
+    gap: Spacing.sm,
+  },
+  scoreComparison: {
+    color: Glow.palette.accent,
+    fontFamily: FontFamily.sansSemiBold,
+    fontSize: FontSize.sm,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
   scoreAction: {
     color: Glow.palette.ink,
     fontFamily: FontFamily.sansMedium,
-    fontSize: FontSize.lg,
-    lineHeight: 26,
-    letterSpacing: -0.2,
+    fontSize: FontSize.md,
+    lineHeight: 24,
+    letterSpacing: -0.1,
     textAlign: 'center',
-    paddingHorizontal: Spacing.lg,
   },
-  swipeHint: {
-    position: 'absolute',
-    bottom: Spacing.xl,
-    alignSelf: 'center',
-    alignItems: 'center',
-    gap: Spacing.xxs,
+  practicalNextStep: {
+    color: Glow.palette.muted,
+    fontFamily: FontFamily.sans,
+    fontSize: FontSize.sm,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+  quickReadCue: {
+    marginTop: Spacing.md,
+    color: Glow.palette.muted,
+    fontFamily: FontFamily.sans,
+    fontSize: FontSize.xs,
+    lineHeight: 18,
+    textAlign: 'center',
+    paddingHorizontal: Spacing.xl,
   },
   swipeText: {
     color: Glow.palette.accent,
     fontFamily: FontFamily.sansSemiBold,
     fontSize: FontSize.xxs,
+    lineHeight: SWIPE_LABEL_LINE_HEIGHT,
     textTransform: 'uppercase',
     letterSpacing: 1.2,
   },
@@ -817,6 +1192,23 @@ const styles = StyleSheet.create({
     fontSize: FontSize.xxs,
     letterSpacing: 0.4,
     textTransform: 'uppercase',
+  },
+  architectureStack: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  architectureTitle: {
+    marginBottom: 0,
+  },
+  architectureViewerWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  architectureScoreWrap: {
+    alignItems: 'center',
+    marginTop: -Spacing.sm,
+    marginBottom: -Spacing.sm,
   },
   interventionWrap: {
     marginTop: Spacing.lg,

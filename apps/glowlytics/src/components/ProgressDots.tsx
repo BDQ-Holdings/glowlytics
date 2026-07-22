@@ -1,43 +1,64 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, StyleSheet } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Colors, Spacing, BorderRadius } from '../constants/theme';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  Easing,
+} from 'react-native-reanimated';
+import { Glow } from '../constants/theme';
+import { useStore } from '../store/useStore';
 
 interface Props {
   total: number;
   current: number;
 }
 
+const DOT = 5;
+const ACTIVE_WIDTH = 18;
+const DURATION = 300;
+const EASE = Easing.bezier(0.2, 0.8, 0.2, 1);
+
+const Dot: React.FC<{ active: boolean; past: boolean; reduceMotion: boolean }> = ({
+  active,
+  past,
+  reduceMotion,
+}) => {
+  const P = Glow.palette;
+  const width = useSharedValue(active ? ACTIVE_WIDTH : DOT);
+
+  useEffect(() => {
+    const target = active ? ACTIVE_WIDTH : DOT;
+    width.value = reduceMotion
+      ? target
+      : withTiming(target, { duration: DURATION, easing: EASE });
+  }, [active, reduceMotion, width]);
+
+  const animatedStyle = useAnimatedStyle(() => ({ width: width.value }));
+
+  return (
+    <Animated.View
+      style={[
+        styles.dot,
+        animatedStyle,
+        { backgroundColor: active || past ? P.accent : P.glow },
+      ]}
+    />
+  );
+};
+
+/**
+ * Quiet step indicator from the hand-off (`StepDots`): active step is an
+ * 18×5 accent pill, past steps are 5×5 accent dots, future steps 5×5 glow.
+ */
 export const ProgressDots: React.FC<Props> = ({ total, current }) => {
+  const reduceMotion = useStore((s) => s.appearance?.reduceMotion ?? false);
+
   return (
     <View style={styles.container}>
-      {Array.from({ length: total }).map((_, i) => {
-        const isActive = i === current;
-        const isComplete = i < current;
-
-        if (isActive) {
-          return (
-            <View key={i} style={styles.dotActiveOuter}>
-              <LinearGradient
-                colors={['#3A9E8F', '#2B8C7E']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.dotActiveGradient}
-              />
-            </View>
-          );
-        }
-
-        return (
-          <View
-            key={i}
-            style={[
-              styles.dot,
-              isComplete && styles.dotComplete,
-            ]}
-          />
-        );
-      })}
+      {Array.from({ length: total }).map((_, i) => (
+        <Dot key={i} active={i === current} past={i < current} reduceMotion={reduceMotion} />
+      ))}
     </View>
   );
 };
@@ -47,26 +68,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: Spacing.sm,
-    paddingVertical: Spacing.md,
+    gap: 4,
   },
   dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: Colors.surfaceHighlight,
-  },
-  dotComplete: {
-    backgroundColor: 'rgba(58, 158, 143, 0.45)',
-  },
-  dotActiveOuter: {
-    width: 32,
-    height: 8,
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  dotActiveGradient: {
-    flex: 1,
-    borderRadius: 4,
+    height: DOT,
+    borderRadius: 999,
   },
 });

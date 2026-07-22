@@ -15,6 +15,10 @@
  */
 
 process.env.NODE_ENV = 'development';
+// Auth fails closed when an issuer is configured. Set '' (not delete): jest
+// shares process.env across files (maxWorkers=1) and app.js's dotenv would
+// re-inject a developer's .env CLERK_ISSUER_URL into a deleted slot.
+process.env.CLERK_ISSUER_URL = '';
 
 // ---- Direct imports for unit tests (no mocking needed) ----
 

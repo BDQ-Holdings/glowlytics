@@ -16,11 +16,42 @@ const {
   getLeadByEmail,
   getLeadByToken,
   markCustomer,
+  findCustomerLead,
 } = require('../queries/uv');
 
 // A fresh fake pool whose query resolves to the given rows.
 function fakePool(rows = []) {
   return { query: jest.fn().mockResolvedValue({ rows }) };
+}
+
+function statefulProfilePool(rows = []) {
+  const profiles = new Map(rows.map((row) => [row.user_id, { ...row }]));
+  return {
+    profiles,
+    query: jest.fn(async (sql, params = []) => {
+      if (/UPDATE user_profiles/.test(sql) && /created_at </.test(sql)) {
+        const cutoff = Date.parse(params[0]);
+        let rowCount = 0;
+        for (const row of profiles.values()) {
+          if (
+            Date.parse(row.created_at) < cutoff &&
+            row.posthog_account_created_status === 'reconciliation_pending' &&
+            row.posthog_account_created_uuid == null
+          ) {
+            row.posthog_account_created_sent_at = row.posthog_account_created_sent_at || new Date().toISOString();
+            row.posthog_account_created_status = 'historical_backfill_owned';
+            rowCount += 1;
+          }
+        }
+        return { rows: [], rowCount };
+      }
+      return { rows: [] };
+    }),
+  };
+}
+
+function profileState(pool, userId) {
+  return pool.profiles.get(userId);
 }
 
 describe('db-init migrationV5 (structural)', () => {
@@ -68,11 +99,75 @@ describe('db-init migrationV5 (structural)', () => {
     expect(m).not.toMatch(/CREATE INDEX (?!IF NOT EXISTS)/);
   });
 
-  test('initSchema applies migrationV5 against the provided pool', async () => {
-    const pool = { query: jest.fn().mockResolvedValue({ rows: [] }) };
+  test('initSchema applies UV attribution migration and cutover gate against the provided pool', async () => {
+    const schemaRows = [
+      ...['created_at', 'posthog_distinct_id', 'acquisition_source', 'acquisition_medium', 'attribution_model', 'attribution_quality', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'google_click_id_present', 'referrer_host', 'landing_path', 'form_placement']
+        .map((column_name) => ({ table_name: 'uv_leads', column_name })),
+      ...['created_at', 'posthog_account_created_uuid', 'posthog_account_created_timestamp', 'posthog_account_created_sent_at', 'posthog_account_created_status', 'posthog_account_created_properties', 'posthog_account_created_waitlist_match', 'posthog_account_created_delivery_claimed_at', 'posthog_account_created_retry_after']
+        .map((column_name) => ({ table_name: 'user_profiles', column_name })),
+    ];
+    const pool = {
+      query: jest.fn(async (sql) => (/information_schema\.columns/.test(sql)
+        ? { rows: schemaRows }
+        : { rows: [], rowCount: 0 })),
+    };
+    const previousCutover = process.env.GLOWLYTICS_CUTOVER_AT;
+    process.env.GLOWLYTICS_CUTOVER_AT = '2026-07-20T00:00:00.000Z';
     await dbInit.initSchema(pool);
+    if (previousCutover === undefined) delete process.env.GLOWLYTICS_CUTOVER_AT;
+    else process.env.GLOWLYTICS_CUTOVER_AT = previousCutover;
     const ran = pool.query.mock.calls.map((c) => c[0]);
     expect(ran).toContain(dbInit.migrationV5);
+    expect(ran).toContain(dbInit.migrationV7);
+    expect(ran).toContain(dbInit.migrationV8);
+    expect(ran.some((sql) => /information_schema\.columns/.test(sql))).toBe(true);
+    expect(ran.some((sql) => /historical_backfill_owned/.test(sql))).toBe(true);
+  });
+
+  test('migrationV7 adds immutable PostHog attribution columns and retry-safe account delivery metadata', () => {
+    const m = dbInit.migrationV7;
+    expect(m).toContain('ALTER TABLE uv_leads ADD COLUMN IF NOT EXISTS posthog_distinct_id TEXT');
+    expect(m).toContain('ALTER TABLE uv_leads ADD COLUMN IF NOT EXISTS acquisition_source TEXT');
+    expect(m).toContain('ALTER TABLE uv_leads ADD COLUMN IF NOT EXISTS attribution_model TEXT');
+    expect(m).toContain('ALTER TABLE uv_leads ADD COLUMN IF NOT EXISTS google_click_id_present BOOLEAN DEFAULT FALSE');
+    expect(m).toContain('ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS posthog_account_created_uuid UUID');
+    expect(m).toContain('ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS posthog_account_created_timestamp TIMESTAMPTZ');
+    expect(m).toContain('ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS posthog_account_created_sent_at TIMESTAMPTZ');
+    expect(m).toContain("ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS posthog_account_created_status TEXT NOT NULL DEFAULT 'reconciliation_pending'");
+    expect(m).toContain('ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS posthog_account_created_properties JSONB');
+    expect(m).toContain('ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS posthog_account_created_waitlist_match BOOLEAN');
+    expect(m).toContain('ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS posthog_account_created_delivery_claimed_at TIMESTAMPTZ');
+    expect(m).toContain('ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS posthog_account_created_retry_after TIMESTAMPTZ');
+    expect(m).not.toContain('UPDATE user_profiles');
+    expect(m).toContain('CREATE INDEX IF NOT EXISTS idx_user_profiles_posthog_account_created_pending');
+    expect(typeof dbInit.markPreCutoverProfilesHistorical).toBe('function');
+  });
+
+  test('migrationV8 scrubs browser identities and reopens dirty pending deliveries', () => {
+    const m = dbInit.migrationV8;
+    expect(m).toContain('DROP INDEX IF EXISTS idx_uv_leads_posthog_distinct_id');
+    expect(m).toContain('SET posthog_distinct_id = NULL');
+    expect(m).toContain('WHERE posthog_distinct_id IS NOT NULL');
+    expect(m).toContain("posthog_account_created_properties ? '$anon_distinct_id'");
+    expect(m).toContain("posthog_account_created_status IN ('reconciliation_pending', 'pending_delivery')");
+    expect(m).toContain("posthog_account_created_status = 'reconciliation_pending'");
+    expect(m).toContain('posthog_account_created_uuid = NULL');
+    expect(m).toContain('posthog_account_created_properties = NULL');
+    expect(m).toContain("posthog_account_created_properties - '$anon_distinct_id'");
+  });
+
+  test('pre-cutover ownership marking is rerunnable and never consumes a forward reconciliation row', async () => {
+    const pool = statefulProfilePool([
+      { user_id: 'old', created_at: '2026-07-19T00:00:00Z', posthog_account_created_status: 'reconciliation_pending' },
+      { user_id: 'exact', created_at: '2026-07-20T00:00:00Z', posthog_account_created_status: 'reconciliation_pending' },
+      { user_id: 'forward', created_at: '2026-07-21T00:00:00Z', posthog_account_created_status: 'reconciliation_pending' },
+    ]);
+    await dbInit.markPreCutoverProfilesHistorical(pool, '2026-07-20T00:00:00Z');
+    await dbInit.markPreCutoverProfilesHistorical(pool, '2026-07-20T00:00:00Z');
+    expect(profileState(pool, 'old').posthog_account_created_status).toBe('historical_backfill_owned');
+    expect(profileState(pool, 'forward').posthog_account_created_status).toBe('reconciliation_pending');
+    expect(profileState(pool, 'exact').posthog_account_created_status).toBe('reconciliation_pending');
+    expect(pool.query.mock.calls[0][0]).toContain("AT TIME ZONE 'UTC'");
   });
 });
 
@@ -177,6 +272,34 @@ describe('upsertLead', () => {
     expect(out).toBe(row);
     expect(out.report_token).toBe('tok_xyz');
   });
+
+  test('upsertLead stores first-touch fields without browser identity and does not overwrite them on duplicate email', async () => {
+    const attributedLead = {
+      id: 'lead_1',
+      email: 'a@b.com',
+      report_token: 'tok_xyz',
+      scan_id: 'scan_abc',
+      source: 'uv-scan-web',
+      posthog_distinct_id: 'browser-1',
+      acquisition_source: 'google',
+      acquisition_medium: 'paid_search',
+      attribution_model: 'first_touch',
+      attribution_quality: 'utm',
+      utm_source: 'google',
+      google_click_id_present: true,
+      landing_path: '/uv-scan',
+      referrer_host: 'www.google.com',
+    };
+    const pool = fakePool([{ id: 'lead_1' }]);
+
+    await upsertLead(pool, attributedLead);
+
+    const sql = pool.query.mock.calls[0][0];
+    expect(sql).not.toContain('posthog_distinct_id');
+    expect(sql).not.toMatch(/SET[\s\S]*acquisition_source\s*=/);
+    expect(pool.query.mock.calls[0][1]).toEqual(expect.arrayContaining(['google', 'paid_search', 'first_touch', 'utm', true, '/uv-scan']));
+    expect(pool.query.mock.calls[0][1]).not.toContain('browser-1');
+  });
 });
 
 describe('getLeadByEmail / getLeadByToken', () => {
@@ -214,6 +337,23 @@ describe('getLeadByEmail / getLeadByToken', () => {
   test('getLeadByToken returns null when absent', async () => {
     const pool = fakePool([]);
     expect(await getLeadByToken(pool, 'nope')).toBeNull();
+  });
+});
+
+describe('findCustomerLead', () => {
+  test('selects the earliest lead already linked to the Clerk user', async () => {
+    const row = { id: 'lead_1', clerk_user_id: 'user_2x' };
+    const pool = fakePool([row]);
+    const out = await findCustomerLead(pool, 'user_2x');
+
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.stringContaining('SELECT *'),
+      expect.arrayContaining(['user_2x'])
+    );
+    const sql = pool.query.mock.calls[0][0];
+    expect(sql).toContain('WHERE clerk_user_id = $1');
+    expect(sql).toContain('ORDER BY created_at, id');
+    expect(out).toBe(row);
   });
 });
 

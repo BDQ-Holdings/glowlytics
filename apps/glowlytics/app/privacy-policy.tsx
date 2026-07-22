@@ -17,7 +17,7 @@ import {
   TERMS_OF_USE_URL,
 } from '../src/constants/externalLinks';
 
-const EFFECTIVE_DATE = 'April 20, 2026';
+const EFFECTIVE_DATE = 'July 1, 2026';
 const CONTACT_EMAIL = 'drmustafa@bdqholdings.com';
 const DOMAIN = 'glowlytics.ai';
 
@@ -276,14 +276,15 @@ export default function TermsAndPrivacyScreen() {
           <BulletList
             items={[
               'Account information: email address and authentication credentials managed through Clerk.',
-              'Skin scan photos: images captured via your device camera during scans. Photos are processed on-device for real-time lesion detection and via our secure backend for full analysis. Photos are never shared with third parties.',
-              'Face data used for scan alignment: a face bounding box, approximate face size, head angle, and facial landmark / mesh coordinates generated on-device during live camera preview so we can position your face consistently. We do not create an identity template or perform face recognition.',
+              'Skin scan photos: images captured via your device camera during scans. Photos are processed on-device for real-time lesion detection and via our secure backend for full analysis, which includes AI processing by OpenAI as described in Sections 13 and 15. Photos are never shared with third parties for marketing, advertising, or model training.',
+              'Face data: a face bounding box, approximate face size, head angle, and facial landmark / mesh coordinates generated on-device during live camera preview so we can position your face consistently. When you complete a scan, the captured face-mesh coordinates are also sent to our secure servers for facial-structure analysis -- they are never shared with OpenAI, and we do not create an identity template or perform face recognition.',
               'Health metrics: skin analysis scores, signal data (structure, hydration, inflammation, sun damage, elasticity), lesion detection results, and trend history.',
+              'Apple Health data (optional): if you connect Apple Health, we read sleep duration (total, deep, and REM), heart rate variability, resting heart rate, steps, mindful minutes, and -- if available -- menstrual flow and estimated cycle day. Raw per-day records never leave your device; only aggregated multi-day summaries (for example, 7-day averages and totals, including cycle data if Health is connected) are sent to our servers and shared with OpenAI as part of generating your scan insights. You can disconnect Apple Health at any time in the app or in iOS Settings.',
               'Daily check-in context: sunscreen use, new products, sleep quality, and stress level -- collected after each scan to personalize analysis.',
               'Product usage data: skincare products you add, ingredient lists, and usage schedules.',
               'Demographic information: age range, location (coarse), period tracking preference, and lifestyle factors you optionally provide during onboarding.',
               'Device information: device type, operating system, and app version for troubleshooting purposes.',
-              'Anonymized usage analytics: collected via PostHog to understand how features are used and improve the app. This data is anonymized and cannot be used to identify you personally.',
+              'Usage analytics: collected via PostHog under a pseudonymous user ID to understand how features are used and improve the app (see Section 15 for exactly what PostHog receives).',
             ]}
           />
         </Section>
@@ -302,7 +303,7 @@ export default function TermsAndPrivacyScreen() {
               'Face alignment: using live face-position and landmark data on-device to guide framing, distance, and angle before a scan is captured.',
               'Trend tracking: comparing daily scans against your baseline to monitor changes in skin health signals over time.',
               'Personalized recommendations: tailoring product effectiveness scores and skin care insights based on your skin profile, goals, and AAD/ACOG medical guidelines (via our RAG pipeline).',
-              'Service improvement: aggregated, anonymized usage patterns (via PostHog) help us improve the app experience.',
+              'Service improvement: usage patterns and derived skin-metric scores, linked to a pseudonymous user ID (via PostHog), help us improve the app experience.',
             ]}
           />
           <Paragraph>
@@ -322,7 +323,7 @@ export default function TermsAndPrivacyScreen() {
           <BulletList
             items={[
               'On-device processing: real-time lesion detection runs directly on your device during camera alignment. This data does not leave your phone.',
-              'Backend AI processing: photos are sent to our secure backend where they are analyzed by custom ONNX computer vision models and a fine-tuned GPT-4o model.',
+              'Backend AI processing: photos -- and, if you connect Apple Health, aggregated multi-day health summaries -- are sent to our secure backend where they are analyzed by custom ONNX computer vision models and a fine-tuned GPT-4o model.',
               'AI analysis is NOT a medical diagnosis. Results are informational only and should never replace professional dermatological advice.',
               'Photos sent to OpenAI for analysis are processed under our API agreement and are not stored or used for model training by OpenAI.',
               'All AI-generated scores represent algorithmic assessments, not clinical evaluations.',
@@ -342,9 +343,9 @@ export default function TermsAndPrivacyScreen() {
           </Paragraph>
           <BulletList
             items={[
-              'Purpose: center your face, confirm distance, and keep scan framing consistent over time.',
-              'Retention: live face-alignment data is discarded when the camera session ends and is not stored as a reusable biometric template.',
-              'Sharing: live face-alignment data is not shared with third parties. Captured scan photos may be processed by our secure backend and OpenAI under our API agreement to generate non-diagnostic skin insights.',
+              'Purpose: center your face, confirm distance, keep scan framing consistent over time, and analyze your facial structure as part of scan results.',
+              'Retention: live face-alignment data is discarded when the camera session ends and is not stored as a reusable biometric template. Face-mesh coordinates captured with a completed scan are retained with your scan history until you delete your account or request deletion.',
+              'Sharing: face-mesh coordinates captured with a scan are sent to our secure servers for facial-structure analysis and are never shared with OpenAI or any other third party. Captured scan photos may be processed by our secure backend and OpenAI under our API agreement to generate non-diagnostic skin insights.',
               'Limitations: Glowlytics does not use face data for identity verification, face recognition, emotion detection, advertising, or profiling.',
             ]}
           />
@@ -360,7 +361,7 @@ export default function TermsAndPrivacyScreen() {
           <BulletList
             items={[
               'Local device storage: scan photos are stored in the app sandbox on your device, while analysis results and preferences are saved in an AES-encrypted data store on-device.',
-              'Ephemeral face alignment data: live face bounding boxes and landmark / mesh coordinates stay on-device during camera preview and are discarded after the session ends.',
+              'Face alignment data: live face bounding boxes and landmark / mesh coordinates stay on-device during camera preview; face-mesh coordinates captured with a completed scan are sent to our secure backend for facial-structure analysis (see Section 13A).',
               'Encrypted backend: account data and scan history are synced to our secure PostgreSQL database, encrypted in transit (TLS) and at rest.',
             ]}
           />
@@ -383,15 +384,21 @@ export default function TermsAndPrivacyScreen() {
           <BulletList
             items={[
               'Clerk (authentication): manages user sign-up, sign-in, and session tokens. Processes your email address and authentication credentials.',
-              'OpenAI (vision analysis): captured scan photos, which may include your face, are sent to OpenAI\'s API for AI-powered skin analysis. OpenAI does not receive live face-mesh coordinates, and photos are not stored or used for training by OpenAI per our API data usage agreement.',
+              'OpenAI (vision analysis): captured scan photos, which may include your face, and -- if you connect Apple Health -- aggregated multi-day health summaries are sent to OpenAI\'s API for AI-powered skin analysis and insight generation. OpenAI never receives face-mesh coordinates, and data sent to OpenAI is not stored or used for training per our API data usage agreement.',
               'RevenueCat (subscriptions): manages subscription state, free trial periods, and purchase verification. Processes your subscription status and purchase history. Does not receive your photos or health data.',
-              'PostHog (analytics): collects anonymized, aggregated usage data to help us understand feature adoption and improve the app. PostHog does not receive your photos, health data, or personally identifiable information.',
+              'PostHog (analytics): receives anonymized usage events and derived skin-metric scores (for example acne, sun damage, and skin age scores) linked to a pseudonymous user ID so we can understand feature adoption and improve the app. PostHog never receives your photos, raw health data, or contact details.',
               'Pinecone (RAG pipeline): stores anonymized medical guideline embeddings (AAD/ACOG) for generating evidence-based recommendations. Does not store or process your personal data.',
             ]}
           />
           <Paragraph>
             No third-party service receives your scan photos for marketing,
             advertising, or model training purposes.
+          </Paragraph>
+          <Paragraph>
+            We require service providers that process Glowlytics data to protect it
+            with the same or equivalent safeguards we apply, including TLS in
+            transit, contractual limits on use, and restrictions against using
+            scan photos for advertising or model training.
           </Paragraph>
         </Section>
       </View>
@@ -437,8 +444,9 @@ export default function TermsAndPrivacyScreen() {
           </Paragraph>
           <Paragraph>
             Live face-alignment data is not retained beyond the active camera
-            session. Captured scan photos that include your face are retained
-            until you delete your account or request deletion.
+            session. Captured scan photos and face-mesh coordinates from
+            completed scans are retained until you delete your account or
+            request deletion.
           </Paragraph>
         </Section>
       </View>
@@ -479,7 +487,7 @@ export default function TermsAndPrivacyScreen() {
               'Skin health scores and signals are generated using algorithmic analysis and AI (including fine-tuned GPT-4o and custom computer vision models), not clinical evaluation.',
               'Results are not a substitute for professional dermatological consultation.',
               'Recommendations are informed by AAD and ACOG guidelines but are not medical prescriptions.',
-              'Health-related data (skin metrics, trends, lesion detections) is never shared with third parties, including insurance companies or employers.',
+              'Health-related data (skin metrics, trends, lesion detections, and Apple Health summaries) is never sold, and never shared with advertisers, insurance companies, or employers.',
             ]}
           />
           <Paragraph>

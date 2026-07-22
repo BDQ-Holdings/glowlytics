@@ -1,4 +1,5 @@
-import { checkPhotoQualityFromFaces, PhotoQualityResult } from '../photoQuality';
+import { checkPhotoQuality, checkPhotoQualityFromFaces, evaluateLumaQuality } from '../photoQuality';
+import type { PhotoQualityResult } from '../photoQuality';
 import type { DetectedFace } from '../faceTracking';
 
 // No mocks needed — checkPhotoQualityFromFaces is a pure function
@@ -94,5 +95,54 @@ describe('checkPhotoQualityFromFaces', () => {
 
     expect(result.angleValid).toBe(true);
     expect(result.overallPass).toBe(true);
+  });
+});
+
+describe('evaluateLumaQuality', () => {
+  it('flags photos that are too dark', () => {
+    const result = evaluateLumaQuality(new Array(64 * 64).fill(30));
+
+    expect(result.overallPass).toBe(false);
+    expect(result.issues).toContain('too_dark');
+  });
+
+  it('flags photos that are too bright', () => {
+    const result = evaluateLumaQuality(new Array(64 * 64).fill(235));
+
+    expect(result.overallPass).toBe(false);
+    expect(result.issues).toContain('too_bright');
+  });
+
+  it('flags photos with low contrast', () => {
+    const result = evaluateLumaQuality(new Array(64 * 64).fill(128));
+
+    expect(result.overallPass).toBe(false);
+    expect(result.issues).toContain('low_contrast');
+  });
+
+  it('passes photos with usable brightness and contrast', () => {
+    const luma = Array.from({ length: 64 * 64 }, (_, i) => (i % 2 === 0 ? 90 : 170));
+
+    const result = evaluateLumaQuality(luma);
+
+    expect(result.overallPass).toBe(true);
+    expect(result.issues).toHaveLength(0);
+  });
+});
+
+describe('checkPhotoQuality', () => {
+  it('fails open when native resize or jpeg decode fails', async () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const result = await checkPhotoQuality('file://broken.jpg', 1000, 1000, {
+      manipulateAsync: jest.fn().mockRejectedValue(new Error('decode failed')),
+      decodeJpeg: jest.fn(),
+    });
+    expect(result.overallPass).toBe(true);
+    expect(result.issues).toHaveLength(0);
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[PhotoQuality] Capture quality check failed open:',
+      expect.any(Error),
+    );
+    warnSpy.mockRestore();
   });
 });

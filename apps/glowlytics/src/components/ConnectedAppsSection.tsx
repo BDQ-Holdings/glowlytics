@@ -83,7 +83,7 @@ export const ConnectedAppsSection: React.FC = () => {
         <Text style={styles.empty}>{error}</Text>
       ) : !apps || apps.length === 0 ? (
         <Text style={styles.empty} testID="connected-apps-empty">
-          No apps connected yet — link Glowlytics to Claude or ChatGPT to ask about your skin data.
+          No apps connected yet. Link Glowlytics to Claude or ChatGPT to ask about your skin data.
         </Text>
       ) : (
         apps.map((app) => (

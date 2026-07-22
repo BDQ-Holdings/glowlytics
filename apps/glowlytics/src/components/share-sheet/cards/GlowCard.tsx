@@ -10,17 +10,32 @@ import { FontFamily, Glow } from '../../../constants/theme';
 import { useStore } from '../../../store/useStore';
 import type { DayEntry } from '../../day-story/dayModel';
 import { CardShell, Watermark } from './CardShell';
+import { byAspect, type CardAspect } from '../cardFit';
 import { moodAdjective } from '../../day-story/dayModel';
 
 const P = Glow.palette;
 
 export interface GlowCardProps {
   day: DayEntry;
+  aspect?: CardAspect;
 }
 
-export function GlowCard({ day }: GlowCardProps) {
+export function GlowCard({ day, aspect = 'story' }: GlowCardProps) {
   const user = useStore((s) => s.user);
   const adj = moodAdjective(day.score);
+
+  // Author for the 9:16 story, step down for the shorter crops so the score +
+  // delta chip + verdict clear the CardShell padding box (baseH − 64).
+  const scoreSize = byAspect(aspect, { story: 190, post: 116, tweet: 74 });
+  const scoreLine = byAspect(aspect, { story: 180, post: 112, tweet: 72 });
+  const scoreSpacing = byAspect(aspect, { story: -4, post: -2, tweet: -1 });
+  const eyebrowSize = byAspect(aspect, { story: 12, post: 11, tweet: 10 });
+  const chipTop = byAspect(aspect, { story: 16, post: 10, tweet: 6 });
+  const deltaSize = byAspect(aspect, { story: 14, post: 13, tweet: 12 });
+  const verdictSize = byAspect(aspect, { story: 26, post: 20, tweet: 15 });
+  const verdictLine = byAspect(aspect, { story: 32, post: 26, tweet: 20 });
+  const verdictTop = byAspect(aspect, { story: 36, post: 16, tweet: 8 });
+  const verdictMax = byAspect(aspect, { story: 280, post: 280, tweet: 380 });
 
   return (
     <CardShell dark>
@@ -30,16 +45,25 @@ export function GlowCard({ day }: GlowCardProps) {
       </View>
 
       <View style={styles.body}>
-        <Text style={styles.eyebrow}>TODAY'S GLOW</Text>
-        <Text style={styles.score}>{day.score ?? '—'}</Text>
+        <Text style={[styles.eyebrow, { fontSize: eyebrowSize }]} numberOfLines={1}>TODAY'S GLOW</Text>
+        <Text
+          style={[styles.score, { fontSize: scoreSize, lineHeight: scoreLine, letterSpacing: scoreSpacing }]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+        >
+          {day.score ?? '—'}
+        </Text>
         {day.delta != null && day.delta !== 0 && (
-          <View style={styles.deltaChip}>
-            <Text style={styles.deltaText}>
+          <View style={[styles.deltaChip, { marginTop: chipTop }]}>
+            <Text style={[styles.deltaText, { fontSize: deltaSize }]} numberOfLines={1}>
               {day.delta > 0 ? '+' : ''}{day.delta} vs. last scan
             </Text>
           </View>
         )}
-        <Text style={styles.verdict}>
+        <Text
+          style={[styles.verdict, { fontSize: verdictSize, lineHeight: verdictLine, marginTop: verdictTop, maxWidth: verdictMax }]}
+          numberOfLines={2}
+        >
           “You look <Text style={styles.verdictEm}>{adj}</Text>.”
         </Text>
       </View>
@@ -56,17 +80,14 @@ const styles = StyleSheet.create({
   head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   headDate: { fontSize: 11, letterSpacing: 1.2, color: P.surface, opacity: 0.6, fontFamily: FontFamily.sansMedium },
   body: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  eyebrow: { fontSize: 12, letterSpacing: 1.6, color: P.surface, opacity: 0.6, fontFamily: FontFamily.sansMedium },
+  eyebrow: { letterSpacing: 1.6, color: P.surface, opacity: 0.6, fontFamily: FontFamily.sansMedium },
   score: {
     fontFamily: FontFamily.sansBold,
-    fontSize: 190,
-    lineHeight: 180,
     color: P.surface,
     marginTop: 8,
-    letterSpacing: -4,
+    textAlign: 'center',
   },
   deltaChip: {
-    marginTop: 16,
     paddingHorizontal: 16,
     paddingVertical: 6,
     backgroundColor: P.accent + '33',
@@ -74,15 +95,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: P.accent + '66',
   },
-  deltaText: { fontSize: 14, color: P.accent2, fontFamily: FontFamily.sansBold },
+  deltaText: { color: P.accent2, fontFamily: FontFamily.sansBold },
   verdict: {
     fontFamily: FontFamily.sansMedium,
     fontStyle: 'italic',
-    fontSize: 26,
-    lineHeight: 32,
     color: P.surface,
-    marginTop: 36,
-    maxWidth: 280,
     textAlign: 'center',
   },
   verdictEm: { color: P.accent2, fontFamily: FontFamily.sansBold },

@@ -44,9 +44,9 @@ import type { BiologicalSex } from '../../src/types';
 type Stage = 'idle' | 'capturing' | 'analysing' | 'done' | 'error';
 
 const STAGE_COPY: Record<Stage, { title: string; subtitle: string }> = {
-  idle:       { title: 'Preparing capture',           subtitle: 'Stand by — we’re initialising the sensors.' },
-  capturing:  { title: 'Mapping your facial geometry', subtitle: 'Stay still for a moment. We’re sampling 32 anatomical landmarks across your face.' },
-  analysing:  { title: 'Composing your Harmony score', subtitle: 'Computing canthal tilt, mandibular contour, midface balance — and what to do about each.' },
+  idle:       { title: 'Preparing capture',           subtitle: 'Stand by. We’re initializing the sensors.' },
+  capturing:  { title: 'Mapping your facial geometry', subtitle: 'Stay still for a moment. We’re sampling 50 named anatomical landmarks across your face.' },
+  analysing:  { title: 'Composing your Harmony score', subtitle: 'Computing canthal tilt, mandibular contour, midface balance, and what to do about each.' },
   done:       { title: 'All done',                     subtitle: 'Taking you to the results.' },
   error:      { title: 'Something went wrong',         subtitle: 'We couldn’t finish the analysis. Try again in a moment.' },
 };
@@ -214,7 +214,7 @@ export default function BoneCapture() {
           <View style={styles.meshSlot}>
             <Face3DViewer
               vertices={buildCanonicalMesh()}
-              source="mediapipe"
+              source="canonical"
               mode="anatomy"
               size={viewerSize}
               revealProgress={displayedReveal}

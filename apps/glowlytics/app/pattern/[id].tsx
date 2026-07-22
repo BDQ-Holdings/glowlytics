@@ -15,16 +15,17 @@ import {
 } from '../../src/constants/theme';
 import { exportAndSharePattern } from '../../src/services/patternExport';
 import { PatternExportCard } from '../../src/components/PatternExportCard';
+import { ClinicalSourcesCard } from '../../src/components/ClinicalSourcesCard';
 
 // Static "what you can try" lookup — keyed on (signal + driver)
 const SUGGESTIONS: Record<string, string[]> = {
   'inflammation:cycle_day': [
     'Increase niacinamide use on days 22-28 of your cycle',
     'Reduce dairy and sugar in the same window',
-    'Prioritize sleep — inflammation spikes are worse when sleep is short',
+    'Prioritize sleep: inflammation spikes are worse when sleep is short',
   ],
   'inflammation:hrv_sdnn_ms': [
-    'Try to get 7+ hours of sleep — HRV recovers with rest',
+    'Try to get 7+ hours of sleep. HRV recovers with rest',
     'Consider 10 minutes of mindful breathing on high-stress days',
     'Hold off on new active ingredients during low-HRV weeks',
   ],
@@ -41,7 +42,7 @@ const SUGGESTIONS: Record<string, string[]> = {
   'overall:stress_level': [
     'Schedule one stress-reducing activity daily (walk, breath, stretch)',
     'Keep your evening routine simple on high-stress days',
-    'Track what works — stress is the #1 lifestyle factor in the data',
+    'Track what works. Stress is the #1 lifestyle factor in the data',
   ],
 };
 
@@ -248,6 +249,15 @@ export default function PatternDetail() {
           </View>
         </FadeUp>
       )}
+
+      <FadeUp index={5}>
+        <View style={s.section}>
+          <ClinicalSourcesCard
+            title="Clinical sources"
+            subtitle="References behind the skin-health recommendations shown here."
+          />
+        </View>
+      </FadeUp>
 
       {/* Share */}
       {!pattern.isPredicted && (

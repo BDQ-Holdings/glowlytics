@@ -11,13 +11,15 @@
  * (off-screen capture, IG / Twitter aspect ratios).
  */
 
-import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useMemo } from 'react';
+import { Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { router } from 'expo-router';
 import Svg, { Circle, Line, Path, G, Polygon, Defs, ClipPath } from 'react-native-svg';
 import { GlowIcon } from '../glow/GlowIcons';
 import { SectionHead } from '../glow/GlowPrimitives';
 import { FontFamily, Glow } from '../../constants/theme';
 import { useStore } from '../../store/useStore';
+import { useTrueDepthSupported } from '../../hooks/useTrueDepthSupported';
 import type { BoneStructureResult } from '../../types';
 
 const P = Glow.palette;
@@ -270,10 +272,21 @@ export interface FacialStructureProps {
 interface Reading {
   shape: string;
   symmetry: number | null;     // 0–100 score
-  ratio: number | null;        // 1.0–2.0 (φ ≈ 1.618 ideal)
+  ratio: number | null;        // facial_index: glabella→menton height ÷ bizygomatic width
   jawline: string;
   cheekbone: string;
   thirds: { upper: number; mid: number; lower: number };
+  thirdsEstimated: boolean;
+  estimated: boolean;
+}
+
+function isFacialThirdsRaw(value: unknown): value is { t1: number; t2: number; t3: number } {
+  if (!value || typeof value !== 'object') return false;
+  return (
+    't1' in value && typeof value.t1 === 'number' && Number.isFinite(value.t1) &&
+    't2' in value && typeof value.t2 === 'number' && Number.isFinite(value.t2) &&
+    't3' in value && typeof value.t3 === 'number' && Number.isFinite(value.t3)
+  );
 }
 
 /**
@@ -289,6 +302,8 @@ function readingFromBone(bone: BoneStructureResult | undefined | null): Reading 
     jawline: 'no read yet',
     cheekbone: 'no read yet',
     thirds: { upper: 33, mid: 34, lower: 33 },
+    thirdsEstimated: true,
+    estimated: false,
   };
   if (!bone || bone.status !== 'ok') return fallback;
 
@@ -317,51 +332,75 @@ function readingFromBone(bone: BoneStructureResult | undefined | null): Reading 
     ? (gonialScore >= 75 ? 'Defined' : gonialScore >= 55 ? 'Softly tapered' : 'Round')
     : 'reading…';
 
-  // φ-ratio proxy: use the IPD ratio score's value if surfaced on the
-  // metrics map (it's a unit-free ratio close to 1.6–2.1 in the math).
-  const ipd = bone.metrics?.ipd_ratio?.value;
-  const ratio = typeof ipd === 'number' && Number.isFinite(ipd) ? Math.round(ipd * 100) / 100 : null;
+  const facialIndex = bone.metrics?.facial_index?.value;
+  const ratio = typeof facialIndex === 'number' && Number.isFinite(facialIndex) ? Math.round(facialIndex * 100) / 100 : null;
+  // Template calibration landed at 0.935, not phi-adjacent, so never present this as a 1.62/φ ideal.
 
   // Facial-thirds proportion from the scored metrics — approximate by
   // pulling the raw mesh measurements if present, otherwise default.
-  const thirds = (() => {
-    const raw = bone.metrics?.facial_thirds?.raw as { t1?: number; t2?: number; t3?: number } | undefined;
-    if (raw && Number.isFinite(raw.t1) && Number.isFinite(raw.t2) && Number.isFinite(raw.t3)) {
-      const sum = (raw.t1 ?? 0) + (raw.t2 ?? 0) + (raw.t3 ?? 0);
+  const thirdsRead = (() => {
+    const raw = bone.metrics?.facial_thirds?.raw;
+    if (isFacialThirdsRaw(raw)) {
+      const sum = raw.t1 + raw.t2 + raw.t3;
       if (sum > 0) {
         return {
-          upper: Math.round(((raw.t1 ?? 0) / sum) * 100),
-          mid:   Math.round(((raw.t2 ?? 0) / sum) * 100),
-          lower: Math.round(((raw.t3 ?? 0) / sum) * 100),
+          thirds: {
+            upper: Math.round((raw.t1 / sum) * 100),
+            mid:   Math.round((raw.t2 / sum) * 100),
+            lower: Math.round((raw.t3 / sum) * 100),
+          },
+          estimated: false,
         };
       }
     }
-    return { upper: 33, mid: 34, lower: 33 };
+    return { thirds: { upper: 33, mid: 34, lower: 33 }, estimated: true };
   })();
 
-  return { shape, symmetry, ratio, jawline, cheekbone, thirds };
+  const estimated = 'estimate' in bone && bone.estimate === true;
+  return { shape, symmetry, ratio, jawline, cheekbone, thirds: thirdsRead.thirds, thirdsEstimated: thirdsRead.estimated, estimated };
 }
 
 export function FacialStructure({ compact = false, onShare }: FacialStructureProps) {
   const modelOutputs = useStore((s) => s.modelOutputs);
+  // Suppress the "scan on a Face ID device" badge on TrueDepth devices — the
+  // user is already on one, so the CTA would be nonsense there.
+  const trueDepthSupported = useTrueDepthSupported();
 
-  // Use the latest output that carries a bone-structure result — most
-  // scans won't (it's a separate analysis path).
-  const latestBone = (() => {
+  // Use the latest output that carries a bone-structure result — most scans
+  // won't (it's a separate analysis path). Capture BOTH the reading shown and
+  // the daily_id of the output that owns it, so the detail screen opens the
+  // exact read the card displays rather than whatever happens to be the newest
+  // (possibly skin-only) output on record.
+  const { latestBone, boneDailyId } = useMemo(() => {
     for (let i = modelOutputs.length - 1; i >= 0; i--) {
-      const b = modelOutputs[i]?.bone_structure;
-      if (b && b.status === 'ok') return b;
+      const output = modelOutputs[i];
+      const b = output?.bone_structure;
+      if (output && b && b.status === 'ok') {
+        return { latestBone: b, boneDailyId: output.daily_id };
+      }
     }
-    return null;
-  })();
+    return { latestBone: null, boneDailyId: null };
+  }, [modelOutputs]);
+
+  const handleOpenDetail = useCallback(() => {
+    // Navigate with the daily_id of the bone read the card is displaying;
+    // without it bone-results falls back to the newest output, which may be a
+    // skin-only scan → the empty 'waiting' state. No bone read → keep the
+    // param-less path (bone-results shows its own empty state).
+    router.push(
+      boneDailyId
+        ? { pathname: '/scan/bone-results', params: { dailyId: boneDailyId } }
+        : '/scan/bone-results',
+    );
+  }, [boneDailyId]);
 
   const reading = readingFromBone(latestBone);
 
   const metrics: Array<{ label: string; value: string; sub: string }> = [
     { label: 'Shape', value: reading.shape, sub: reading.shape === '—' ? 'awaiting scan' : 'dominant driver' },
-    { label: 'Symmetry', value: reading.symmetry == null ? '—' : `${reading.symmetry}%`, sub: 'left vs. right' },
-    { label: 'φ Ratio', value: reading.ratio == null ? '—' : reading.ratio.toFixed(2), sub: '1.62 ideal' },
-    { label: 'Jawline', value: reading.jawline, sub: 'tapered profile' },
+    { label: 'Symmetry', value: reading.symmetry == null ? '—' : `Symmetry ${Math.round(reading.symmetry)}/100`, sub: 'left vs. right score' },
+    { label: 'Face ratio', value: reading.ratio == null ? '—' : reading.ratio.toFixed(2), sub: 'length / width' },
+    { label: 'Jawline', value: reading.jawline, sub: 'jaw angle band' },
   ];
 
   return (
@@ -369,7 +408,13 @@ export function FacialStructure({ compact = false, onShare }: FacialStructurePro
       {!compact && (
         <SectionHead title="Your structure" hint="from your latest face read" ink={P.ink} muted={P.muted} />
       )}
-      <View style={[styles.card, compact && styles.cardCompact]}>
+      <Pressable
+        onPress={handleOpenDetail}
+        accessibilityRole="button"
+        accessibilityLabel="Open your full facial structure read"
+        accessibilityHint="Opens your detailed facial architecture results"
+        style={({ pressed }) => [styles.card, compact && styles.cardCompact, pressed && styles.cardPressed]}
+      >
         {/* breathing halo */}
         <View pointerEvents="none" style={styles.halo} />
 
@@ -391,11 +436,18 @@ export function FacialStructure({ compact = false, onShare }: FacialStructurePro
             ) : (
               <>
                 <Text style={styles.heroTitle}>
-                  <Text style={styles.heroEm}>{reading.shape}</Text>, softly tapered
+                  <Text style={styles.heroEm}>{reading.shape}</Text>, {reading.jawline.toLowerCase()}
                 </Text>
                 <Text style={styles.heroSub}>
                   {reading.cheekbone.toLowerCase()} cheekbones · {reading.jawline.toLowerCase()}
                 </Text>
+                {reading.estimated && !trueDepthSupported && (
+                  <View style={styles.estimateBadge}>
+                    <Text style={styles.estimateBadgeText}>
+                      Estimated from a reference model — scan on a Face ID device for your own measurements
+                    </Text>
+                  </View>
+                )}
               </>
             )}
           </View>
@@ -414,15 +466,16 @@ export function FacialStructure({ compact = false, onShare }: FacialStructurePro
         {/* facial thirds bar */}
         <View style={styles.thirdsWrap}>
           <Text style={styles.metricLabel}>FACIAL THIRDS</Text>
-          <View style={styles.thirdsBar}>
-            <View style={[styles.thirdsSeg, { flex: reading.thirds.upper, backgroundColor: P.accent }]} />
-            <View style={[styles.thirdsSeg, { flex: reading.thirds.mid,   backgroundColor: P.accent2 }]} />
-            <View style={[styles.thirdsSeg, { flex: reading.thirds.lower, backgroundColor: P.glow }]} />
+          <View style={[styles.thirdsBar, reading.thirdsEstimated && styles.thirdsBarEstimated]}>
+            <View style={[styles.thirdsSeg, reading.thirdsEstimated && styles.thirdsSegEstimated, { flex: reading.thirds.upper, backgroundColor: P.accent }]} />
+            <View style={[styles.thirdsSeg, reading.thirdsEstimated && styles.thirdsSegEstimated, { flex: reading.thirds.mid,   backgroundColor: P.accent2 }]} />
+            <View style={[styles.thirdsSeg, reading.thirdsEstimated && styles.thirdsSegEstimated, { flex: reading.thirds.lower, backgroundColor: P.glow }]} />
           </View>
           <View style={styles.thirdsLabels}>
             <Text style={styles.metricSub}>Upper {reading.thirds.upper}</Text>
             <Text style={styles.metricSub}>Mid {reading.thirds.mid}</Text>
             <Text style={styles.metricSub}>Lower {reading.thirds.lower}</Text>
+            {reading.thirdsEstimated && <Text style={styles.metricSub}>Estimate</Text>}
           </View>
         </View>
 
@@ -437,7 +490,7 @@ export function FacialStructure({ compact = false, onShare }: FacialStructurePro
             <Text style={styles.shareBtnText}>Share my face read</Text>
           </TouchableOpacity>
         )}
-      </View>
+      </Pressable>
     </View>
   );
 }
@@ -455,6 +508,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   cardCompact: { marginTop: 0 },
+  cardPressed: { opacity: 0.94 },
   halo: {
     position: 'absolute',
     top: -30,
@@ -477,6 +531,16 @@ const styles = StyleSheet.create({
   },
   heroEm: { fontStyle: 'italic', color: P.accent },
   heroSub: { fontSize: 12, color: P.muted, marginTop: 6, lineHeight: 17 },
+  estimateBadge: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: P.accent + '55',
+    backgroundColor: P.accent + '12',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    marginTop: 8,
+  },
+  estimateBadgeText: { fontSize: 10, color: P.ink, lineHeight: 14, textAlign: 'center' },
   metricGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 18 },
   metricCell: {
     backgroundColor: P.bg,
@@ -490,6 +554,8 @@ const styles = StyleSheet.create({
   thirdsWrap: { marginTop: 16 },
   thirdsBar: { flexDirection: 'row', gap: 2, height: 6, borderRadius: 999, overflow: 'hidden', marginTop: 6 },
   thirdsSeg: { height: '100%' },
+  thirdsBarEstimated: { borderWidth: 1, borderStyle: 'dashed', borderColor: P.muted + '66', opacity: 0.72 },
+  thirdsSegEstimated: { opacity: 0.55 },
   thirdsLabels: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 },
   shareBtn: {
     marginTop: 18,

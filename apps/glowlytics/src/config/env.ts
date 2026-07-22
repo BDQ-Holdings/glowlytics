@@ -5,8 +5,10 @@ interface EnvConfig {
   API_BASE_URL: string;
   REVENUECAT_API_KEY: string;
   POSTHOG_API_KEY: string;
+  POSTHOG_HOST: string;
   ENABLE_APPLE_OAUTH: boolean;
   ENABLE_GOOGLE_OAUTH: boolean;
+  SENTRY_DSN: string;
 }
 
 const resolvedApiUrl = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:3001';
@@ -65,9 +67,12 @@ export const env: EnvConfig = {
     process.env.EXPO_PUBLIC_REVENUECAT_API_KEY ?? '',
   POSTHOG_API_KEY:
     process.env.EXPO_PUBLIC_POSTHOG_API_KEY ?? '',
+  POSTHOG_HOST: process.env.EXPO_PUBLIC_POSTHOG_HOST ?? 'https://us.i.posthog.com',
   // Defaults true: rendering is also gated on Clerk's supportedFirstFactors at runtime,
   // so an unset env var won't surface a button the Clerk instance doesn't actually support.
   // Apple Guideline 4.8 requires Sign in with Apple whenever a third-party sign-in is offered.
   ENABLE_APPLE_OAUTH: parseBooleanEnv(process.env.EXPO_PUBLIC_ENABLE_APPLE_OAUTH, true),
   ENABLE_GOOGLE_OAUTH: parseBooleanEnv(process.env.EXPO_PUBLIC_ENABLE_GOOGLE_OAUTH, true),
+  // Sentry crash reporting — empty string disables init entirely (see app/_layout.tsx).
+  SENTRY_DSN: process.env.EXPO_PUBLIC_SENTRY_DSN ?? '',
 };

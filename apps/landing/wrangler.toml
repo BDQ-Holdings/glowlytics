@@ -10,23 +10,3 @@ binding = "WAITLIST_DB"
 database_name = "glowlytics-waitlist"
 database_id = "9d731b31-0832-45ef-b268-89d3c75c5c86"
 
-# ─────────────────────────────────────────────────────────────────────────
-# TODO(infra/security L3): provision a Cloudflare KV namespace for per-IP/day
-# abuse rate limiting on the public write endpoints (/api/waitlist, /api/track).
-#
-# Until the namespace exists, rateLimited() in functions/api/{waitlist,track}.ts
-# FAILS OPEN — the site stays up and rate limiting is simply inactive. An empty
-# `id` is rejected by `wrangler pages deploy`, so this binding MUST stay
-# commented until a real id is pasted (uncommenting with an empty id breaks the
-# deploy). Do NOT enable a partial binding.
-#
-# Provisioning step (run once, then paste the printed id below and uncomment):
-#   npx wrangler kv:namespace create RATE_LIMIT_KV
-#
-# SECURITY: once the binding is live, the write endpoints (waitlist/track) MUST
-# FAIL CLOSED on a KV read/write error (reject the request) instead of failing
-# open, so a KV outage can't be abused to bypass the per-IP limit and flood D1.
-# [[kv_namespaces]]
-# binding = "RATE_LIMIT_KV"
-# id = ""  # <-- paste the id printed by `npx wrangler kv:namespace create RATE_LIMIT_KV`
-# ─────────────────────────────────────────────────────────────────────────

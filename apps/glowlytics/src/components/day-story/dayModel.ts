@@ -105,7 +105,7 @@ export function buildDayTimeline(
 
     const summary = output?.personalized_feedback?.split('. ')[0]?.replace(/\.$/, '')
       || output?.recommended_action
-      || (record ? 'No insight generated yet.' : 'No scan logged.');
+      || (record ? 'No insight generated yet.' : 'A quiet day. Skin does its best work off-camera.');
 
     const note = output?.recommended_action
       || (record ? 'Pull up the scan to see the full read.' : 'Take a check-in to read your skin.');
@@ -154,8 +154,7 @@ export function facetsForDay(entry: DayEntry, modelOutputs: ModelOutput[]): DayF
   return {
     hydrated: Number.isFinite(s.hydration) ? Math.round(s.hydration) : null,
     calm:     Number.isFinite(s.inflammation) ? Math.round(s.inflammation) : null,
-    even:     Number.isFinite(s.sunDamage) && Number.isFinite(s.elasticity)
-              ? Math.round((s.sunDamage + s.elasticity) / 2) : null,
+    even:     Number.isFinite(s.sunDamage) ? Math.round(s.sunDamage) : null,
     firm:     Number.isFinite(s.structure) ? Math.round(s.structure) : null,
   };
 }

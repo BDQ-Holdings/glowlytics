@@ -7,6 +7,7 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
+      "channel": "development",
       "ios": {
         "simulator": false
       },
@@ -16,30 +17,44 @@
         "EXPO_PUBLIC_REVENUECAT_API_KEY": "appl_MBqPaEhWtSCUgAaUcgQzuwEsGpc",
         "EXPO_PUBLIC_POSTHOG_API_KEY": "phc_ug01nkCMyTUbzxOO4GBXT7zfzmAbZlC8KR1zo4Nps28",
         "EXPO_PUBLIC_ENABLE_APPLE_OAUTH": "true",
-        "EXPO_PUBLIC_ENABLE_GOOGLE_OAUTH": "true"
-      }
+        "EXPO_PUBLIC_ENABLE_GOOGLE_OAUTH": "true",
+        "EXPO_PUBLIC_SENTRY_DSN": "https://772d60d382608948a1c827ea287f92b5@o4511663645327360.ingest.us.sentry.io/4511663649390592",
+        "SENTRY_ORG": "bdq-holdings",
+        "SENTRY_PROJECT": "react-native"
+      },
+      "environment": "development"
     },
     "preview": {
       "distribution": "internal",
+      "channel": "preview",
       "env": {
         "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_dHJ1ZS1zdW5iZWFtLTYwLmNsZXJrLmFjY291bnRzLmRldiQ",
         "EXPO_PUBLIC_API_BASE_URL": "https://glowlytics-api-production.up.railway.app",
         "EXPO_PUBLIC_REVENUECAT_API_KEY": "appl_MBqPaEhWtSCUgAaUcgQzuwEsGpc",
         "EXPO_PUBLIC_POSTHOG_API_KEY": "phc_ug01nkCMyTUbzxOO4GBXT7zfzmAbZlC8KR1zo4Nps28",
         "EXPO_PUBLIC_ENABLE_APPLE_OAUTH": "true",
-        "EXPO_PUBLIC_ENABLE_GOOGLE_OAUTH": "true"
-      }
+        "EXPO_PUBLIC_ENABLE_GOOGLE_OAUTH": "true",
+        "EXPO_PUBLIC_SENTRY_DSN": "https://772d60d382608948a1c827ea287f92b5@o4511663645327360.ingest.us.sentry.io/4511663649390592",
+        "SENTRY_ORG": "bdq-holdings",
+        "SENTRY_PROJECT": "react-native"
+      },
+      "environment": "preview"
     },
     "production": {
-      "autoIncrement": false,
+      "autoIncrement": true,
+      "channel": "production",
       "env": {
         "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuZ2xvd2x5dGljcy5haSQ",
         "EXPO_PUBLIC_API_BASE_URL": "https://glowlytics-api-production.up.railway.app",
         "EXPO_PUBLIC_REVENUECAT_API_KEY": "appl_MBqPaEhWtSCUgAaUcgQzuwEsGpc",
         "EXPO_PUBLIC_POSTHOG_API_KEY": "phc_ug01nkCMyTUbzxOO4GBXT7zfzmAbZlC8KR1zo4Nps28",
         "EXPO_PUBLIC_ENABLE_APPLE_OAUTH": "true",
-        "EXPO_PUBLIC_ENABLE_GOOGLE_OAUTH": "true"
-      }
+        "EXPO_PUBLIC_ENABLE_GOOGLE_OAUTH": "true",
+        "EXPO_PUBLIC_SENTRY_DSN": "https://772d60d382608948a1c827ea287f92b5@o4511663645327360.ingest.us.sentry.io/4511663649390592",
+        "SENTRY_ORG": "bdq-holdings",
+        "SENTRY_PROJECT": "react-native"
+      },
+      "environment": "production"
     }
   },
   "submit": {

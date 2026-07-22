@@ -16,20 +16,22 @@
  *   9. Share this day CTA
  */
 
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { GlowIcon, GlowSpark } from '../glow/GlowIcons';
+import { router } from 'expo-router';
+import { GlowIcon, GlowSpark, type GlowIconName } from '../glow/GlowIcons';
 import { SectionHead, BreathingGlow } from '../glow/GlowPrimitives';
 import { FontFamily, Glow } from '../../constants/theme';
-import { GLOW_FACETS } from '../../constants/facets';
+import { GLOW_FACETS, FACET_SIGNAL_ROUTE, type GlowFacetKey } from '../../constants/facets';
 import { useStore } from '../../store/useStore';
 import { FacialStructure } from './FacialStructure';
 import { facetsForDay, headlineForDay, moodAdjective, type DayEntry } from './dayModel';
+import { buildRitualSteps, ritualSectionForHour, ritualStepDone } from '../../services/ritual';
 
 const P = Glow.palette;
 const FACET_ICON = Object.fromEntries(
   GLOW_FACETS.map((f) => [f.key, f.icon]),
-) as Record<string, string>;
+) as Record<GlowFacetKey, GlowIconName>;
 
 export interface DayPageProps {
   day: DayEntry;
@@ -46,6 +48,7 @@ export function DayPage({ day, index: _index, width, arcSeries, onScan, onOpenRi
   const modelOutputs = useStore((s) => s.modelOutputs);
   const patterns = useStore((s) => s.patterns);
   const ritualCompletions = useStore((s) => s.ritualCompletions);
+  const toggleRitualStep = useStore((s) => s.toggleRitualStep);
   const products = useStore((s) => s.products);
   const getStreak = useStore((s) => s.getStreak);
 
@@ -53,6 +56,13 @@ export function DayPage({ day, index: _index, width, arcSeries, onScan, onOpenRi
   const facets = useMemo(() => facetsForDay(day, modelOutputs), [day, modelOutputs]);
   const headline = useMemo(() => headlineForDay(day), [day]);
   const adj = useMemo(() => moodAdjective(day.score), [day.score]);
+  const [minuteTick, setMinuteTick] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => setMinuteTick((tick) => tick + 1), 60_000);
+    return () => clearInterval(interval);
+  }, []);
+
 
   // Pick a pattern to feature on this day; cycle through patterns so each
   // page has a distinct insight. Day 0 of the window pairs with pattern 0,
@@ -61,16 +71,28 @@ export function DayPage({ day, index: _index, width, arcSeries, onScan, onOpenRi
     ? patterns[Math.abs(day.d) % patterns.length]
     : null;
 
-  // Today's ritual progress (3-item preview).
-  const dayCompletions = ritualCompletions[day.date] ?? {};
-  const ritualSteps = useMemo(() => products.slice(0, 3).map((p, i) => ({
-    id: `product:${p.user_product_id}:am`,
-    title: `${p.product_name} · ${p.usage_schedule}`,
-    time: i === 0 ? '7:00 AM' : i === 1 ? '7:05 AM' : '9:30 PM',
-  })), [products]);
-  const ritualDone = ritualSteps.filter((s) => dayCompletions[s.id]).length;
-  const ritualTotal = Math.max(ritualSteps.length, 1);
-  const ritualPct = (ritualDone / ritualTotal) * 100;
+  // Ritual mini — real steps from the shared builder for this page's date.
+  // Today is filtered to the current time-of-day section (morning before 17:00,
+  // evening after) plus all-day habits; past days show the full ritual for that
+  // date and are read-only historical evidence.
+  const recordedRitualStepIds = useMemo(
+    () => Object.keys(ritualCompletions[day.date] ?? {}),
+    [ritualCompletions, day.date],
+  );
+  const allRitualSteps = useMemo(
+    () => buildRitualSteps(products, day.date, recordedRitualStepIds),
+    [products, day.date, recordedRitualStepIds],
+  );
+  const currentRitualSection = useMemo(() => ritualSectionForHour(new Date().getHours()), [minuteTick]);
+  const ritualSteps = day.isToday
+    ? allRitualSteps.filter(
+        (s) => s.section === currentRitualSection || s.section === 'allday',
+      )
+    : allRitualSteps;
+  const ritualDone = ritualSteps.filter(
+    (s) => ritualStepDone(ritualCompletions, s.id, day.date),
+  ).length;
+  const ritualPct = ritualSteps.length === 0 ? 0 : (ritualDone / ritualSteps.length) * 100;
 
   return (
     <ScrollView
@@ -159,11 +181,18 @@ export function DayPage({ day, index: _index, width, arcSeries, onScan, onOpenRi
         {GLOW_FACETS.map((f) => {
           const val = facets[f.key];
           return (
-            <View key={f.key} style={styles.facetTile}>
-              <GlowIcon name={FACET_ICON[f.key] as never} size={18} color={P.accent} stroke={1.7} />
+            <TouchableOpacity
+              key={f.key}
+              style={styles.facetTile}
+              activeOpacity={0.86}
+              accessibilityRole="button"
+              accessibilityLabel={`${f.label} ${val ?? 'no reading'} — details`}
+              onPress={() => router.push(`/signal/${FACET_SIGNAL_ROUTE[f.key]}`)}
+            >
+              <GlowIcon name={FACET_ICON[f.key]} size={18} color={P.accent} stroke={1.7} />
               <Text style={styles.facetLabel} numberOfLines={1}>{f.label}</Text>
               <Text style={styles.facetValue}>{val == null ? '—' : val}</Text>
-            </View>
+            </TouchableOpacity>
           );
         })}
       </View>
@@ -175,7 +204,18 @@ export function DayPage({ day, index: _index, width, arcSeries, onScan, onOpenRi
       {pattern && (
         <View style={styles.section}>
           <SectionHead title="What we noticed" hint={pattern.confidence ?? 'pattern'} ink={P.ink} muted={P.muted} />
-          <TouchableOpacity activeOpacity={0.9} style={styles.patternCard}>
+          <TouchableOpacity
+            activeOpacity={0.9}
+            style={styles.patternCard}
+            accessibilityRole="button"
+            accessibilityLabel={`See evidence for ${pattern.insightText}`}
+            onPress={() =>
+              router.push({
+                pathname: '/pattern/[id]',
+                params: { id: pattern.id },
+              })
+            }
+          >
             <Text style={styles.patternTag}>
               {(pattern.driverLabel || pattern.driver || 'pattern').toUpperCase()} · {(pattern.signal || 'signal').toUpperCase()}
             </Text>
@@ -193,11 +233,11 @@ export function DayPage({ day, index: _index, width, arcSeries, onScan, onOpenRi
       <View style={styles.section}>
         <SectionHead
           title={day.isToday ? "Today's ritual" : "That day's ritual"}
-          hint={`${ritualDone}/${ritualTotal}`}
+          hint={`${ritualDone}/${ritualSteps.length}`}
           ink={P.ink}
           muted={P.muted}
         />
-        <TouchableOpacity activeOpacity={0.9} onPress={onOpenRitual} style={styles.ritualCard}>
+        <View style={styles.ritualCard}>
           <View style={styles.ritualBar}>
             <View style={[styles.ritualBarFill, { width: `${ritualPct}%` }]} />
           </View>
@@ -208,9 +248,18 @@ export function DayPage({ day, index: _index, width, arcSeries, onScan, onOpenRi
             </View>
           ) : (
             ritualSteps.map((step, i) => {
-              const done = i < ritualDone;
+              const done = ritualStepDone(ritualCompletions, step.id, day.date);
               return (
-                <View key={step.id} style={[styles.ritualRow, i < ritualSteps.length - 1 && styles.ritualRowBorder]}>
+                <TouchableOpacity
+                  key={step.id}
+                  style={[styles.ritualRow, i < ritualSteps.length - 1 && styles.ritualRowBorder]}
+                  activeOpacity={day.isToday ? 0.85 : 1}
+                  disabled={!day.isToday}
+                  onPress={day.isToday ? () => toggleRitualStep(step.id, day.date) : undefined}
+                  accessibilityRole={day.isToday ? 'button' : undefined}
+                  accessibilityState={{ checked: done, disabled: !day.isToday }}
+                  accessibilityLabel={`${done ? 'Completed' : day.isToday ? 'Mark done' : 'Not completed'}: ${step.title}, ${step.time}`}
+                >
                   <View style={[styles.ritualDot, done ? styles.ritualDotDone : styles.ritualDotPending]}>
                     {done && <GlowIcon name="check" size={12} color={P.surface} stroke={2} />}
                   </View>
@@ -218,11 +267,25 @@ export function DayPage({ day, index: _index, width, arcSeries, onScan, onOpenRi
                     <Text style={[styles.ritualTitle, done && styles.ritualTitleDone]} numberOfLines={1}>{step.title}</Text>
                     <Text style={styles.ritualTime}>{step.time}</Text>
                   </View>
-                </View>
+                </TouchableOpacity>
               );
             })
           )}
-        </TouchableOpacity>
+          {/* Full-ritual link lives outside the empty/non-empty branch so the
+              empty "Build your shelf" state stays navigable too. */}
+          {onOpenRitual && (
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={onOpenRitual}
+              accessibilityRole="button"
+              accessibilityLabel="Open full ritual"
+              style={styles.ritualOpen}
+            >
+              <Text style={styles.ritualOpenText}>Open full ritual</Text>
+              <GlowIcon name="arrow" size={12} color={P.accent} stroke={1.8} />
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       {/* 14-day arc */}
@@ -409,6 +472,8 @@ const styles = StyleSheet.create({
   ritualTitle: { fontSize: 13, color: P.ink, fontFamily: FontFamily.sansMedium },
   ritualTitleDone: { textDecorationLine: 'line-through', opacity: 0.5 },
   ritualTime: { fontSize: 11, color: P.muted, marginTop: 2 },
+  ritualOpen: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12, alignSelf: 'flex-start' },
+  ritualOpenText: { fontSize: 11, color: P.accent, fontFamily: FontFamily.sansBold },
   arcCard: { marginTop: 12, backgroundColor: P.surface, borderRadius: 22, padding: 18, borderWidth: 1, borderColor: P.glow },
   arcLabels: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 },
   arcLabel: { fontSize: 11, color: P.muted },

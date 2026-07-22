@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { PAGEVIEW_SESSION_KEY } from "./PageViewBeacon";
-
+import { getCurrentFirstTouch, getCurrentPostHogSessionId } from "./PostHogAttribution";
 type Status = "idle" | "loading" | "success" | "error";
 
 interface Props {
@@ -23,6 +23,91 @@ interface Props {
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+type AcquisitionSource =
+  | "instagram"
+  | "tiktok"
+  | "facebook"
+  | "google"
+  | "other_search"
+  | "ai_search"
+  | "direct"
+  | "referral"
+  | "unknown";
+type AttributionQuality = "utm" | "referrer" | "unknown" | "backfilled";
+type FormPlacement = "hero" | "footer" | "modal" | "pricing" | "mobile_onboarding" | "unknown";
+
+export type WaitlistAttributionPayload = {
+  acquisition_source: AcquisitionSource;
+  acquisition_medium: string;
+  attribution_model: "first_touch";
+  attribution_quality: AttributionQuality;
+  historical_backfill: false;
+  form_placement: FormPlacement;
+  utm_source?: string | null;
+  utm_medium?: string | null;
+  utm_campaign?: string | null;
+  utm_term?: string | null;
+  utm_content?: string | null;
+  google_click_id_present: boolean;
+  referrer_host?: string | null;
+  landing_path?: string | null;
+  posthog_session_id?: string;
+};
+
+type WaitlistAttribution = WaitlistAttributionPayload & { product: "glowlytics" };
+
+
+const FORM_PLACEMENT_ALIASES: Record<string, FormPlacement> = {
+  hero: "hero",
+  footer: "footer",
+  "final-cta": "footer",
+  "blog-newsletter": "footer",
+  modal: "modal",
+  pricing: "pricing",
+  mobile_onboarding: "mobile_onboarding",
+  "uv-scan-web": "unknown",
+  unknown: "unknown",
+};
+
+export function normalizeFormPlacement(value: unknown): FormPlacement {
+  return typeof value === "string" ? FORM_PLACEMENT_ALIASES[value] || "unknown" : "unknown";
+}
+
+const POSTHOG_SESSION_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function sanitizePostHogSessionId(value: unknown): string | null {
+  return typeof value === "string" && POSTHOG_SESSION_ID_RE.test(value) ? value.toLowerCase() : null;
+}
+
+
+export function buildWaitlistAttribution(
+  formPlacement: string,
+  posthogSessionId: string | null = getCurrentPostHogSessionId(),
+): WaitlistAttribution {
+  const firstTouch = getCurrentFirstTouch();
+  const sessionId = sanitizePostHogSessionId(posthogSessionId);
+  return {
+    product: "glowlytics",
+    acquisition_source: firstTouch?.acquisition_source || "unknown",
+    acquisition_medium: firstTouch?.acquisition_medium || "unknown",
+    attribution_model: "first_touch",
+    attribution_quality: firstTouch?.attribution_quality || "unknown",
+    historical_backfill: false,
+    form_placement: normalizeFormPlacement(formPlacement),
+    utm_source: firstTouch?.utm_source ?? null,
+    utm_medium: firstTouch?.utm_medium ?? null,
+    utm_campaign: firstTouch?.utm_campaign ?? null,
+    utm_term: firstTouch?.utm_term ?? null,
+    utm_content: firstTouch?.utm_content ?? null,
+    google_click_id_present: firstTouch?.google_click_id_present ?? false,
+    referrer_host: firstTouch?.referrer_host ?? null,
+    landing_path: firstTouch?.landing_path ?? null,
+    ...(sessionId ? { posthog_session_id: sessionId } : {}),
+  };
+}
+
 /**
  * Reads the article-attribution snapshot left by <PageViewBeacon>, if any.
  * Returns an empty object on the server, in private mode, or when the visitor
@@ -59,7 +144,6 @@ export default function WaitlistForm({
   const [status, setStatus] = useState<Status>("idle");
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [alreadyOnList, setAlreadyOnList] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   // After a transient error, drop the shake class so the next submit can
@@ -85,6 +169,7 @@ export default function WaitlistForm({
       setError(null);
 
       try {
+        const attribution = buildWaitlistAttribution(source);
         const res = await fetch("/api/waitlist", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -92,17 +177,17 @@ export default function WaitlistForm({
             email: trimmed,
             source,
             ...readAttribution(),
+            ...attribution,
           }),
         });
-        const body = (await res.json().catch(() => ({}))) as {
+        const body = (await res.json().catch(() => null)) as {
           ok?: boolean;
-          alreadyOnList?: boolean;
           error?: string;
-        };
+        } | null;
 
-        if (!res.ok || !body.ok) {
+        if (!res.ok || !body?.ok) {
           setError(
-            body.error === "invalid email"
+            body?.error === "invalid email"
               ? "That email doesn’t look right."
               : "Something’s off on our end. Try again in a moment?",
           );
@@ -110,7 +195,6 @@ export default function WaitlistForm({
           return;
         }
 
-        setAlreadyOnList(Boolean(body.alreadyOnList));
         setStatus("success");
       } catch {
         setError("We couldn’t reach the waitlist. Check your connection and try again?");
@@ -186,12 +270,8 @@ export default function WaitlistForm({
           </svg>
         </span>
         <div className="wl-success-text">
-          <strong>{alreadyOnList ? "Already on the list." : "You’re on the list."}</strong>
-          <span>
-            {alreadyOnList
-              ? "We had you saved. We’ll write when we have something to share."
-              : "We’ll send a quiet note when we’re ready for you."}
-          </span>
+          <strong>You’re on the list.</strong>
+          <span>We’ll send a quiet note when we’re ready for you.</span>
         </div>
       </div>
 

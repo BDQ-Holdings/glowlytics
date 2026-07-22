@@ -2,12 +2,12 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlowIcon } from '../../src/components/glow/GlowIcons';
 import { FadeUp, BreathingGlow } from '../../src/components/glow/GlowPrimitives';
 import { AddProductSheet } from '../../src/components/AddProductSheet';
 import { FocusFade } from '../../src/components/FocusFade';
+import { ProductThumb } from '../../src/components/advisor/ProductThumb';
 import {
   BorderRadius,
   Colors,
@@ -19,6 +19,8 @@ import { FACET_TONE, type GlowFacetKey } from '../../src/constants/facets';
 import { useStore } from '../../src/store/useStore';
 import { trackEvent } from '../../src/services/analytics';
 import { computeProductEffectiveness } from '../../src/services/ingredientDB';
+import { activeProducts } from '../../src/services/ritual';
+import { backfillProductImages } from '../../src/services/productImageBackfill';
 import {
   buildOverallSkinInsight,
   getLatestDailyForOutput,
@@ -43,7 +45,10 @@ export default function ShelfTab() {
   const router = useRouter();
   const palette = Glow.palette;
   const insets = useSafeAreaInsets();
-  const products = useStore((s) => s.products);
+  const allProducts = useStore((s) => s.products);
+  // Soft-removed products stay in the store for ritual history; the Shelf only
+  // shows what's active today so Remove visibly removes.
+  const products = useMemo(() => activeProducts(allProducts), [allProducts]);
   const protocol = useStore((s) => s.protocol);
   const modelOutputs = useStore((s) => s.modelOutputs);
   const dailyRecords = useStore((s) => s.dailyRecords);
@@ -51,6 +56,10 @@ export default function ShelfTab() {
   const addProductTrigger = useStore((s) => s.openAddProductTrigger);
   const consideringCount = useStore((s) => s.consideringList.length);
   const lastSeenTrigger = useRef(addProductTrigger);
+
+  useEffect(() => {
+    backfillProductImages().catch(() => {});
+  }, []);
 
   // Open the AddProductSheet whenever the cross-component trigger increments
   // (the tab-bar camera FAB calls `requestAddProduct()` from the Shelf tab).
@@ -121,7 +130,7 @@ export default function ShelfTab() {
             <Text style={[s.titleAccent, { color: palette.ink }]}>
               {products.length === 0 ? 'Empty' : spelledCount(workingCount || products.length)}
             </Text>
-            {products.length === 0 ? ' — start with one' : ' things working'}
+            {products.length === 0 ? '. Every shelf starts this way.' : ' things working'}
           </Text>
           <Text style={[s.subtitle, { color: palette.muted }]}>
             Tap any product to see how it shows up in your patterns.
@@ -194,11 +203,13 @@ export default function ShelfTab() {
                   }
                   style={[s.card, { backgroundColor: palette.surface, borderColor: palette.glow }]}
                 >
-                  <LinearGradient
-                    colors={[tone, palette.surface]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={[s.thumb, { borderColor: palette.glow }]}
+                  <ProductThumb
+                    imageUrl={product.image_url ?? null}
+                    tone={tone}
+                    w={56}
+                    h={72}
+                    r={12}
+                    palette={palette}
                   />
                   <View style={{ flex: 1, minWidth: 0 }}>
                     {!!product.brand && (
@@ -386,12 +397,6 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
-  },
-  thumb: {
-    width: 56,
-    height: 72,
-    borderRadius: 12,
-    borderWidth: 1,
   },
   brand: {
     fontFamily: FontFamily.sansMedium,

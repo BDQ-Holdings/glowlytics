@@ -31,7 +31,6 @@ import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { Button } from '../../src/components/Button';
-import { DomainHistoryStrip } from '../../src/components/DomainHistoryStrip';
 import { DomainRadialChart } from '../../src/components/DomainRadialChart';
 import { Face3DViewer } from '../../src/components/Face3DViewer';
 import { HarmonyIntroOverlay } from '../../src/components/HarmonyIntroOverlay';
@@ -39,14 +38,35 @@ import { HarmonyScoreReveal } from '../../src/components/HarmonyScoreReveal';
 import { InterventionDrawer } from '../../src/components/InterventionDrawer';
 import { ProgressDots, StoryPage } from '../../src/components/StoryCarousel';
 import {
+  BONE_DOMAINS,
   BONE_METRICS,
   FINDING_COPY,
+  buildDriverReadout,
   formatMetricValue,
+  interpretDomainScore,
+  interpretMetricScore,
   type BoneMetricKey,
 } from '../../src/constants/boneStructure';
 import { buildCanonicalMesh } from '../../src/services/canonicalFaceMesh';
+import { CANONICAL_FACE_VERTEX_SLOTS } from '../../src/services/canonicalFaceGeometry';
 import { useStore } from '../../src/store/useStore';
+import { useTrueDepthSupported } from '../../src/hooks/useTrueDepthSupported';
 import { BorderRadius, Colors, FontFamily, FontSize, Glow, Spacing } from '../../src/constants/theme';
+
+function readBoneHonestyFields(value: unknown): {
+  estimate: boolean;
+  confidence?: 'high' | 'medium' | 'low';
+} {
+  if (!value || typeof value !== 'object') return { estimate: false };
+  const estimate = 'estimate' in value && value.estimate === true;
+  const confidence = 'confidence' in value ? value.confidence : undefined;
+  return {
+    estimate,
+    confidence: confidence === 'high' || confidence === 'medium' || confidence === 'low'
+      ? confidence
+      : undefined,
+  };
+}
 
 export default function BoneResults() {
   const router = useRouter();
@@ -74,6 +94,12 @@ export default function BoneResults() {
   }, [modelOutputs, dailyId]);
 
   const bone = output?.bone_structure;
+  const boneHonesty = readBoneHonestyFields(bone);
+  const boneEstimate = boneHonesty.estimate;
+  const boneConfidence = boneHonesty.confidence;
+  // On a TrueDepth / Face ID device the "scan on a Face ID device" CTA is
+  // nonsense — the user is already on one — so we suppress the estimate pill there.
+  const trueDepthSupported = useTrueDepthSupported();
 
   // Stable insets ref so useMemo doesn't re-fire on every render
   const insetsTop = insets.top;
@@ -152,7 +178,7 @@ export default function BoneResults() {
           <View style={styles.emptyCopyWrap}>
             <Text style={styles.emptyTitle}>Your facial architecture, waiting</Text>
             <Text style={styles.emptyCopy}>
-              Run a quick scan to map 32 anatomical landmarks across your face. We’ll compose your Harmony score and what to do about each finding.
+              Run a quick scan to map {CANONICAL_FACE_VERTEX_SLOTS} anatomical landmark slots across your face. We’ll compose your Harmony score and what to do about each finding.
             </Text>
           </View>
           <View style={styles.emptyActions}>
@@ -196,8 +222,23 @@ export default function BoneResults() {
       <HarmonyScoreReveal
         score={bone.harmony}
         previousScore={previousBone?.harmony ?? null}
-        caption={bone.dominant_driver ? `Strongest opportunity: ${bone.dominant_driver}` : undefined}
+        driver={buildDriverReadout(bone)}
       />
+      {boneEstimate && !trueDepthSupported && (
+        <View style={styles.estimatePill}>
+          <Text style={styles.estimatePillText}>
+            Estimated from a reference model. Scan on a Face ID device for your own measurements
+          </Text>
+        </View>
+      )}
+      {boneConfidence === 'low' && (
+        <View style={styles.confidenceBanner}>
+          <Text style={styles.confidenceBannerTitle}>Reduced-confidence read</Text>
+          <Text style={styles.confidenceBannerText}>
+            Some landmarks were low-confidence on this scan, so treat the measurements as directional.
+          </Text>
+        </View>
+      )}
       <Animated.View entering={FadeIn.duration(400).delay(900)} style={styles.swipeHint} pointerEvents="none">
         <Feather name="chevron-up" size={14} color={Colors.harmony} />
         <Text style={styles.swipeText}>Swipe up</Text>
@@ -214,7 +255,12 @@ export default function BoneResults() {
       <Animated.View entering={FadeInDown.duration(450)}>
         <Text style={styles.pageTitle}>Where balance lives</Text>
         <Text style={styles.pageSubtitle}>
-          A regular hexagon means your six domains are balanced. The further a corner pulls in, the more that domain is dragging.
+          {(() => {
+            const driver = buildDriverReadout(bone);
+            return driver
+              ? `Your biggest opportunity right now is ${driver.label} at ${driver.scoreText}: ${driver.meaning}`
+              : 'A regular hexagon means your six domains are balanced. The further a corner pulls in, the more that domain is dragging.';
+          })()}
         </Text>
       </Animated.View>
       <Animated.View entering={FadeInDown.duration(450).delay(150)} style={styles.radialWrap}>
@@ -222,6 +268,7 @@ export default function BoneResults() {
           scores={bone.domain_scores || {}}
           previousScores={previousBone?.domain_scores}
           size={radialSize}
+          showScoreLabels={false}
         />
         {previousBone && (
           <View style={styles.radialLegend}>
@@ -236,9 +283,25 @@ export default function BoneResults() {
           </View>
         )}
       </Animated.View>
-      {/* Per-domain sparkline strip — renders null when <2 scans exist. */}
-      <Animated.View entering={FadeInDown.duration(450).delay(300)} style={styles.domainStripWrap}>
-        <DomainHistoryStrip />
+      <Animated.View entering={FadeInDown.duration(450).delay(260)} style={styles.domainReadoutWrap}>
+        <ScrollView style={styles.domainReadoutScroll} contentContainerStyle={styles.domainReadoutList} showsVerticalScrollIndicator={false}>
+          {BONE_DOMAINS.map((d) => {
+            const interp = interpretDomainScore(d.key, bone.domain_scores?.[d.key] ?? null);
+            const ideal = interp.band === 'ideal';
+            return (
+              <View key={d.key} style={styles.domainReadoutRow}>
+                <View style={styles.domainReadoutHead}>
+                  <Text style={styles.domainReadoutLabel}>{interp.label}</Text>
+                  <Text style={styles.domainReadoutScore}>{interp.scoreText}</Text>
+                  <View style={[styles.bandChip, ideal ? styles.bandChipIdeal : styles.bandChipBelow]}>
+                    <Text style={[styles.bandChipText, ideal ? styles.bandChipTextIdeal : styles.bandChipTextBelow]}>{interp.bandLabel}</Text>
+                  </View>
+                </View>
+                <Text style={styles.domainReadoutMeaning}>{interp.meaning}</Text>
+              </View>
+            );
+          })}
+        </ScrollView>
       </Animated.View>
     </StoryPage>
   ); }
@@ -258,30 +321,36 @@ export default function BoneResults() {
         {BONE_METRICS.map((m, i) => {
           const value = bone.metrics?.[m.key]?.value;
           const score = bone.scored_metrics?.[m.key];
-          if (!Number.isFinite(value)) return null;
+          const measured = Number.isFinite(value);
           return (
             <Animated.View
               key={m.key}
               entering={FadeInDown.duration(350).delay(80 + i * 25)}
-              style={styles.metricCard}
+              style={[styles.metricCard, !measured && styles.metricCardMissing]}
             >
               <Text style={styles.metricLabel}>{m.label}</Text>
-              <Text style={styles.metricValue}>
-                {formatMetricValue(m.key as BoneMetricKey, value as number)}
+              <Text style={[styles.metricValue, !measured && styles.metricValueMissing]}>
+                {measured ? formatMetricValue(m.key as BoneMetricKey, value as number) : '—'}
               </Text>
-              {Number.isFinite(score) && (
-                <View style={styles.metricFooter}>
-                  <View style={styles.miniBar}>
-                    <View
-                      style={[
-                        styles.miniBarFill,
-                        { width: `${Math.max(0, Math.min(100, score as number))}%` },
-                      ]}
-                    />
-                  </View>
-                  <Text style={styles.miniScore}>{score}</Text>
-                </View>
-              )}
+              {!measured ? (
+                <Text style={styles.metricMissingText}>Not measured this scan</Text>
+              ) : Number.isFinite(score) && (() => {
+                const interp = interpretMetricScore(m.key as BoneMetricKey, score as number);
+                const ideal = interp.band === 'ideal';
+                return (
+                  <>
+                    <View style={styles.metricFooter}>
+                      <View style={styles.miniBar}>
+                        <View style={[styles.miniBarFill, { width: `${Math.max(0, Math.min(100, score as number))}%` }]} />
+                      </View>
+                      <View style={[styles.bandChip, ideal ? styles.bandChipIdeal : styles.bandChipBelow]}>
+                        <Text style={[styles.bandChipText, ideal ? styles.bandChipTextIdeal : styles.bandChipTextBelow]}>{interp.bandLabel}</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.metricIdeal}>{interp.idealText}</Text>
+                  </>
+                );
+              })()}
             </Animated.View>
           );
         })}
@@ -300,6 +369,16 @@ export default function BoneResults() {
           ? 'The points worth knowing'
           : 'Nothing major flagged'}
       </Text>
+      {bone.findings && bone.findings.length > 0 && (() => {
+        const driver = buildDriverReadout(bone);
+        const top = bone.findings[0];
+        const topCopy = FINDING_COPY[top.findingCode];
+        return driver ? (
+          <Text style={styles.pageSubtitle}>
+            Most of your opportunity sits in {driver.label.toLowerCase()}{topCopy ? `, starting with “${topCopy.title}”.` : '.'}
+          </Text>
+        ) : null;
+      })()}
       {bone.findings && bone.findings.length > 0 ? (
         <ScrollView
           style={styles.findingScroll}
@@ -316,7 +395,7 @@ export default function BoneResults() {
                   onPress={() =>
                     router.push({
                       pathname: '/architecture/[finding]',
-                      params: { finding: f.findingCode, dailyId: output?.daily_id || '' },
+                      params: { finding: f.findingCode, dailyId: output?.daily_id || '', highlightMetric: f.metric },
                     })
                   }
                   accessibilityLabel={`See details for ${copy.title}`}
@@ -338,7 +417,7 @@ export default function BoneResults() {
         </ScrollView>
       ) : (
         <Text style={styles.findingsEmpty}>
-          Every domain landed inside its healthy range on this scan. Keep going — the more scans you log, the clearer trends become.
+          Every domain landed in range. Structurally, an uneventful week. The good kind.
         </Text>
       )}
     </StoryPage>
@@ -352,7 +431,7 @@ export default function BoneResults() {
       <Text style={styles.pageEyebrow}>What you can do</Text>
       <Text style={styles.pageTitle}>Three tiers, in order</Text>
       <Text style={styles.pageSubtitle}>
-        Start with lifestyle. Add pharma if you want more lift. Procedural is permanent — only with a board-certified specialist.
+        Start with lifestyle. Add pharma if you want more lift. Procedural is permanent, and only with a board-certified specialist.
       </Text>
       <Animated.View entering={FadeInDown.duration(400).delay(150)} style={styles.interventionWrap}>
         <InterventionDrawer bundle={bone.interventions} />
@@ -379,6 +458,7 @@ export default function BoneResults() {
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}
         getItemLayout={getItemLayout}
+        initialNumToRender={pages.length}
       />
       <ProgressDots count={pages.length} active={activePage} />
       <View style={styles.disclaimerBar} pointerEvents="none">
@@ -440,6 +520,51 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 1.2,
   },
+  estimatePill: {
+    alignSelf: 'center',
+    maxWidth: 320,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    borderColor: Colors.harmony + '55',
+    backgroundColor: Colors.harmony + '12',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    marginTop: Spacing.xs,
+  },
+  estimatePillText: {
+    color: Glow.palette.ink,
+    fontFamily: FontFamily.sansMedium,
+    fontSize: FontSize.xs,
+    lineHeight: 17,
+    textAlign: 'center',
+  },
+  confidenceBanner: {
+    alignSelf: 'center',
+    maxWidth: 330,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.warning + '44',
+    backgroundColor: Colors.warning + '12',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    marginTop: Spacing.sm,
+    gap: 2,
+  },
+  confidenceBannerTitle: {
+    color: Colors.warning,
+    fontFamily: FontFamily.sansSemiBold,
+    fontSize: FontSize.xs,
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
+    textAlign: 'center',
+  },
+  confidenceBannerText: {
+    color: Glow.palette.muted,
+    fontFamily: FontFamily.sans,
+    fontSize: FontSize.xs,
+    lineHeight: 17,
+    textAlign: 'center',
+  },
 
   // Shared page header pieces
   pageEyebrow: {
@@ -483,9 +608,6 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.sansMedium,
     fontSize: FontSize.xs,
   },
-  domainStripWrap: {
-    marginTop: Spacing.md,
-  },
 
   // Measurements
   measurementScroll: { flexGrow: 0 },
@@ -520,6 +642,14 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3,
     marginTop: 2,
   },
+  metricCardMissing: {
+    borderStyle: 'dashed',
+    borderColor: Glow.palette.muted + '55',
+    backgroundColor: Glow.palette.surface + 'B8',
+  },
+  metricValueMissing: {
+    color: Glow.palette.muted,
+  },
   metricFooter: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -538,14 +668,14 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.harmony,
     borderRadius: 2,
   },
-  miniScore: {
-    color: Glow.palette.muted,
-    fontFamily: FontFamily.sansSemiBold,
-    fontSize: FontSize.xxs,
-    minWidth: 22,
-    textAlign: 'right',
-  },
 
+  metricMissingText: {
+    color: Glow.palette.muted,
+    fontFamily: FontFamily.sans,
+    fontSize: FontSize.xs,
+    lineHeight: 16,
+    marginTop: Spacing.xs,
+  },
   // Findings
   findingScroll: { flexGrow: 0 },
   findingList: { gap: Spacing.sm, paddingBottom: Spacing.md },
@@ -644,4 +774,28 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
     paddingHorizontal: Spacing.md,
   },
+  // Domain readout (by-area)
+  domainReadoutWrap: { marginTop: Spacing.md },
+  domainReadoutScroll: { flexGrow: 0, maxHeight: 260 },
+  domainReadoutList: { gap: Spacing.sm, paddingBottom: Spacing.sm },
+  domainReadoutRow: {
+    backgroundColor: Glow.palette.surface,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1, borderColor: Glow.palette.glow,
+    paddingVertical: Spacing.sm, paddingHorizontal: Spacing.md,
+    gap: Spacing.xxs,
+  },
+  domainReadoutHead: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  domainReadoutLabel: { flex: 1, color: Glow.palette.ink, fontFamily: FontFamily.sansSemiBold, fontSize: FontSize.sm },
+  domainReadoutScore: { color: Colors.harmony, fontFamily: FontFamily.sansBold, fontSize: FontSize.sm, letterSpacing: -0.2 },
+  domainReadoutMeaning: { color: Glow.palette.muted, fontFamily: FontFamily.sans, fontSize: FontSize.xs, lineHeight: 17 },
+  // Shared band chip
+  bandChip: { paddingHorizontal: Spacing.xs + 2, paddingVertical: 2, borderRadius: BorderRadius.full },
+  bandChipBelow: { backgroundColor: Colors.warning + '1E' },
+  bandChipIdeal: { backgroundColor: Colors.success + '1E' },
+  bandChipText: { fontFamily: FontFamily.sansSemiBold, fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.6 },
+  bandChipTextBelow: { color: Colors.warning },
+  bandChipTextIdeal: { color: Colors.success },
+  // Metric card ideal caption
+  metricIdeal: { color: Glow.palette.muted, fontFamily: FontFamily.sans, fontSize: FontSize.xxs, marginTop: 2 },
 });

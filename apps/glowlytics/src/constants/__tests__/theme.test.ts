@@ -13,8 +13,13 @@ describe('Theme constants', () => {
     });
 
     it('maps all font families to a valid loaded variant', () => {
-      // Switzer covers body/heading weights; DancingScript is the Glow accent.
-      const validFonts = ['Switzer-Regular', 'Switzer-Medium', 'Switzer-Bold', 'DancingScript'];
+      // Switzer covers body/heading weights; Instrument Serif is the editorial
+      // voice (loaded in app/_layout.tsx); DancingScript is the Glow accent.
+      const validFonts = [
+        'Switzer-Regular', 'Switzer-Medium', 'Switzer-Bold',
+        'InstrumentSerif-Regular', 'InstrumentSerif-Italic',
+        'DancingScript',
+      ];
       Object.values(FontFamily).forEach((font) => {
         expect(validFonts).toContain(font);
       });

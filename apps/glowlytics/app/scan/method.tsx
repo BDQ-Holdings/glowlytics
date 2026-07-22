@@ -123,7 +123,7 @@ export default function MethodScreen() {
         </View>
 
         <View style={styles.footer}>
-          <Text style={styles.footerNote}>Your photos are sent securely to our backend and OpenAI to generate your scores — never sold or used to identify you.</Text>
+          <Text style={styles.footerNote}>Your photos are sent securely to our backend and OpenAI to generate your scores. They’re never sold or used to identify you.</Text>
         </View>
       </ScrollView>
     </View>

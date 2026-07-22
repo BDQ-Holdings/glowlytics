@@ -12,7 +12,7 @@ import type { GlowIconName } from '../components/glow/GlowIcons';
  *
  *   Hydrated <- hydration
  *   Calm     <- inflammation (already inverted: 100 = calmest)
- *   Even     <- average(sunDamage, elasticity)   // tone evenness composite
+ *   Even     <- sunDamage (tone evenness)
  *   Firm     <- structure
  */
 export type GlowFacetKey = 'hydrated' | 'calm' | 'even' | 'firm';
@@ -36,7 +36,7 @@ export const facetValues = (signals: CompositeSignals | null): Record<GlowFacetK
   return {
     hydrated: signals.hydration,
     calm: signals.inflammation,
-    even: Math.round((signals.sunDamage + signals.elasticity) / 2),
+    even: Math.round(signals.sunDamage),
     firm: signals.structure,
   };
 };
@@ -50,4 +50,21 @@ export const FACET_TONE: Record<GlowFacetKey, string> = {
   calm: '#E8DCC8',
   even: '#F2D9A8',
   firm: '#D9C8E0',
+};
+
+/**
+ * Route a facet tile to its Glow-language detail page (`app/signal/[key].tsx`).
+ *
+ * The detail page is keyed by the underlying snake_case signal route, not the
+ * facet key. `even` is the sunDamage (tone-evenness) reading, so the tile
+ * number matches the `sun_damage` detail hero exactly.
+ */
+export const FACET_SIGNAL_ROUTE: Record<
+  GlowFacetKey,
+  'hydration' | 'inflammation' | 'sun_damage' | 'structure'
+> = {
+  hydrated: 'hydration',
+  calm: 'inflammation',
+  even: 'sun_damage',
+  firm: 'structure',
 };

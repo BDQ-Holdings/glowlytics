@@ -33,9 +33,9 @@ interface PaletteOption {
 }
 
 const PALETTES: PaletteOption[] = [
+  { id: 'rose',   name: 'Rose',   swatches: ['#F6ECEB', '#A14A55', '#E0B8A6'] },
   { id: 'dusk',   name: 'Dusk',   swatches: ['#F5EFE8', '#5A3A5E', '#D9A28B'] },
   { id: 'meadow', name: 'Meadow', swatches: ['#EEF1EA', '#3D6B52', '#C9B786'] },
-  { id: 'rose',   name: 'Rose',   swatches: ['#F6ECEB', '#A14A55', '#E0B8A6'] },
   { id: 'auto',   name: 'Auto',   swatches: ['#F5EFE8', '#EEF1EA', '#F6ECEB'], note: 'Sunrise shift' },
 ];
 
@@ -54,10 +54,10 @@ interface IconOption {
 // `require` is hoisted statically so Metro bundles the assets at build time.
 // Each icon ships at 1024×1024 — we let RN downsample for the picker tile.
 const ICON_OPTIONS: IconOption[] = [
+  { id: 'og-rose',     label: 'Rose',      source: require('../../assets/app-icons/og-rose.png') },
   { id: 'og-dusk',     label: 'Dusk',      source: require('../../assets/app-icons/og-dusk.png') },
   { id: 'og-sunset',   label: 'Sunset',    source: require('../../assets/app-icons/og-sunset.png') },
   { id: 'og-meadow',   label: 'Meadow',    source: require('../../assets/app-icons/og-meadow.png') },
-  { id: 'og-rose',     label: 'Rose',      source: require('../../assets/app-icons/og-rose.png') },
   { id: 'og-plum',     label: 'Plum',      source: require('../../assets/app-icons/og-plum.png') },
   { id: 'lowercase-g', label: 'Lowercase', source: require('../../assets/app-icons/lowercase-g.png') },
   { id: 'cursive-g',   label: 'Cursive',   source: require('../../assets/app-icons/cursive-g.png') },
@@ -336,7 +336,7 @@ export default function AppearanceScreen() {
         })}
       </View>
       <Text style={styles.livePreviewNote}>
-        Currently showing the {concreteMode} {appearance.palette === 'auto' ? 'dusk' : appearance.palette} look.
+        Currently showing the {concreteMode} {appearance.palette === 'auto' ? 'rose' : appearance.palette} look.
         Some surfaces fully refresh after the next app launch.
       </Text>
 
@@ -372,16 +372,6 @@ export default function AppearanceScreen() {
               </View>
               <Text style={styles.sliderLabelLarge}>A</Text>
             </View>
-          }
-        />
-        <Row
-          label="Serif italics"
-          sub="The little flourish on accents"
-          control={
-            <Toggle
-              on={appearance.serifItalics}
-              onChange={(v) => setAppearance({ serifItalics: v })}
-            />
           }
         />
         <Row

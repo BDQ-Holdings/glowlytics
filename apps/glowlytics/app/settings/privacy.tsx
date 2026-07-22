@@ -10,12 +10,17 @@ import {
   SettingsHeader,
   SettingsPage,
 } from '../../src/components/settings/SettingsPrimitives';
+import { useStore } from '../../src/store/useStore';
+import { activeProducts } from '../../src/services/ritual';
 
 const P = Glow.palette;
 
 export default function PrivacyScreen() {
   const router = useRouter();
-
+  const scanCount = useStore((s) => s.modelOutputs.length);
+  const photoCount = useStore((s) => s.dailyRecords.filter((record) => !!record.photo_uri).length);
+  const productCount = useStore((s) => activeProducts(s.products).length);
+  const patternCount = useStore((s) => s.patterns.length);
   return (
     <SettingsPage>
       <SettingsHeader title="Privacy & data" />
@@ -28,16 +33,17 @@ export default function PrivacyScreen() {
           <Text style={styles.pledgeTitle}>Your scans, handled with care.</Text>
           <Text style={styles.pledgeBody}>
             Photos are uploaded to our secure backend and OpenAI to generate your
-            skin insights — never sold and never used to identify you.
+            skin insights. They’re never sold and never used to identify you.
           </Text>
         </View>
       </View>
 
       <SectionLabel>What's on this device</SectionLabel>
       <ListGroup>
-        <Row label="Face photos" sub="Stored on this device, uploaded for analysis" />
-        <Row label="Scan history" value="9 KB"   sub="47 reads since March" />
-        <Row label="Patterns"     value="3 KB"   sub="Discovered locally" />
+        <Row label="Face photos" value={String(photoCount)} sub="Stored on this device, uploaded for analysis" />
+        <Row label="Scan history" value={String(scanCount)} sub="Completed analysis results" />
+        <Row label="Patterns" value={String(patternCount)} sub="Discovered from your records" />
+        <Row label="Products" value={String(productCount)} sub="Your skincare shelf" />
       </ListGroup>
 
       <SectionLabel>What leaves</SectionLabel>
@@ -60,7 +66,7 @@ export default function PrivacyScreen() {
       <View style={styles.footer}>
         <GhostButton
           label="See our privacy policy"
-          onPress={() => router.push('/privacy-policy' as any)}
+          onPress={() => router.push('/privacy-policy')}
         />
       </View>
     </SettingsPage>

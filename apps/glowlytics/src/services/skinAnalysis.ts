@@ -375,7 +375,7 @@ export const analyzeWithFallback = async (input: AnalysisInput): Promise<{
       // (which uses the scanner indices, not the photo).
       return analyzeSkiN(input);
     }
-    throw new Error('Scan photo unavailable — please retake the photo and try again.');
+    throw new Error('Scan photo unavailable. Please retake the photo and try again.');
   }
 
   const photoUri = input.photoUri;
@@ -545,7 +545,7 @@ export const getExplanation = (
     return 'Skin age metric improved primarily due to texture/roughness changes compared to baseline.';
   }
   if (output.primary_driver === 'plateau') {
-    return 'Skin age metric hasn\'t shifted meaningfully yet. Inconsistent routine adherence can slow visible change — consider simplifying to improve consistency.';
+    return 'Skin age metric hasn\'t shifted meaningfully yet. Inconsistent routine adherence can slow visible change. Consider simplifying to improve consistency.';
   }
 
   if (output.primary_driver === 'routine adherence') {

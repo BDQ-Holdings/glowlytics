@@ -1,8 +1,8 @@
 import 'react-native-get-random-values';
 import React, { useEffect, useRef, useState } from 'react';
-import { Stack, Redirect, useSegments, useRouter } from 'expo-router';
+import { Stack, Redirect, useSegments, useRouter, SplashScreen } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { AppState, Image, StyleSheet, Text, View } from 'react-native';
+import { AppState, Image, StyleSheet, Text, View, useColorScheme } from 'react-native';
 import { useFonts } from 'expo-font';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ClerkProvider, useAuth } from '@clerk/clerk-expo';
@@ -11,22 +11,23 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
-  withDelay,
 } from 'react-native-reanimated';
 import { tokenCache } from '@clerk/clerk-expo/token-cache';
 import { resourceCache } from '@clerk/clerk-expo/resource-cache';
+import * as Sentry from '@sentry/react-native';
 import { env } from '../src/config/env';
 import { localDateStr } from '../src/utils/localDate';
 import { resolveAuthRoute } from '../src/utils/authRoute';
-import { shouldRouteToDailyQuote } from '../src/utils/dailyQuoteRoute';
-import { Colors, FontFamily, FontSize, Glow, Spacing } from '../src/constants/theme';
+import { shouldRouteToDailyQuote, resolveEntryTarget, isQuoteRedirectRendered } from '../src/utils/dailyQuoteRoute';
+import { Glow, GlowPalettesDark } from '../src/constants/theme';
 import { useStore } from '../src/store/useStore';
 import { setAuthTokenProvider } from '../src/services/api';
 import { initRevenueCat, identifyUser, subscriptionFromCustomerInfo, setupCustomerInfoListener } from '../src/services/subscription';
-import { initAnalytics, identifyUser as identifyAnalyticsUser, trackEvent } from '../src/services/analytics';
+import { prepareAnalyticsIdentityHandoff, trackEvent } from '../src/services/analytics';
 import {
   applyAppIcon,
   currentNativeIcon,
+  resolveColorMode,
 } from '../src/services/appearance';
 import { AppearanceHost } from '../src/components/AppearanceHost';
 import { AppErrorBoundary } from '../src/components/AppErrorBoundary';
@@ -36,18 +37,50 @@ const initLesionDetection = () =>
 const initSignalModels = () =>
   import('../src/services/onDeviceSignalModels').then((m) => m.initSignalModels());
 
+// ─── Sentry Crash Reporting ──────────────────────────────────────
+// Initialized at module scope so native crashes during startup are captured.
+// Inert until EXPO_PUBLIC_SENTRY_DSN is set (eas.json env / EAS secrets) —
+// with an empty DSN we skip init entirely, and even with a DSN, dev builds
+// stay silent via `enabled: !__DEV__`.
+if (env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: env.SENTRY_DSN,
+    enabled: !__DEV__,
+    tracesSampleRate: 0.2, // sample perf traces lightly; errors are always sent
+    sendDefaultPii: false, // never attach IPs/emails — skin data app, keep telemetry lean
+  });
+}
+
+// Hold the native rose splash ourselves. expo-router auto-hides it the
+// moment the Stack mounts, which used to expose the blank font-gate view and
+// the black JS splash beneath it. We keep it up until fonts + critical init +
+// Clerk (or its timeout) have all settled, then hide it exactly once so the
+// next thing the user sees is the target screen — no rose↔black flips.
+SplashScreen.preventAutoHideAsync();
+
 // Brief floor on the splash so iOS's launch image cross-fade into our React
 // view doesn't flicker. Anything longer than this is theatrical, so we keep
 // the floor short and let real init finish ahead of the user.
 const SPLASH_MIN_MS = 350;
+
+// Hard ceiling on how long critical init may hold the splash. Past this the
+// watchdog releases the splash so hideAsync can always fire — an eternal splash
+// is worse than opening on partially-hydrated state (#C).
+const CRITICAL_INIT_TIMEOUT_MS = 6000;
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-// ─── Splash Screen ───────────────────────────────────────────────
-// Distilled: black background, logo emblem fading in. Removed the cursive
-// tagline reveal + glow — the daily-quote screen below now owns the
-// "first thing the user sees" moment, so the splash only needs to bridge
-// the system launch image until the JS runtime + persisted store are ready.
-function SplashScreen() {
+// ─── Glowlytics Splash ───────────────────────────────────────────
+// Branded under-layer + safety net beneath the native splash: rose background,
+// logo emblem fading in. Shown if the native splash is ever absent (Expo Go, or
+// a frame between control handoffs) so the user never sees black or a bare rose flash.
+function GlowSplash() {
+  // Follow the system scheme so this branded under-layer matches the native
+  // splash in both modes. The native splash now ships light + dark variants via
+  // the expo-splash-screen plugin in app.json (dark #1A1213, light #F6ECEB,
+  // imageWidth 96), so this JS layer visually matches it and only covers the
+  // handoff gap (#D).
+  const scheme = useColorScheme();
+  const P = scheme === 'dark' ? GlowPalettesDark.rose : Glow.palette;
   const logoOpacity = useSharedValue(0);
 
   useEffect(() => {
@@ -60,8 +93,8 @@ function SplashScreen() {
   const logoStyle = useAnimatedStyle(() => ({ opacity: logoOpacity.value }));
 
   return (
-    <View style={splash.container}>
-      <StatusBar style="light" />
+    <View style={[splash.container, { backgroundColor: P.bg }]}>
+      <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       <Animated.View style={logoStyle}>
         <Image
           source={require('../assets/logo-emblem.png')}
@@ -76,7 +109,6 @@ function SplashScreen() {
 const splash = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000000',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -129,13 +161,19 @@ function DemoSeeder() {
   return null;
 }
 
+// Session guard shared by AuthRedirector's first-open quote fold and
+// DailyQuoteRouter, so at most one of them sends the user to /quote per launch.
+// Module scope = reset on cold start (fresh module evaluation).
+const dailyQuoteGuard = { routed: false };
+
 // ─── Auth Redirector ─────────────────────────────────────────────
 function AuthRedirector() {
-  const { isSignedIn, isLoaded } = useAuth();
+  const { isSignedIn, isLoaded, userId } = useAuth();
   const onboardingComplete = useStore((s) => s.user?.onboarding_complete ?? false);
   // Store hydration is in flight (offline / slow disk). Onboarding state lives in
   // the persisted store, so we must not redirect based on a not-yet-restored user.
   const authHydrating = useStore((s) => s.authHydrating ?? false);
+  const dailyQuoteSeenDate = useStore((s) => s.dailyQuoteSeenDate);
   const segments = useSegments();
   const root = segments[0];
   const decision = resolveAuthRoute({
@@ -145,6 +183,49 @@ function AuthRedirector() {
     authHydrating,
     root,
   });
+
+  // Fold the first-open-of-day quote into the tabs redirect so /quote is the
+  // FIRST screen after the splash — never a flash of the home tabs first. The
+  // shared guard keeps DailyQuoteRouter from also firing this launch.
+  const quoteDue =
+    decision === 'tabs' &&
+    shouldRouteToDailyQuote({
+      isLoaded,
+      isSignedIn: !!isSignedIn,
+      onboardingComplete,
+      alreadyRouted: dailyQuoteGuard.routed,
+      root: '(tabs)',
+      dailyQuoteSeenDate,
+      today: localDateStr(new Date()),
+    });
+  const tabsTarget = resolveEntryTarget({ authDecision: decision, quoteDue });
+
+  // Reset the per-launch quote guard when the signed-in identity changes or the
+  // user signs out, so a different account still gets its first-open-of-day
+  // /quote in a warm session — the module-scope guard would otherwise leak the
+  // previous user's claim across accounts (#B). Declared BEFORE the claim effect
+  // so on the same commit that resolves a new identity the reset runs first and
+  // the claim below still wins.
+  useEffect(() => {
+    dailyQuoteGuard.routed = false;
+  }, [userId, isSignedIn]);
+
+  // Claim the daily-quote guard ONLY when the /quote Redirect is actually
+  // rendered. The __DEV__ onboarding hatch below returns null (no navigation)
+  // even when decision === 'tabs' and the quote is due, so gate the claim on the
+  // same predicate the hatch uses rather than on tabsTarget alone (#A).
+  const quoteRedirectRendered = isQuoteRedirectRendered({
+    authDecision: decision,
+    entryTarget: tabsTarget,
+    devOnboardingHatchActive: __DEV__ && root === 'onboarding' && decision === 'tabs',
+  });
+  useEffect(() => {
+    if (quoteRedirectRendered) dailyQuoteGuard.routed = true;
+  }, [quoteRedirectRendered]);
+  // DEV-ONLY design-review hatch: allow deep-linking into /onboarding/* even
+  // when the signed-in user has already completed onboarding, so the flow can
+  // be reviewed on a simulator without resetting the account. No-op in prod.
+  if (__DEV__ && root === 'onboarding' && decision === 'tabs') return null;
   if (__DEV__ && decision !== 'hold') {
     console.log(`[AuthRedirector] ${root ?? '\u2205'} → ${decision}`);
   }
@@ -159,15 +240,15 @@ function AuthRedirector() {
       : 'welcome';
     return <Redirect href={`/onboarding/${resumeScreen}`} />;
   }
-  return <Redirect href="/(tabs)/today" />; // decision === 'tabs'
+  return <Redirect href={tabsTarget} />; // decision === 'tabs'
 }
 
 // ─── Daily Quote Router ──────────────────────────────────────────
 // Routes the user to /quote on the first cold-open of each local day,
-// AFTER auth + onboarding are settled. Uses a session ref so re-renders
-// during the same launch don't re-route. Does nothing while the user is
-// already inside the quote screen or any non-logged-in route — that's
-// AuthRedirector's job.
+// AFTER auth + onboarding are settled. Shares `dailyQuoteGuard` with the
+// AuthRedirector fold so re-renders — and that fold — never double-route.
+// Does nothing while the user is already inside the quote screen or any
+// non-logged-in route — that's AuthRedirector's job.
 
 function DailyQuoteRouter() {
   const { isSignedIn, isLoaded } = useAuth();
@@ -175,7 +256,6 @@ function DailyQuoteRouter() {
   const dailyQuoteSeenDate = useStore((s) => s.dailyQuoteSeenDate);
   const segments = useSegments();
   const router = useRouter();
-  const routedRef = useRef(false);
 
   useEffect(() => {
     const root = segments[0];
@@ -184,7 +264,7 @@ function DailyQuoteRouter() {
         isLoaded,
         isSignedIn: !!isSignedIn,
         onboardingComplete,
-        alreadyRouted: routedRef.current,
+        alreadyRouted: dailyQuoteGuard.routed,
         root,
         dailyQuoteSeenDate,
         today: localDateStr(new Date()),
@@ -192,9 +272,9 @@ function DailyQuoteRouter() {
     ) {
       return;
     }
-    routedRef.current = true;
+    dailyQuoteGuard.routed = true;
     if (__DEV__) console.log('[DailyQuoteRouter] First open — showing /quote');
-    router.replace('/quote' as any);
+    router.replace('/quote');
   }, [isLoaded, isSignedIn, onboardingComplete, dailyQuoteSeenDate, segments, router]);
 
   return null;
@@ -206,13 +286,20 @@ function ClerkGatedApp() {
   const loadPersistedData = useStore((s) => s.loadPersistedData);
   const reconcileAuthUserId = useStore((s) => s.reconcileAuthUserId);
   const setSubscription = useStore((s) => s.setSubscription);
+  // Status bar must react to appearance changes (including 'auto' following the
+  // system scheme), so subscribe via hooks rather than a one-shot getState() read.
+  const appearanceMode = useStore((s) => s.appearance.mode);
+  const systemScheme = useColorScheme();
   const initStarted = useRef(false);
   const servicesInitStarted = useRef(false);
   const clerkInitStartedAt = useRef(Date.now());
   const listenerCleanup = useRef<() => void>(() => {});
+  const currentAnalyticsUserId = useRef<string | null>(null);
+  const analyticsStartupHandoffSettled = useRef(false);
   const [appReady, setAppReady] = useState(false);
   const [splashTimedOut, setSplashTimedOut] = useState(false);
 
+  currentAnalyticsUserId.current = userId ?? null;
   useEffect(() => {
     if (clerkLoaded) {
       if (__DEV__) {
@@ -266,8 +353,26 @@ function ClerkGatedApp() {
       if (__DEV__) console.log(`[App] Critical init ready in ${Date.now() - t0}ms`);
     };
 
+    // Watchdog: never let a hung critical-init (e.g. a stalled loadPersistedData
+    // on bad disk) hold the splash forever. Race it against a timer so appReady
+    // can always flip and hideAsync eventually fires. Tripping it is logged, not
+    // fatal — the app opens on whatever hydrated so far (#C).
+    let initSettled = false;
+    const initWatchdog = new Promise<void>((resolve) => {
+      setTimeout(() => {
+        if (initSettled) return;
+        if (__DEV__) {
+          console.warn(`[App] Critical init exceeded ${CRITICAL_INIT_TIMEOUT_MS}ms — releasing splash via watchdog`);
+        }
+        resolve();
+      }, CRITICAL_INIT_TIMEOUT_MS);
+    });
+
     Promise.all([
-      initCritical(),
+      Promise.race([
+        initCritical().finally(() => { initSettled = true; }),
+        initWatchdog,
+      ]),
       delay(SPLASH_MIN_MS),
     ]).then(() => {
       setAppReady(true);
@@ -285,8 +390,12 @@ function ClerkGatedApp() {
     const initDeferred = async () => {
       try {
         if (__DEV__) console.log('[App] Initializing analytics...');
-        await initAnalytics();
-        identifyAnalyticsUser(userId || 'anonymous');
+        const startupAnalyticsUserId = currentAnalyticsUserId.current;
+        await prepareAnalyticsIdentityHandoff(startupAnalyticsUserId);
+        analyticsStartupHandoffSettled.current = true;
+        if (currentAnalyticsUserId.current !== startupAnalyticsUserId) {
+          await prepareAnalyticsIdentityHandoff(currentAnalyticsUserId.current);
+        }
         trackEvent('app_init_complete', {
           has_revenuecat_key: !!env.REVENUECAT_API_KEY,
           has_posthog_key: !!env.POSTHOG_API_KEY,
@@ -317,6 +426,11 @@ function ClerkGatedApp() {
 
     void initDeferred();
   }, [clerkLoaded, getToken, setSubscription, userId]);
+
+  useEffect(() => {
+    if (!clerkLoaded || !analyticsStartupHandoffSettled.current) return;
+    void prepareAnalyticsIdentityHandoff(userId ?? null);
+  }, [clerkLoaded, userId]);
 
   useEffect(() => {
     return () => { listenerCleanup.current(); };
@@ -352,6 +466,19 @@ function ClerkGatedApp() {
     return () => sub.remove();
   }, []);
 
+  // Hand off from the native splash exactly once: this component only mounts
+  // after RootLayout's font gate, so fonts are already loaded; we wait for
+  // critical init (appReady) and Clerk (or its timeout) before hiding, so the
+  // native rose splash covers the whole cold-start gap.
+  const splashHiddenRef = useRef(false);
+  useEffect(() => {
+    if (splashHiddenRef.current) return;
+    if (appReady && (clerkLoaded || splashTimedOut)) {
+      splashHiddenRef.current = true;
+      SplashScreen.hideAsync().catch(() => {});
+    }
+  }, [appReady, clerkLoaded, splashTimedOut]);
+
   // Splash gates on BOTH our own critical init AND Clerk's session restoration.
   // Without the `clerkLoaded` gate, the splash dismissed before Clerk had loaded
   // the persisted session — and AuthRedirector then redirected the user to
@@ -360,7 +487,7 @@ function ClerkGatedApp() {
   // (very rare) "Clerk failed to load" path falls through to AuthRedirector
   // which now holds rather than redirects.
   if (!appReady || (!clerkLoaded && !splashTimedOut)) {
-    return <SplashScreen />;
+    return <GlowSplash />;
   }
 
   return (
@@ -368,7 +495,7 @@ function ClerkGatedApp() {
       <AppearanceHost>
         <AppErrorBoundary>
           <View style={{ flex: 1, backgroundColor: Glow.palette.bg }}>
-            <StatusBar style={useStore.getState().appearance.mode === 'dark' ? 'light' : 'dark'} />
+            <StatusBar style={resolveColorMode(appearanceMode, systemScheme) === 'dark' ? 'light' : 'dark'} />
             <Stack
               screenOptions={{
                 headerShown: false,
@@ -402,16 +529,21 @@ function ClerkGatedApp() {
 }
 
 // ─── Root Layout ─────────────────────────────────────────────────
-export default function RootLayout() {
-  const [fontsLoaded] = useFonts({
+function RootLayout() {
+  const [fontsLoaded, fontError] = useFonts({
     'Switzer-Regular': require('../assets/fonts/Switzer-Regular.ttf'),
     'Switzer-Medium': require('../assets/fonts/Switzer-Medium.ttf'),
     'Switzer-Bold': require('../assets/fonts/Switzer-Bold.ttf'),
     'DancingScript': require('../assets/fonts/DancingScript-Medium.ttf'),
+    'InstrumentSerif-Regular': require('../assets/fonts/InstrumentSerif-Regular.ttf'),
+    'InstrumentSerif-Italic': require('../assets/fonts/InstrumentSerif-Italic.ttf'),
   });
 
-  if (!fontsLoaded) {
-    return <View style={{ flex: 1, backgroundColor: Colors.background }} />;
+  // Pass the font gate on success OR error: a missing/corrupt font file must
+  // fall through to system fonts rather than trap the user on an eternal splash
+  // (#C). fontError is set once useFonts gives up loading.
+  if (!fontsLoaded && !fontError) {
+    return <GlowSplash />;
   }
 
   return (
@@ -424,3 +556,8 @@ export default function RootLayout() {
     </ClerkProvider>
   );
 }
+
+// Sentry.wrap adds touch-event + profiling instrumentation around the root
+// component. Wrapping unconditionally is the documented pattern and is a
+// no-op-cheap passthrough when Sentry.init was never called (no DSN).
+export default Sentry.wrap(RootLayout);

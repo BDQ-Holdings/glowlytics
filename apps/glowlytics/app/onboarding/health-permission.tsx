@@ -1,21 +1,19 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Linking, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import Svg, { Defs, RadialGradient, Stop, Circle, Path, Line } from 'react-native-svg';
+import { ActivityIndicator, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Animated, {
   Easing,
   useSharedValue,
   useAnimatedStyle,
-  withRepeat,
+  withDelay,
   withTiming,
 } from 'react-native-reanimated';
-import { Feather } from '@expo/vector-icons';
 import { OnboardingTransition } from '../../src/components/OnboardingTransition';
+import { GlowIcon, type GlowIconName } from '../../src/components/glow/GlowIcons';
 import { useStore } from '../../src/store/useStore';
 import { useOnboardingNavigation } from '../../src/hooks/useOnboardingNavigation';
-import { Colors, Glow, FontFamily, FontSize, Spacing, BorderRadius } from '../../src/constants/theme';
+import { Glow, FontFamily, type GlowPalette } from '../../src/constants/theme';
 import { trackEvent } from '../../src/services/analytics';
 import { localDateStr } from '../../src/utils/localDate';
-import { PRIVACY_POLICY_URL } from '../../src/constants/externalLinks';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -29,140 +27,57 @@ interface SyncStats {
   cycleDay: number | null;
 }
 
-// ---------------------------------------------------------------------------
-// Progress messages cycled during the "connecting" state
-// ---------------------------------------------------------------------------
-
-const progressMessages = [
-  'Reading sleep\u2026',
-  'Reading heart rate\u2026',
-  'Reading cycle data\u2026',
-  'Reading steps\u2026',
-  'Reading mindful minutes\u2026',
-];
 
 // ---------------------------------------------------------------------------
-// SVG Illustration — heart motif with radiating pulses
+// Design switch — 44×26 track, 22 knob (handoff S08 control)
 // ---------------------------------------------------------------------------
 
-function HealthIllustration() {
-  const pulse = useSharedValue(0.7);
+function DesignSwitch({ on, palette }: { on: boolean; palette: GlowPalette }) {
+  return (
+    <View style={[styles.switchTrack, { backgroundColor: on ? palette.accent : palette.glow }]}>
+      <View
+        style={[
+          styles.switchKnob,
+          on ? styles.switchKnobOn : styles.switchKnobOff,
+          { backgroundColor: palette.surface, shadowColor: palette.ink },
+        ]}
+      />
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Rise — staggered fade-up entrance, gated on reduceMotion
+// ---------------------------------------------------------------------------
+
+function Rise({
+  delay,
+  reduceMotion,
+  children,
+}: {
+  delay: number;
+  reduceMotion: boolean;
+  children: React.ReactNode;
+}) {
+  const progress = useSharedValue(reduceMotion ? 1 : 0);
 
   useEffect(() => {
-    pulse.value = withRepeat(
-      withTiming(1, { duration: 2000, easing: Easing.inOut(Easing.ease) }),
-      -1,
-      true,
+    if (reduceMotion) {
+      progress.value = 1;
+      return;
+    }
+    progress.value = withDelay(
+      delay,
+      withTiming(1, { duration: 600, easing: Easing.bezier(0.215, 0.61, 0.355, 1) }),
     );
-  }, []);
+  }, [reduceMotion, delay, progress]);
 
-  const pulseStyle = useAnimatedStyle(() => ({
-    opacity: pulse.value,
+  const style = useAnimatedStyle(() => ({
+    opacity: progress.value,
+    transform: [{ translateY: (1 - progress.value) * 14 }],
   }));
 
-  return (
-    <Animated.View style={pulseStyle}>
-      <Svg width={220} height={180} viewBox="0 0 220 180">
-        <Defs>
-          {/* Central teal glow */}
-          <RadialGradient id="hlGlow" cx="50%" cy="50%" r="50%">
-            <Stop offset="0%" stopColor="#22D3EE" stopOpacity={0.85} />
-            <Stop offset="35%" stopColor="#3A9E8F" stopOpacity={0.45} />
-            <Stop offset="100%" stopColor="#3A9E8F" stopOpacity={0} />
-          </RadialGradient>
-          {/* Green field */}
-          <RadialGradient id="hlGreen" cx="50%" cy="50%" r="50%">
-            <Stop offset="0%" stopColor="#34D399" stopOpacity={0.6} />
-            <Stop offset="60%" stopColor="#34D399" stopOpacity={0.12} />
-            <Stop offset="100%" stopColor="#34D399" stopOpacity={0} />
-          </RadialGradient>
-          {/* Blue accent */}
-          <RadialGradient id="hlBlue" cx="50%" cy="50%" r="50%">
-            <Stop offset="0%" stopColor="#3B82F6" stopOpacity={0.55} />
-            <Stop offset="60%" stopColor="#3B82F6" stopOpacity={0.12} />
-            <Stop offset="100%" stopColor="#3B82F6" stopOpacity={0} />
-          </RadialGradient>
-          {/* Purple accent */}
-          <RadialGradient id="hlPurple" cx="50%" cy="50%" r="50%">
-            <Stop offset="0%" stopColor="#8B5CF6" stopOpacity={0.45} />
-            <Stop offset="60%" stopColor="#6366B5" stopOpacity={0.1} />
-            <Stop offset="100%" stopColor="#6366B5" stopOpacity={0} />
-          </RadialGradient>
-          {/* Core white */}
-          <RadialGradient id="hlCore" cx="50%" cy="50%" r="50%">
-            <Stop offset="0%" stopColor="#FFFFFF" stopOpacity={0.7} />
-            <Stop offset="25%" stopColor="#22D3EE" stopOpacity={0.6} />
-            <Stop offset="60%" stopColor="#3A9E8F" stopOpacity={0.15} />
-            <Stop offset="100%" stopColor="#3A9E8F" stopOpacity={0} />
-          </RadialGradient>
-        </Defs>
-
-        {/* Color orbs */}
-        <Circle cx={65} cy={60} r={45} fill="url(#hlGreen)" />
-        <Circle cx={170} cy={55} r={40} fill="url(#hlBlue)" />
-        <Circle cx={55} cy={140} r={38} fill="url(#hlPurple)" />
-
-        {/* Central teal glow field */}
-        <Circle cx={110} cy={90} r={55} fill="url(#hlGlow)" />
-
-        {/* Heart shape */}
-        <Path
-          d="M110 120 C95 105, 70 95, 70 78 C70 62, 82 54, 95 54 C103 54, 108 60, 110 64 C112 60, 117 54, 125 54 C138 54, 150 62, 150 78 C150 95, 125 105, 110 120Z"
-          fill="#3A9E8F"
-          fillOpacity={0.18}
-          stroke="#3A9E8F"
-          strokeWidth={1.5}
-          strokeOpacity={0.5}
-        />
-        {/* Inner heart highlight */}
-        <Path
-          d="M110 112 C98 100, 78 92, 78 80 C78 68, 87 62, 96 62 C102 62, 107 66, 110 70 C113 66, 118 62, 124 62 C133 62, 142 68, 142 80 C142 92, 122 100, 110 112Z"
-          fill="#22D3EE"
-          fillOpacity={0.1}
-          stroke="#22D3EE"
-          strokeWidth={0.8}
-          strokeOpacity={0.3}
-        />
-
-        {/* Radiating pulse lines — left */}
-        <Line x1={50} y1={85} x2={28} y2={85} stroke="#34D399" strokeWidth={1.5} strokeOpacity={0.4} strokeLinecap="round" />
-        <Line x1={55} y1={70} x2={36} y2={62} stroke="#3A9E8F" strokeWidth={1.2} strokeOpacity={0.3} strokeLinecap="round" />
-        <Line x1={55} y1={100} x2={36} y2={108} stroke="#8B5CF6" strokeWidth={1.2} strokeOpacity={0.3} strokeLinecap="round" />
-
-        {/* Radiating pulse lines — right */}
-        <Line x1={170} y1={85} x2={192} y2={85} stroke="#34D399" strokeWidth={1.5} strokeOpacity={0.4} strokeLinecap="round" />
-        <Line x1={165} y1={70} x2={184} y2={62} stroke="#3A9E8F" strokeWidth={1.2} strokeOpacity={0.3} strokeLinecap="round" />
-        <Line x1={165} y1={100} x2={184} y2={108} stroke="#8B5CF6" strokeWidth={1.2} strokeOpacity={0.3} strokeLinecap="round" />
-
-        {/* ECG-style heartbeat line through center */}
-        <Path
-          d="M30 90 L65 90 L75 90 L82 78 L88 102 L94 68 L100 100 L106 82 L112 90 L155 90 L190 90"
-          fill="none"
-          stroke="#3A9E8F"
-          strokeWidth={1.8}
-          strokeOpacity={0.45}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-
-        {/* Core glow */}
-        <Circle cx={110} cy={85} r={12} fill="url(#hlCore)" />
-        <Circle cx={110} cy={85} r={4} fill="#3A9E8F" fillOpacity={0.95} />
-
-        {/* Corner brackets — sci-fi */}
-        <Path d="M55 38 L55 50 M55 38 L67 38" stroke="#34D399" strokeWidth={2} strokeOpacity={0.4} strokeLinecap="round" />
-        <Path d="M165 38 L165 50 M165 38 L153 38" stroke="#3B82F6" strokeWidth={2} strokeOpacity={0.4} strokeLinecap="round" />
-        <Path d="M55 138 L55 126 M55 138 L67 138" stroke="#8B5CF6" strokeWidth={2} strokeOpacity={0.35} strokeLinecap="round" />
-        <Path d="M165 138 L165 126 M165 138 L153 138" stroke="#F5C842" strokeWidth={2} strokeOpacity={0.35} strokeLinecap="round" />
-
-        {/* Accent particles */}
-        <Circle cx={42} cy={30} r={2.5} fill="#34D399" fillOpacity={0.5} />
-        <Circle cx={178} cy={28} r={2} fill="#3B82F6" fillOpacity={0.45} />
-        <Circle cx={38} cy={148} r={2} fill="#8B5CF6" fillOpacity={0.4} />
-        <Circle cx={182} cy={145} r={2.5} fill="#F5C842" fillOpacity={0.4} />
-      </Svg>
-    </Animated.View>
-  );
+  return <Animated.View style={style}>{children}</Animated.View>;
 }
 
 // ---------------------------------------------------------------------------
@@ -175,9 +90,11 @@ export default function HealthPermission() {
   const updateUser = useStore((s) => s.updateUser);
   const updateHealthConnection = useStore((s) => s.updateHealthConnection);
   const setOnboardingFlow = useStore((s) => s.setOnboardingFlow);
+  const notificationSettings = useStore((s) => s.notificationSettings);
+  const reduceMotion = useStore((s) => s.appearance?.reduceMotion) ?? false;
+  const P = Glow.palette;
 
   const [screenState, setScreenState] = useState<ScreenState>('idle');
-  const [progressIndex, setProgressIndex] = useState(0);
   const [syncStats, setSyncStats] = useState<SyncStats>({
     daysSynced: 0,
     metricsPopulated: 0,
@@ -186,8 +103,26 @@ export default function HealthPermission() {
 
   // Refs for cleanup
   const autoAdvanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const progressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const mountedRef = useRef(true);
+
+  // Single fire-once guard shared by EVERY path that can leave this screen: the
+  // two auto-skip effects, handleSkip, handleContinue, and the post-connect
+  // auto-advance timer. A manual Continue/Skip racing the in-flight availability
+  // check (or the granted-auto timer, a React double-invoke, or a remount) can
+  // therefore only advance once — whichever path loses the race finds the ref
+  // already set and no-ops.
+  const advancedRef = useRef(false);
+  const advanceOnce = () => {
+    if (advancedRef.current) return;
+    advancedRef.current = true;
+    advance();
+  };
+  // The auto-skip effects additionally bail if the screen already unmounted, so
+  // an availability check that resolves post-unmount is inert.
+  const autoAdvanceOnce = () => {
+    if (!mountedRef.current) return;
+    advanceOnce();
+  };
 
   // -----------------------------------------------------------------------
   // Cleanup on unmount
@@ -196,7 +131,6 @@ export default function HealthPermission() {
     return () => {
       mountedRef.current = false;
       if (autoAdvanceTimer.current) clearTimeout(autoAdvanceTimer.current);
-      if (progressTimer.current) clearInterval(progressTimer.current);
     };
   }, []);
 
@@ -205,7 +139,7 @@ export default function HealthPermission() {
   // -----------------------------------------------------------------------
   useEffect(() => {
     if (user?.health_connection?.status === 'granted') {
-      advance();
+      autoAdvanceOnce();
     }
   }, []);
 
@@ -219,7 +153,7 @@ export default function HealthPermission() {
         const state = await getHealthConnectionState();
         if (state.status === 'unavailable') {
           updateHealthConnection({ status: 'unavailable', sync_skipped: true });
-          advance();
+          autoAdvanceOnce();
         }
       } catch (e: unknown) {
         console.warn('[Health onboarding] availability check failed:', e);
@@ -229,31 +163,10 @@ export default function HealthPermission() {
       checkAvailability();
     } else if (Platform.OS !== 'ios') {
       updateHealthConnection({ status: 'unavailable', sync_skipped: true });
-      advance();
+      autoAdvanceOnce();
     }
   }, []);
 
-  // -----------------------------------------------------------------------
-  // Rotate progress messages during connecting state
-  // -----------------------------------------------------------------------
-  useEffect(() => {
-    if (screenState === 'connecting') {
-      progressTimer.current = setInterval(() => {
-        setProgressIndex((prev) => (prev + 1) % progressMessages.length);
-      }, 400);
-    } else {
-      if (progressTimer.current) {
-        clearInterval(progressTimer.current);
-        progressTimer.current = null;
-      }
-    }
-    return () => {
-      if (progressTimer.current) {
-        clearInterval(progressTimer.current);
-        progressTimer.current = null;
-      }
-    };
-  }, [screenState]);
 
   // -----------------------------------------------------------------------
   // handleConnect
@@ -365,7 +278,7 @@ export default function HealthPermission() {
       // Auto-advance after delay.
       autoAdvanceTimer.current = setTimeout(() => {
         if (mountedRef.current) {
-          advance();
+          advanceOnce();
         }
       }, metricsPopulated >= 3 ? 1500 : 2000);
     } catch (e: unknown) {
@@ -398,116 +311,133 @@ export default function HealthPermission() {
       cycle_detected: false,
       metrics_populated: 0,
     });
-    advance();
+    advanceOnce();
   };
 
   // -----------------------------------------------------------------------
   // Derived labels / disabled state per screen state
   // -----------------------------------------------------------------------
   const isConnecting = screenState === 'connecting';
+  const healthConnected =
+    screenState === 'success-full' ||
+    screenState === 'success-partial' ||
+    user?.health_connection?.status === 'granted';
 
-  const primaryLabel = (() => {
+  // Apple Health row body reflects the live connection state so the sync
+  // stats the old status cards surfaced stay visible on the row itself.
+  const healthBody = (() => {
     switch (screenState) {
-      case 'idle':
-        return 'Connect Apple Health';
       case 'connecting':
-        return 'Connecting\u2026';
+        return 'Syncing your health data\u2026';
       case 'success-full':
+        return `${syncStats.daysSynced} ${
+          syncStats.daysSynced === 1 ? 'day' : 'days'
+        } synced \u00B7 ${syncStats.metricsPopulated} metrics${
+          syncStats.cycleDay ? ` \u00B7 cycle day ${syncStats.cycleDay}` : ''
+        }`;
       case 'success-partial':
-        return 'Continue';
+        return "Connected. We'll pull data as you use Apple Health.";
       case 'denied':
-        return 'Continue without Apple Health';
-    }
-  })();
-
-  const primaryOnPress = (() => {
-    switch (screenState) {
-      case 'idle':
-        return handleConnect;
-      case 'success-full':
-      case 'success-partial':
-      case 'denied':
-        return advance;
+        return 'No problem \u2014 connect later in Settings.';
       default:
-        return () => {};
+        return 'Sleep, hydration, workouts. Read-only.';
     }
   })();
 
-  const showSecondary = screenState === 'idle';
+  // Continue proceeds. From idle (never connected) it routes through the skip
+  // path so the not_requested write + skipped analytics event still fire —
+  // behaviour-equivalent to the old "Set up later" secondary.
+  const handleContinue = () => {
+    if (screenState === 'idle') {
+      handleSkip();
+    } else {
+      advanceOnce();
+    }
+  };
 
   // -----------------------------------------------------------------------
-  // Children content — switches per state
+  // Permission overview — Apple Health carries the real request; its row
+  // body + switch reflect the live connection state. Notifications shows the
+  // stored preference; camera is flagged required (both requested elsewhere).
   // -----------------------------------------------------------------------
   const renderContent = () => {
-    switch (screenState) {
-      case 'idle':
-        return (
-          <>
-            <View style={styles.patternChip}>
-              <Text style={styles.patternLabel}>{'\u25C6'} EXAMPLE</Text>
-              <Text style={styles.patternText}>
-                {'"Your skin is 18% clearer on days after 7+ hours of sleep."'}
-              </Text>
-            </View>
-            <View style={styles.privacyStrip}>
-              <Feather name="lock" size={14} color={Colors.primary} />
-              <Text style={styles.privacyText}>
-                Reads sleep, heart rate, steps, cycle, and mindful minutes. We send 7-day averages to our skin AI to personalize your insights — never shared with third parties.
-              </Text>
-            </View>
-            <TouchableOpacity
-              style={styles.privacyLinkRow}
-              onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}
-              accessibilityRole="link"
-              accessibilityLabel="Open privacy policy"
-            >
-              <Text style={styles.privacyLinkText}>See Privacy Policy</Text>
-            </TouchableOpacity>
-          </>
-        );
+    const rows: {
+      icon: GlowIconName;
+      title: string;
+      body: string;
+      control: 'health' | 'notifications' | 'camera';
+    }[] = [
+      { icon: 'health', title: 'Apple Health', body: healthBody, control: 'health' },
+      {
+        icon: 'bell',
+        title: 'Notifications',
+        body: 'One soft nudge per day, at your time.',
+        control: 'notifications',
+      },
+      {
+        icon: 'camera',
+        title: 'Camera',
+        body: 'Required for daily check-ins.',
+        control: 'camera',
+      },
+    ];
 
-      case 'connecting':
-        return (
-          <View style={styles.progressCard}>
-            <ActivityIndicator size="small" color={Colors.primary} />
-            <Text style={styles.progressText}>{progressMessages[progressIndex]}</Text>
-          </View>
-        );
+    return (
+      <View style={styles.list}>
+        {rows.map((row, i) => {
+          const isHealth = row.control === 'health';
+          const interactive = isHealth && screenState === 'idle';
+          let trailing: React.ReactNode;
+          if (row.control === 'camera') {
+            trailing = (
+              <View style={[styles.requiredChip, { backgroundColor: P.bg }]}>
+                <Text style={[styles.requiredLabel, { color: P.muted }]}>Required</Text>
+              </View>
+            );
+          } else if (isHealth && isConnecting) {
+            trailing = <ActivityIndicator size="small" color={P.accent} />;
+          } else {
+            trailing = (
+              <DesignSwitch
+                on={isHealth ? healthConnected : notificationSettings.notifications_enabled}
+                palette={P}
+              />
+            );
+          }
 
-      case 'success-full':
-        return (
-          <View style={styles.successCard}>
-            <Feather name="check-circle" size={20} color={Colors.primary} />
-            <Text style={styles.successTitle}>
-              Connected {'\u00B7'} {syncStats.daysSynced} days of data
-            </Text>
-            <Text style={styles.successDetail}>
-              {syncStats.metricsPopulated} health metrics tracked
-              {syncStats.cycleDay ? ` \u00B7 cycle day ${syncStats.cycleDay}` : ''}
-            </Text>
-          </View>
-        );
+          return (
+            <Rise key={row.title} delay={Glow.motion.stagger[i] ?? 0} reduceMotion={reduceMotion}>
+              <TouchableOpacity
+                activeOpacity={interactive ? 0.86 : 1}
+                disabled={!interactive}
+                onPress={interactive ? handleConnect : undefined}
+                accessibilityRole={interactive ? 'button' : undefined}
+                accessibilityLabel={interactive ? 'Connect Apple Health' : undefined}
+                style={[styles.card, { backgroundColor: P.surface, borderColor: P.glow }]}
+              >
+                <View style={[styles.cardIconTile, { backgroundColor: P.bg }]}>
+                  <GlowIcon name={row.icon} size={20} color={P.accent} stroke={1.6} />
+                </View>
+                <View style={styles.cardText}>
+                  <Text style={[styles.cardTitle, { color: P.ink }]}>{row.title}</Text>
+                  <Text style={[styles.cardBody, { color: P.muted }]}>{row.body}</Text>
+                </View>
+                {trailing}
+              </TouchableOpacity>
+            </Rise>
+          );
+        })}
 
-      case 'success-partial':
-        return (
-          <View style={styles.successCard}>
-            <Feather name="check-circle" size={20} color={Colors.primary} />
-            <Text style={styles.successTitle}>Connected</Text>
-            <Text style={styles.successDetail}>
-              {"We'll start pulling data as you use Apple Health."}
+        <Rise delay={Glow.motion.stagger[3] ?? 380} reduceMotion={reduceMotion}>
+          <Text style={[styles.footnote, { color: P.muted }]}>
+            {"You'll see iOS's own prompt next. "}
+            <Text style={[styles.footnoteEm, { color: P.ink }]}>
+              {"Allow only what you're comfortable with."}
             </Text>
-          </View>
-        );
-
-      case 'denied':
-        return (
-          <View style={styles.deniedCard}>
-            <Text style={styles.deniedText}>
-              No problem {'\u2014'} you can connect later in Settings.
-            </Text>
-          </View>
-        );
-    }
+          </Text>
+        </Rise>
+      </View>
+    );
   };
 
   // -----------------------------------------------------------------------
@@ -515,14 +445,12 @@ export default function HealthPermission() {
   // -----------------------------------------------------------------------
   return (
     <OnboardingTransition
-      illustration={<HealthIllustration />}
-      heading="See what's really affecting your skin."
-      subtext="Connect Apple Health to spot patterns like:"
-      primaryLabel={primaryLabel}
-      primaryOnPress={primaryOnPress}
+      heading={'A bigger picture,\nif you want.'}
+      subtext="Optional. Glowlytics gets sharper when it knows how you sleep — but it works without any of these."
+      primaryLabel="Continue"
+      primaryOnPress={handleContinue}
       primaryDisabled={isConnecting}
-      secondaryLabel={showSecondary ? 'Set up later' : undefined}
-      secondaryOnPress={showSecondary ? handleSkip : undefined}
+      onSkip={screenState === 'idle' ? handleSkip : undefined}
       showProgress
       totalSteps={onboardingFlow.length}
       currentStep={onboardingFlowIndex}
@@ -539,93 +467,82 @@ export default function HealthPermission() {
 // ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
-  patternChip: {
-    backgroundColor: Glow.palette.surface,
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.lg,
-    gap: Spacing.xs,
+  list: {
+    gap: 10,
   },
-  patternLabel: {
-    color: Glow.palette.accent,
-    fontFamily: FontFamily.sansSemiBold,
-    fontSize: FontSize.xxs,
-    letterSpacing: 1.2,
-  },
-  patternText: {
-    color: Glow.palette.muted,
-    fontFamily: FontFamily.sansMedium,
-    fontSize: FontSize.sm,
-    lineHeight: 20,
-    fontStyle: 'italic',
-  },
-  privacyStrip: {
+  card: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: Spacing.sm,
-    paddingHorizontal: Spacing.xs,
+    alignItems: 'center',
+    gap: 14,
+    borderWidth: 1,
+    borderRadius: 20,
+    padding: 16,
   },
-  privacyText: {
+  cardIconTile: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardText: {
     flex: 1,
-    color: Glow.palette.muted,
-    fontFamily: FontFamily.sans,
-    fontSize: FontSize.xs,
-    lineHeight: 18,
+    minWidth: 0,
   },
-  privacyLinkRow: {
-    marginTop: Spacing.xs,
-    paddingHorizontal: Spacing.xs,
-  },
-  privacyLinkText: {
-    color: Glow.palette.accent,
-    fontFamily: FontFamily.sansMedium,
-    fontSize: FontSize.xs,
-    lineHeight: 18,
-    textDecorationLine: 'underline',
-  },
-  progressCard: {
-    backgroundColor: Glow.palette.surface,
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.md,
-  },
-  progressText: {
-    color: Glow.palette.ink,
-    fontFamily: FontFamily.sansMedium,
-    fontSize: FontSize.md,
-  },
-  successCard: {
-    backgroundColor: Glow.palette.surface,
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.lg,
-    gap: Spacing.xs,
-    alignItems: 'center',
-  },
-  successTitle: {
-    color: Glow.palette.ink,
+  cardTitle: {
     fontFamily: FontFamily.sansSemiBold,
-    fontSize: FontSize.md,
-    textAlign: 'center',
-  },
-  successDetail: {
-    color: Glow.palette.muted,
-    fontFamily: FontFamily.sans,
-    fontSize: FontSize.sm,
-    textAlign: 'center',
+    fontSize: 15,
     lineHeight: 20,
   },
-  deniedCard: {
-    backgroundColor: Glow.palette.surface,
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.lg,
-    alignItems: 'center',
-  },
-  deniedText: {
-    color: Glow.palette.muted,
+  cardBody: {
     fontFamily: FontFamily.sans,
-    fontSize: FontSize.md,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 2,
+  },
+  switchTrack: {
+    width: 44,
+    height: 26,
+    borderRadius: 999,
+  },
+  switchKnob: {
+    position: 'absolute',
+    top: 2,
+    width: 22,
+    height: 22,
+    borderRadius: 999,
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
+  },
+  switchKnobOn: {
+    right: 2,
+  },
+  switchKnobOff: {
+    left: 2,
+  },
+  requiredChip: {
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+  },
+  requiredLabel: {
+    fontFamily: FontFamily.sansMedium,
+    fontSize: 10,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  footnote: {
+    fontFamily: FontFamily.sans,
+    fontSize: 12,
+    lineHeight: 18,
     textAlign: 'center',
-    lineHeight: 22,
+    paddingHorizontal: 12,
+    marginTop: 6,
+  },
+  footnoteEm: {
+    fontFamily: FontFamily.serifItalic,
+    fontSize: 13,
   },
 });

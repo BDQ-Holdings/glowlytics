@@ -1,8 +1,9 @@
-require('dotenv').config();
+// dotenv is a local-dev convenience only: in production (Railway) the platform
+// injects env vars, and a stray .env baked into the image must never override them.
+if (process.env.NODE_ENV !== 'production') require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
-const { Pool } = require('pg');
 const { randomUUID: uuidv4, timingSafeEqual, createHmac, randomBytes } = require('crypto');
 const jwt = require('jsonwebtoken');
 const jwksClient = require('jwks-rsa');
@@ -16,12 +17,13 @@ const noLlmFallback = require('./no-llm-fallback');
 const { searchCuratedProducts, lookupCuratedBarcode, enrichIngredients } = require('./curated-products');
 const shoppingScan = require('./shopping-scan');
 const scanQueries = require('./queries/scans');
-const { poolSsl } = require('./db-ssl');
 const uvScan = require('./uv-scan');
 const loops = require('./loops');
 const uvReport = require('./uv-report');
 const uvQueries = require('./queries/uv');
+const posthog = require('./posthog');
 const { attachPoolErrorHandler } = require('./pg-resilience');
+const { getPool } = require('./db-pool');
 
 const app = express();
 
@@ -60,11 +62,9 @@ app.use(express.json({ limit: '20mb' }));
 const openaiKey = (process.env.OPENAI_API_KEY || '').replace(/\s+/g, '');
 const openai = new OpenAI({ apiKey: openaiKey });
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://localhost:5432/glowlytics',
-  ssl: poolSsl(),
-});
-attachPoolErrorHandler(pool, 'app');
+// One shared pool for all app routes + query modules (see db-pool.js) — the
+// old per-module pools doubled idle connections against Railway Postgres.
+const pool = getPool();
 
 if (!process.env.DATABASE_URL) {
   console.warn('[DB] DATABASE_URL not set — falling back to localhost:5432. Set DATABASE_URL to your Railway PostgreSQL URL.');
@@ -73,21 +73,72 @@ if (!process.env.DATABASE_URL) {
 // ==================== HEALTH CHECK ====================
 
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', service: 'glowlytics-api', timestamp: new Date().toISOString() });
+  res.json({
+    status: 'ok',
+    service: 'glowlytics-api',
+    timestamp: new Date().toISOString(),
+    // Informational only — /health must stay 200 when ONNX sessions are
+    // missing (degraded, not dead); Railway's healthcheck gates deploys on it.
+    models: signalModels.loadedModels?.() ?? undefined,
+  });
 });
+function isForwardPostHogEvent(timestamp) {
+  const cutoverMs = Date.parse(process.env.GLOWLYTICS_CUTOVER_AT || '');
+  const eventMs = Date.parse(timestamp);
+  if (!Number.isFinite(cutoverMs)) {
+    throw new Error('GLOWLYTICS_CUTOVER_AT missing or invalid');
+  }
+  if (!Number.isFinite(eventMs)) {
+    throw new Error('source row created_at missing or invalid');
+  }
+  return eventMs >= cutoverMs;
+}
+
+function publicWaitlistAttribution(body = {}) {
+  return {
+    acquisition_source: body.acquisition_source,
+    acquisition_medium: body.acquisition_medium,
+    attribution_quality: body.attribution_quality,
+    utm_source: body.utm_source,
+    utm_medium: body.utm_medium,
+    utm_campaign: body.utm_campaign,
+    utm_term: body.utm_term,
+    utm_content: body.utm_content,
+    google_click_id_present: body.google_click_id_present,
+    referrer_host: body.referrer_host,
+    landing_path: body.landing_path,
+    form_placement: body.form_placement,
+    posthog_session_id: body.posthog_session_id,
+  };
+}
+
 
 // ==================== WAITLIST (public, no auth) ====================
 
-app.post('/api/waitlist', async (req, res) => {
+// Public + DB-writing: per-IP rate limit keeps a curl loop from bloating the table.
+app.post('/api/waitlist', detectRateLimit, async (req, res) => {
   const { email } = req.body;
   if (!email || typeof email !== 'string' || !email.includes('@')) {
     return res.status(400).json({ error: 'Valid email required' });
   }
   try {
-    await pool.query(
-      'INSERT INTO waitlist (email, source) VALUES ($1, $2) ON CONFLICT (email) DO NOTHING',
+    const result = await pool.query(
+      `INSERT INTO waitlist (email, source)
+       VALUES ($1, $2)
+       ON CONFLICT (email) DO UPDATE SET source = waitlist.source
+       RETURNING id, source, created_at`,
       [email.toLowerCase().trim(), req.body.source || 'landing']
     );
+    const row = result.rows[0];
+    if (!row) throw new Error('waitlist upsert returned no row');
+    if (isForwardPostHogEvent(row.created_at)) {
+      await posthog.captureWaitlistSubmitted({
+        sourceKey: 'railway_waitlist',
+        sourceIdentity: `glowlytics:lead:railway:${row.id}`,
+        timestamp: row.created_at,
+        attribution: publicWaitlistAttribution(req.body),
+      });
+    }
     res.json({ ok: true });
   } catch (err) {
     log.error('Waitlist insert error:', err.message);
@@ -95,7 +146,7 @@ app.post('/api/waitlist', async (req, res) => {
   }
 });
 
-app.get('/api/waitlist/count', async (req, res) => {
+app.get('/api/waitlist/count', detectRateLimit, async (req, res) => {
   try {
     const result = await pool.query('SELECT COUNT(*) FROM waitlist');
     res.json({ count: parseInt(result.rows[0].count, 10) });
@@ -124,35 +175,37 @@ function getKey(header, callback) {
 
 /**
  * Auth middleware: verifies Clerk JWT from Authorization header.
- * - Production: rejects requests without a valid token (401).
- * - Development (NODE_ENV=development): allows unauthenticated requests
- *   through with req.auth = null so the backend works without Clerk.
- * - If CLERK_ISSUER_URL is not set, tokens are accepted but not verified
- *   (dev-mode passthrough).
+ * - CLERK_ISSUER_URL set: ALWAYS verifies the JWT, regardless of NODE_ENV.
+ *   A dev box pointed at a real issuer must not silently admit anonymous
+ *   callers as 'dev-user' (fail closed).
+ * - CLERK_ISSUER_URL unset + NODE_ENV=development: passthrough with a
+ *   synthetic user so the backend works without Clerk locally.
+ * - CLERK_ISSUER_URL unset otherwise: 401 (no credentials) / 503 (credentials
+ *   we have no way to verify).
  */
 const authMiddleware = (req, res, next) => {
   const authHeader = req.headers.authorization;
 
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  if (!client) {
+    // No issuer configured at all — the only state where a passthrough is
+    // acceptable, and only in explicit development mode.
     if (process.env.NODE_ENV === 'development') {
       // Dev mode passthrough — synthetic user so routes that need userId still work
       req.auth = { userId: 'dev-user' };
       return next();
     }
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+    // Deny access when JWKS is not configured and we're not explicitly in dev mode
+    return res.status(503).json({ error: 'Auth service not configured' });
+  }
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Authentication required' });
   }
 
   const token = authHeader.split(' ')[1];
-
-  if (!client) {
-    if (process.env.NODE_ENV !== 'development') {
-      // Deny access when JWKS is not configured and we're not explicitly in dev mode
-      return res.status(503).json({ error: 'Auth service not configured' });
-    }
-    // No JWKS configured -- dev mode passthrough with a synthetic user
-    req.auth = { userId: 'dev-user' };
-    return next();
-  }
 
   // clockTolerance absorbs minor device/server clock skew and the iat/nbf
   // boundary so 60s Clerk session JWTs don't spuriously 401 mid-session.
@@ -416,7 +469,7 @@ async function identifyByBarcode(barcode) {
       name: curated.name,
       brand: curated.brand,
       ingredients: curated.ingredients,
-      image_url: null,
+      image_url: curated.image_url || null,
       source: 'curated',
     };
   }
@@ -527,7 +580,7 @@ app.get('/api/products/search', detectRateLimit, async (req, res) => {
     name: p.name,
     brands: p.brand,
     ingredients: p.ingredients.join(', '),
-    image_url: null,
+    image_url: p.image_url || null,
     source: 'curated',
   }));
 
@@ -646,6 +699,59 @@ const UV_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 // static default is acceptable; set IP_HASH_SECRET in production for a real key.
 const IP_HASH_DEFAULT_SECRET = 'glowlytics-uv-ip-hash-v1';
 
+const FORM_PLACEMENT_ALIASES = new Map([
+  ['hero', 'hero'],
+  ['footer', 'footer'],
+  ['final-cta', 'footer'],
+  ['blog-newsletter', 'footer'],
+  ['modal', 'modal'],
+  ['pricing', 'pricing'],
+  ['mobile_onboarding', 'mobile_onboarding'],
+  ['uv-scan-web', 'unknown'],
+  ['unknown', 'unknown'],
+]);
+const ACQUISITION_SOURCES = new Set(['instagram', 'tiktok', 'facebook', 'google', 'other_search', 'ai_search', 'direct', 'referral', 'unknown']);
+const ATTRIBUTION_QUALITIES = new Set(['utm', 'referrer', 'unknown', 'backfilled']);
+const UV_LEAD_SOURCES = new Set(['uv-scan-web', 'landing', 'test']);
+const SENSITIVE_VALUE_RE = /([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})|((api[_-]?key|api|secret|password|credential|bearer|access|refresh|id)?[_-]?token=?)|\b(api[_-]?key|secret|password|credential|bearer)\b|((gclid|gbraid|wbraid)=?)/i;
+
+function marketingField(value, max = 256) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim().slice(0, max);
+  return trimmed && !SENSITIVE_VALUE_RE.test(trimmed) ? trimmed : null;
+}
+
+function normalizeUvLeadSource(value) {
+  if (typeof value !== 'string') return 'uv-scan-web';
+  const trimmed = value.trim();
+  return UV_LEAD_SOURCES.has(trimmed) ? trimmed : 'uv-scan-web';
+}
+
+function normalizeFormPlacement(value) {
+  return typeof value === 'string' ? FORM_PLACEMENT_ALIASES.get(value) || 'unknown' : 'unknown';
+}
+
+function normalizeHost(value) {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  try {
+    const parsed = new URL(value.includes('://') ? value : `https://${value}`);
+    return parsed.hostname.toLowerCase().slice(0, 256) || null;
+  } catch {
+    return /^[a-z0-9.-]+$/i.test(value) && !value.includes('@') ? value.toLowerCase().slice(0, 256) : null;
+  }
+}
+
+function normalizePath(value) {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  try {
+    const parsed = value.startsWith('/') ? new URL(value, 'https://glowlytics.ai') : new URL(value);
+    return (parsed.pathname || '/').slice(0, 256);
+  } catch {
+    const path = value.split(/[?#]/, 1)[0];
+    return path.startsWith('/') ? path.slice(0, 256) : null;
+  }
+}
+
 // jsonb columns come back as parsed objects from pg, but a value read as text
 // (or returned by a stubbed pool in tests) can arrive as a JSON string —
 // normalise before handing it to consumers.
@@ -724,7 +830,13 @@ app.post('/api/uv/analyze', analyzeRateLimit, async (req, res) => {
 // Capture a lead's email in exchange for the PDF report; idempotent on email.
 app.post('/api/uv/lead', detectRateLimit, async (req, res) => {
   try {
-    const { email: rawEmail, scan_id, source, claim_token } = req.body || {};
+    const {
+      email: rawEmail, scan_id, source, claim_token,
+      acquisition_source, acquisition_medium, attribution_quality,
+      utm_source, utm_medium, utm_campaign, utm_term, utm_content,
+      google_click_id_present, referrer_host, landing_path, form_placement,
+      posthog_session_id,
+    } = req.body || {};
     const email = typeof rawEmail === 'string' ? rawEmail.toLowerCase().trim() : rawEmail;
     if (!email || typeof email !== 'string' || !UV_EMAIL_RE.test(email)) {
       return res.status(400).json({ error: 'invalid email' });
@@ -753,13 +865,37 @@ app.post('/api/uv/lead', detectRateLimit, async (req, res) => {
     if (scan.claimed && (!existingLead || existingLead.scan_id !== scan_id)) {
       return res.status(409).json({ error: 'scan already claimed' });
     }
+    const safeSource = normalizeUvLeadSource(source);
+    const safeAcquisitionSource = ACQUISITION_SOURCES.has(acquisition_source) ? acquisition_source : 'unknown';
+    const safeAttributionQuality = ATTRIBUTION_QUALITIES.has(attribution_quality) ? attribution_quality : 'unknown';
     const lead = await uvQueries.upsertLead(pool, {
       id: uuidv4(),
       email,
       report_token: uuidv4().replace(/-/g, ''),
       scan_id,
-      source: source || 'uv-scan-web',
+      source: safeSource,
+      acquisition_source: safeAcquisitionSource,
+      acquisition_medium: marketingField(acquisition_medium, 64) || 'unknown',
+      attribution_model: 'first_touch',
+      attribution_quality: safeAttributionQuality,
+      utm_source: marketingField(utm_source, 128)?.toLowerCase() || null,
+      utm_medium: marketingField(utm_medium, 128)?.toLowerCase() || null,
+      utm_campaign: marketingField(utm_campaign, 256),
+      utm_term: marketingField(utm_term, 256),
+      utm_content: marketingField(utm_content, 256),
+      google_click_id_present: google_click_id_present === true,
+      referrer_host: normalizeHost(referrer_host),
+      landing_path: normalizePath(landing_path),
+      form_placement: normalizeFormPlacement(form_placement),
     });
+    if (isForwardPostHogEvent(lead.created_at)) {
+      await posthog.captureWaitlistSubmitted({
+        sourceKey: 'railway_uv_lead',
+        sourceIdentity: `glowlytics:lead:railway:${lead.id}`,
+        timestamp: lead.created_at,
+        attribution: { ...lead, posthog_session_id },
+      });
+    }
     await uvQueries.claimScan(pool, scan_id);
 
     // Best-effort marketing side effect — loops.sendEvent already swallows its
@@ -769,7 +905,7 @@ app.post('/api/uv/lead', detectRateLimit, async (req, res) => {
       const asymmetry = uvParseJson(scan.asymmetry) || {};
       await loops.sendEvent(email, 'uv_report_requested', {
         contactProperties: {
-          source: source || 'uv-scan-web',
+          source: safeSource,
           uvSunDamageScore: overall.sunDamageScore,
           uvSeverity: overall.severity,
           uvAsymmetryScore: asymmetry.score,
@@ -843,6 +979,8 @@ function authorizeUser(req, res, userId) {
 // guard, and the outer error response. Shared by the public identify-photo
 // route and the authenticated shopping-scan endpoint.
 async function identifyByPhoto(image_base64) {
+  // 20s deadline + one retry: the SDK default (600s) would let a hung vision
+  // call pin this request — and the caller's spinner — for ten minutes.
   const completion = await openai.chat.completions.create({
     model: 'gpt-4o',
     messages: [
@@ -863,7 +1001,7 @@ async function identifyByPhoto(image_base64) {
     ],
     max_tokens: 800,
     temperature: 0.1,
-  });
+  }, { timeout: 20_000, maxRetries: 1 });
 
   const raw = (completion.choices?.[0]?.message?.content || '').trim();
 
@@ -895,11 +1033,17 @@ async function identifyByPhoto(image_base64) {
     return { identified: false, error: 'Could not identify product' };
   }
 
-  // Enrich/verify ingredients from curated DB
+  // Enrich/verify ingredients and images from curated DB
   const curatedMatch = searchCuratedProducts(parsed.name);
-  if (curatedMatch.length > 0 && curatedMatch[0].ingredients.length > (parsed.ingredients || []).length) {
-    parsed.ingredients = curatedMatch[0].ingredients;
-    parsed.brand = parsed.brand || curatedMatch[0].brand;
+  if (curatedMatch.length > 0) {
+    const curatedProduct = curatedMatch[0];
+    if (curatedProduct.ingredients.length > (parsed.ingredients || []).length) {
+      parsed.ingredients = curatedProduct.ingredients;
+      parsed.brand = parsed.brand || curatedProduct.brand;
+    }
+    if (!parsed.image_url && curatedProduct.image_url) {
+      parsed.image_url = curatedProduct.image_url;
+    }
   }
 
   return {
@@ -908,6 +1052,7 @@ async function identifyByPhoto(image_base64) {
     brand: parsed.brand || '',
     ingredients: parsed.ingredients || [],
     confidence: parsed.confidence || 'med',
+    image_url: parsed.image_url || null,
     source: 'gpt4o_vision',
   };
 }
@@ -1615,11 +1760,35 @@ app.post('/api/vision/generate-insights', analyzeRateLimit, async (req, res) => 
       return res.end();
     }
 
-    for await (const chunk of stream) {
-      const content = chunk.choices?.[0]?.delta?.content;
-      if (content) {
-        res.write(`data: ${JSON.stringify({ text: content })}\n\n`);
+    // Wall-clock guard: a stalled upstream stream must not pin this SSE
+    // response open indefinitely (default SDK timeout is 10 minutes). On
+    // expiry, abort the OpenAI request — which ends the for-await — and close
+    // the SSE stream cleanly so the client can fall back.
+    let streamTimedOut = false;
+    const streamGuard = setTimeout(() => {
+      streamTimedOut = true;
+      try { stream.controller.abort(); } catch { /* stream already settled */ }
+    }, 120_000);
+    if (typeof streamGuard.unref === 'function') streamGuard.unref();
+
+    try {
+      for await (const chunk of stream) {
+        const content = chunk.choices?.[0]?.delta?.content;
+        if (content) {
+          res.write(`data: ${JSON.stringify({ text: content })}\n\n`);
+        }
       }
+    } catch (err) {
+      if (!streamTimedOut) throw err; // real stream failure → outer handler
+    } finally {
+      clearTimeout(streamGuard);
+    }
+
+    if (streamTimedOut) {
+      log.warn('[generate-insights] stream exceeded 120s wall clock; aborted');
+      res.write(`data: ${JSON.stringify({ error: 'Insight generation timed out' })}\n\n`);
+      res.write('data: [DONE]\n\n');
+      return res.end();
     }
 
     res.write('data: [DONE]\n\n');
@@ -1683,11 +1852,13 @@ app.post('/api/vision/bone-structure', analyzeRateLimit, async (req, res) => {
       }
     }
 
-    const source = mesh.source === 'mediapipe' ? 'mediapipe' : 'arkit';
+    const source = mesh.source === 'canonical' ? 'canonical' : mesh.source === 'mediapipe' ? 'mediapipe' : 'arkit';
+    const indices = Array.isArray(mesh.indices) ? mesh.indices : null;
+    const coherence = boneStructure.isSourceCoherent(source, mesh.vertices.length / 3, indices);
+    if (!coherence.ok) {
+      return res.status(400).json({ error: `mesh source/count mismatch: ${coherence.reason}` });
+    }
     const blendShapes = mesh.blendShapes && typeof mesh.blendShapes === 'object' ? mesh.blendShapes : null;
-    // `mesh.indices` is accepted in the schema for forwards-compatibility but
-    // intentionally unused — the math module derives all metrics from vertex
-    // positions, and the viewer renders connectivity from CANONICAL_OUTLINE_EDGES.
 
     // ----- Authorization: verify daily_id ownership BEFORE running expensive math -----
     // Returns: 'owned' (proceed + persist), 'pending' (skip persist, still analyse),
@@ -1733,6 +1904,7 @@ app.post('/api/vision/bone-structure', analyzeRateLimit, async (req, res) => {
     // ----- Run the analysis -----
     const result = boneStructure.analyzeBoneStructure({
       vertices: mesh.vertices,
+      indices,
       blendShapes,
       sex,
       source,
@@ -1761,6 +1933,9 @@ app.post('/api/vision/bone-structure', analyzeRateLimit, async (req, res) => {
       domain_scores: result.domainScores,
       scored_metrics: result.scored,
       metrics: result.metrics,
+      estimate: result.estimate,
+      confidence: result.confidence,
+      landmark_source: result.landmark_source,
       findings: result.findings,
       interventions,
       dominant_driver: result.dominantDriver,
@@ -1803,41 +1978,344 @@ app.post('/api/vision/bone-structure', analyzeRateLimit, async (req, res) => {
 
 // ==================== USER PROFILES ====================
 
-// Best-effort lead -> customer promotion fired from POST /api/users. Resolves
-// the new user's email STRICTLY from the Clerk-verified primary email (B4): an
-// attacker-supplied req.body.email must never bind another person's uv_lead to
-// this account. When CLERK_SECRET_KEY is unset we cannot verify ownership, so we
-// skip the conversion entirely rather than trust the request body. Flips a
-// matching uv_leads row to 'customer' exactly once and fires the Loops
-// `became_customer` event on that first transition. NEVER throws — user creation
-// must never be blocked by this marketing side effect.
+// Lead -> customer promotion and server-owned account_created delivery. The
+// account event is emitted only after Clerk email lookup and UV reconciliation
+// are conclusive; unavailable dependencies leave durable pending state for the
+// bounded retry worker.
+async function findRailwayWaitlistLeadByEmail(email) {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, source
+         FROM waitlist
+        WHERE lower(email) = $1
+        LIMIT 1`,
+      [email]
+    );
+    const row = rows[0];
+    const id = typeof row?.id === 'string' ? row.id.trim().toLowerCase() : '';
+    if (!id) return { status: 'unmatched' };
+    return {
+      status: 'matched',
+      lead: {
+        source_identity: `glowlytics:lead:railway:${id}`,
+      },
+    };
+  } catch (err) {
+    log.warn('[waitlist] Railway lookup failed:', err?.message || err);
+    return { status: 'unavailable' };
+  }
+}
+
+async function findLandingWaitlistLeadByEmail(email) {
+  const lookupUrl = process.env.GLOWLYTICS_WAITLIST_LOOKUP_URL;
+  const lookupToken = process.env.GLOWLYTICS_WAITLIST_LOOKUP_TOKEN;
+  if (!lookupUrl || !lookupToken) {
+    return { status: 'unavailable' };
+  }
+
+  try {
+    const response = await fetch(lookupUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${lookupToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email }),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) {
+      throw new Error(`landing waitlist lookup failed with status ${response.status}`);
+    }
+    const payload = await response.json();
+    if (payload?.matched === false) return { status: 'unmatched' };
+    if (payload?.matched === true && payload.lead && typeof payload.lead === 'object') {
+      return { status: 'matched', lead: payload.lead };
+    }
+    throw new Error('landing waitlist lookup returned an invalid response');
+  } catch (err) {
+    log.warn('[waitlist] landing lookup failed:', err?.message || err);
+    return { status: 'unavailable' };
+  }
+}
+
+async function findWaitlistLeadByEmail(email) {
+  const railwayLead = await findRailwayWaitlistLeadByEmail(email);
+  const landingLead = await findLandingWaitlistLeadByEmail(email);
+  if (landingLead.status === 'matched') return landingLead;
+  if (railwayLead.status === 'matched') return railwayLead;
+  if (landingLead.status === 'unavailable' || railwayLead.status === 'unavailable') {
+    return { status: 'unavailable' };
+  }
+  return { status: 'unmatched' };
+}
+
 async function convertUvLeadToCustomer(userId) {
   try {
-    if (!process.env.CLERK_SECRET_KEY) return;
+    if (!process.env.CLERK_SECRET_KEY) {
+      return { status: 'unavailable' };
+    }
     const clerkApiBase = process.env.CLERK_API_BASE || 'https://api.clerk.com';
-    const url = `${clerkApiBase}/v1/users/${encodeURIComponent(userId)}`;
-    const clerkRes = await fetch(url, {
+    const clerkRes = await fetch(`${clerkApiBase}/v1/users/${encodeURIComponent(userId)}`, {
       headers: { Authorization: `Bearer ${process.env.CLERK_SECRET_KEY}` },
       signal: AbortSignal.timeout(5000),
     });
-    if (!clerkRes.ok) return;
+    if (!clerkRes.ok) return { status: 'unavailable' };
     const data = await clerkRes.json();
-    const rawEmail =
-      data.email_addresses?.find((e) => e.id === data.primary_email_address_id)?.email_address ||
-      data.email_addresses?.[0]?.email_address ||
-      null;
-    if (!rawEmail) return;
-    const email = rawEmail.toLowerCase().trim();
-    const row = await uvQueries.markCustomer(pool, { email, clerk_user_id: userId });
-    if (row) {
-      await loops.sendEvent(email, 'became_customer', {
-        contactProperties: { clerkUserId: userId },
-      });
+    const primaryEmail = data.email_addresses?.find(
+      (entry) => entry.id === data.primary_email_address_id
+    );
+    if (
+      typeof primaryEmail?.email_address !== 'string' ||
+      primaryEmail.verification?.status !== 'verified'
+    ) {
+      return { status: 'unavailable' };
     }
+    const email = primaryEmail.email_address.toLowerCase().trim();
+    const transitionedLead = await uvQueries.markCustomer(pool, { email, clerk_user_id: userId });
+    const row = transitionedLead || await uvQueries.findCustomerLead(pool, userId);
+    if (row) {
+      if (transitionedLead) {
+        try {
+          await loops.sendEvent(email, 'became_customer', {
+            contactProperties: { clerkUserId: userId },
+          });
+        } catch (loopsErr) {
+          log.warn('[uv] became_customer marketing event failed:', loopsErr?.message || loopsErr);
+        }
+      }
+      const waitlistLead = await findWaitlistLeadByEmail(email);
+      if (waitlistLead.status === 'unavailable') {
+        return waitlistLead;
+      }
+      if (waitlistLead.status === 'matched') {
+        return {
+          status: 'matched',
+          lead: {
+            ...row,
+            ...waitlistLead.lead,
+          },
+        };
+      }
+      const sourceIdentity =
+        typeof row.id === 'string' && row.id.trim()
+          ? `glowlytics:lead:railway:${row.id.trim().toLowerCase()}`
+          : null;
+      return {
+        status: 'matched',
+        lead: {
+          ...row,
+          ...(sourceIdentity ? { source_identity: sourceIdentity } : {}),
+        },
+      };
+    }
+    return await findWaitlistLeadByEmail(email);
   } catch (err) {
     log.warn('[uv] lead->customer conversion failed:', err?.message || err);
+    return { status: 'unavailable' };
   }
 }
+
+const RETRYABLE_ACCOUNT_STATUSES = ['reconciliation_pending', 'pending_delivery'];
+
+async function loadAccountCreatedDelivery(userId, cutoverAt) {
+  const { rows } = await pool.query(
+    `SELECT user_id, created_at,
+            created_at >= ($2::timestamptz AT TIME ZONE 'UTC') AS forward_owned,
+            posthog_account_created_status AS status,
+            posthog_account_created_uuid AS uuid,
+            posthog_account_created_timestamp AS timestamp,
+            posthog_account_created_properties AS properties,
+            posthog_account_created_waitlist_match AS waitlist_match,
+            posthog_account_created_delivery_claimed_at AS delivery_claimed_at
+       FROM user_profiles
+      WHERE user_id = $1`,
+    [userId, cutoverAt]
+  );
+  return rows[0] || null;
+}
+
+async function markRuntimePreCutoverProfileHistorical(userId, cutoverAt) {
+  await pool.query(
+    `UPDATE user_profiles
+        SET posthog_account_created_sent_at = COALESCE(posthog_account_created_sent_at, NOW()),
+            posthog_account_created_status = 'historical_backfill_owned'
+      WHERE user_id = $1
+        AND created_at < ($2::timestamptz AT TIME ZONE 'UTC')
+        AND posthog_account_created_status = 'reconciliation_pending'
+        AND posthog_account_created_uuid IS NULL`,
+    [userId, cutoverAt]
+  );
+}
+
+async function reserveAccountCreatedDelivery(userId, attribution, matchStatus) {
+  if (!['matched', 'unmatched'].includes(matchStatus)) {
+    throw new Error('account_created delivery requires conclusive waitlist reconciliation');
+  }
+  const waitlistMatch = matchStatus === 'matched';
+  const uuid = posthog.accountCreatedUuid(userId);
+  const cutoverAt = process.env.GLOWLYTICS_CUTOVER_AT;
+  if (!cutoverAt) throw new Error('GLOWLYTICS_CUTOVER_AT missing');
+  const properties = {
+    distinct_id: posthog.canonicalGlowlyticsUserId(userId),
+    ...posthog.accountAttributionProperties(attribution, waitlistMatch),
+  };
+  if (waitlistMatch && !properties.waitlist_source_identity) {
+    throw new Error('matched account_created delivery requires a validated waitlist source identity');
+  }
+  const { rows } = await pool.query(
+    `UPDATE user_profiles
+        SET posthog_account_created_uuid = $2::uuid,
+            posthog_account_created_timestamp = created_at,
+            posthog_account_created_properties = $4::jsonb,
+            posthog_account_created_waitlist_match = $5::boolean,
+            posthog_account_created_delivery_claimed_at = NULL,
+            posthog_account_created_retry_after = NULL,
+            posthog_account_created_status = 'pending_delivery'
+      WHERE user_id = $1
+        AND created_at >= ($3::timestamptz AT TIME ZONE 'UTC')
+        AND posthog_account_created_status = 'reconciliation_pending'
+        AND posthog_account_created_uuid IS NULL
+      RETURNING posthog_account_created_uuid AS uuid,
+                posthog_account_created_timestamp AS timestamp,
+                posthog_account_created_properties AS properties,
+                posthog_account_created_waitlist_match AS waitlist_match,
+                posthog_account_created_status AS status`,
+    [userId, uuid, cutoverAt, JSON.stringify(properties), waitlistMatch]
+  );
+  return rows[0] || null;
+}
+
+async function markAccountCreatedSent(userId, uuid) {
+  await pool.query(
+    `UPDATE user_profiles
+        SET posthog_account_created_sent_at = NOW(),
+            posthog_account_created_delivery_claimed_at = NULL,
+            posthog_account_created_retry_after = NULL,
+            posthog_account_created_status = 'delivered'
+      WHERE user_id = $1
+        AND posthog_account_created_uuid = $2::uuid
+        AND posthog_account_created_status = 'pending_delivery'`,
+    [userId, uuid]
+  );
+}
+
+async function claimAccountCreatedDelivery(userId, uuid, leaseMs = 300_000) {
+  const { rows } = await pool.query(
+    `UPDATE user_profiles
+        SET posthog_account_created_delivery_claimed_at = NOW()
+      WHERE user_id = $1
+        AND posthog_account_created_uuid = $2::uuid
+        AND posthog_account_created_status = 'pending_delivery'
+        AND (
+          posthog_account_created_delivery_claimed_at IS NULL
+          OR posthog_account_created_delivery_claimed_at < NOW() - ($3::int * INTERVAL '1 millisecond')
+        )
+      RETURNING posthog_account_created_uuid AS uuid,
+                posthog_account_created_timestamp AS timestamp,
+                posthog_account_created_properties AS properties,
+                posthog_account_created_waitlist_match AS waitlist_match,
+                posthog_account_created_status AS status,
+                posthog_account_created_delivery_claimed_at AS delivery_claimed_at`,
+    [userId, uuid, leaseMs]
+  );
+  return rows[0] || null;
+}
+
+async function releaseAccountCreatedDeliveryClaim(userId, uuid) {
+  await pool.query(
+    `UPDATE user_profiles
+        SET posthog_account_created_delivery_claimed_at = NULL,
+            posthog_account_created_retry_after = NULL
+      WHERE user_id = $1
+        AND posthog_account_created_uuid = $2::uuid
+        AND posthog_account_created_status = 'pending_delivery'`,
+    [userId, uuid]
+  );
+}
+
+async function deferUnavailableAccountReconciliation(userId) {
+  await pool.query(
+    `UPDATE user_profiles
+        SET posthog_account_created_retry_after = NOW() + INTERVAL '60 seconds'
+      WHERE user_id = $1
+        AND posthog_account_created_status = 'reconciliation_pending'
+        AND posthog_account_created_uuid IS NULL`,
+    [userId]
+  );
+}
+
+async function sendReservedAccountCreated(userId, delivery) {
+  const claimed = await claimAccountCreatedDelivery(userId, delivery.uuid);
+  if (!claimed) return false;
+  const timestamp = new Date(claimed.timestamp).toISOString();
+  try {
+    await posthog.captureAccountCreated({
+      userId,
+      uuid: claimed.uuid,
+      timestamp,
+      properties: claimed.properties,
+    });
+  } catch (err) {
+    await releaseAccountCreatedDeliveryClaim(userId, claimed.uuid).catch((releaseErr) => {
+      log.warn('[posthog] account_created claim release failed:', releaseErr?.message || releaseErr);
+    });
+    throw err;
+  }
+  await markAccountCreatedSent(userId, claimed.uuid);
+  return true;
+}
+
+async function reconcileAndDeliverAccountCreated(userId) {
+  const cutoverMs = Date.parse(process.env.GLOWLYTICS_CUTOVER_AT || '');
+  if (!Number.isFinite(cutoverMs)) throw new Error('GLOWLYTICS_CUTOVER_AT missing or invalid');
+  const cutoverAt = new Date(cutoverMs).toISOString();
+  const current = await loadAccountCreatedDelivery(userId, cutoverAt);
+  if (!current || !RETRYABLE_ACCOUNT_STATUSES.includes(current.status)) return;
+  if (!current.forward_owned) {
+    await markRuntimePreCutoverProfileHistorical(userId, cutoverAt);
+    return;
+  }
+  if (current.status === 'pending_delivery') {
+    await sendReservedAccountCreated(userId, current);
+    return;
+  }
+  const reconciliation = await convertUvLeadToCustomer(userId);
+  if (reconciliation.status === 'unavailable') {
+    await deferUnavailableAccountReconciliation(userId);
+    return;
+  }
+  const delivery = await reserveAccountCreatedDelivery(
+    userId,
+    reconciliation.status === 'matched' ? reconciliation.lead : undefined,
+    reconciliation.status
+  );
+  if (delivery) await sendReservedAccountCreated(userId, delivery);
+}
+
+async function retryPendingAccountCreatedDeliveries({ limit = 100 } = {}) {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 500) throw new Error('invalid retry limit');
+  const { rows } = await pool.query(
+    `SELECT user_id
+       FROM user_profiles
+      WHERE posthog_account_created_status IN ('reconciliation_pending', 'pending_delivery')
+        AND (posthog_account_created_retry_after IS NULL OR posthog_account_created_retry_after <= NOW())
+      ORDER BY CASE WHEN posthog_account_created_status = 'pending_delivery' THEN 0 ELSE 1 END,
+               COALESCE(posthog_account_created_retry_after, created_at),
+               created_at,
+               user_id
+      LIMIT $1`,
+    [limit]
+  );
+  for (const { user_id: userId } of rows) {
+    try {
+      await reconcileAndDeliverAccountCreated(userId);
+    } catch (err) {
+      log.warn('[posthog] pending account_created retry failed:', err?.message || err);
+    }
+  }
+}
+
+app._retryPendingAccountCreatedDeliveries = retryPendingAccountCreatedDeliveries;
 
 app.post('/api/users', async (req, res) => {
   try {
@@ -1859,6 +2337,11 @@ app.post('/api/users', async (req, res) => {
       smoker_status, drink_baseline_frequency,
     } = req.body;
 
+    const cutoverMs = Date.parse(process.env.GLOWLYTICS_CUTOVER_AT || '');
+    if (!Number.isFinite(cutoverMs)) {
+      return res.status(500).json({ error: 'cutover_not_configured' });
+    }
+
     const result = await pool.query(
       `INSERT INTO user_profiles
        (user_id, age_range, location_coarse, period_applicable, period_last_start_date,
@@ -1869,12 +2352,17 @@ app.post('/api/users', async (req, res) => {
        period_last_start_date, cycle_length_days || 28,
        smoker_status, drink_baseline_frequency]
     );
-    await convertUvLeadToCustomer(userId).catch(() => {});
+    await reconcileAndDeliverAccountCreated(userId)
+      .catch((err) => log.warn('[posthog] account_created attempt failed:', err?.message || err));
     res.status(201).json(result.rows[0]);
   } catch (err) {
     // Issue #4: Handle duplicate user_id (idempotent creation)
     if (err.code === '23505') {
-      await convertUvLeadToCustomer((req.auth && req.auth.userId) || null).catch(() => {});
+      const duplicateUserId = (req.auth && req.auth.userId) || null;
+      if (duplicateUserId) {
+        await reconcileAndDeliverAccountCreated(duplicateUserId)
+          .catch((retryErr) => log.warn('[posthog] duplicate account_created retry failed:', retryErr?.message || retryErr));
+      }
       return res.status(409).json({ error: 'User profile already exists' });
     }
     res.status(500).json({ error: safeErrorMessage(err) });
@@ -1905,6 +2393,24 @@ app.delete('/api/users/:id', async (req, res) => {
     await client.query('DELETE FROM product_catalog WHERE user_id = $1', [userId]);
     await client.query('DELETE FROM scan_protocols WHERE user_id = $1', [userId]);
     await client.query('DELETE FROM report_artifacts WHERE user_id = $1', [userId]);
+    // Apple 5.1.1(v) PII gap: UV Mirror lead-capture rows (email ↔ this Clerk
+    // user) live outside the app tables above. Delete the user's leads and any
+    // scans only those leads referenced (uv_scans has no user column of its
+    // own — its sole user linkage is uv_leads.scan_id).
+    const uvLeads = await client.query(
+      'DELETE FROM uv_leads WHERE clerk_user_id = $1 RETURNING scan_id',
+      [userId]
+    );
+    const uvScanIds = (uvLeads.rows || []).map((r) => r.scan_id).filter(Boolean);
+    if (uvScanIds.length > 0) {
+      // NOT EXISTS guards the FK: never drop a scan another (surviving) lead
+      // still references.
+      await client.query(
+        `DELETE FROM uv_scans WHERE id = ANY($1::text[])
+           AND NOT EXISTS (SELECT 1 FROM uv_leads l WHERE l.scan_id = uv_scans.id)`,
+        [uvScanIds]
+      );
+    }
     const result = await client.query(
       'DELETE FROM user_profiles WHERE user_id = $1 RETURNING user_id',
       [userId]
@@ -2050,17 +2556,17 @@ app.post('/api/products', async (req, res) => {
     if (!userId) return res.status(401).json({ error: 'Authentication required' });
     const {
       product_name, brand, product_capture_method,
-      ingredients_list, usage_schedule, start_date, notes,
+      ingredients_list, usage_schedule, start_date, notes, image_url,
     } = req.body;
 
     const result = await pool.query(
       `INSERT INTO product_catalog
        (user_id, product_name, brand, product_capture_method, ingredients_list,
-        usage_schedule, start_date, notes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+        usage_schedule, start_date, notes, image_url)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
       [userId, product_name, brand || null, product_capture_method,
        ingredients_list, usage_schedule,
-       start_date || new Date().toISOString().split('T')[0], notes]
+       start_date || new Date().toISOString().split('T')[0], notes, image_url || null]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -2259,7 +2765,9 @@ app.get('/api/reports/:userId', async (req, res) => {
 // ==================== RAG PIPELINE ====================
 
 // Query relevant guideline excerpts
-app.post('/api/rag/query', async (req, res) => {
+// Embeds via OpenAI + queries Pinecone on every call — rate-limited like the
+// other LLM-backed endpoints so a client loop can't drive unbounded spend.
+app.post('/api/rag/query', analyzeRateLimit, async (req, res) => {
   try {
     const { query } = req.body;
 

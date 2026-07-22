@@ -12,6 +12,11 @@
 
 process.env.NODE_ENV = 'development';
 delete process.env.CLERK_SECRET_KEY; // B4: ensure the unverified path by default
+// Auth fails closed whenever an issuer is configured (even in development) —
+// clear any issuer leaked by an earlier test file (jest shares process.env
+// across files at maxWorkers=1). Set '' (not delete): app.js's dotenv would
+// re-inject a developer's .env CLERK_ISSUER_URL into a deleted slot.
+process.env.CLERK_ISSUER_URL = '';
 
 const mockQuery = jest.fn();
 jest.mock('pg', () => {
@@ -47,6 +52,15 @@ jest.mock('../queries/uv', () => ({
   getLeadByToken: jest.fn(),
   markCustomer: jest.fn(),
 }));
+
+jest.mock('../posthog', () => {
+  const actual = jest.requireActual('../posthog');
+  return {
+    ...actual,
+    captureAccountCreated: jest.fn().mockResolvedValue(undefined),
+    captureWaitlistSubmitted: jest.fn().mockResolvedValue(undefined),
+  };
+});
 
 const request = require('supertest');
 const app = require('../app');
@@ -89,7 +103,13 @@ describe('B1 — /api/uv/lead enforces the claim_token binding', () => {
   test('happy path: correct token claims the report (200)', async () => {
     uvQueries.getScan.mockResolvedValue({ ...baseScan, claim_token: 'TOK', claimed: false });
     uvQueries.getLeadByEmail.mockResolvedValue(null);
-    uvQueries.upsertLead.mockResolvedValue({ email: 'a@b.com', report_token: 'rt1', scan_id: 'scan1' });
+    uvQueries.upsertLead.mockResolvedValue({
+      id: '152605c9-cf42-449a-9b71-f9d731ff1856',
+      email: 'a@b.com',
+      report_token: 'rt1',
+      scan_id: 'scan1',
+      created_at: '2026-07-21T12:00:00.000Z',
+    });
     uvQueries.claimScan.mockResolvedValue({ id: 'scan1', claimed: true });
     loops.sendEvent.mockResolvedValue({ skipped: true });
 
@@ -144,7 +164,13 @@ describe('B1 — /api/uv/lead enforces the claim_token binding', () => {
   test('same-email re-claim is idempotent → 200 with the original token', async () => {
     uvQueries.getScan.mockResolvedValue({ ...baseScan, claim_token: 'TOK', claimed: true });
     uvQueries.getLeadByEmail.mockResolvedValue({ email: 'a@b.com', scan_id: 'scan1', report_token: 'rt1' });
-    uvQueries.upsertLead.mockResolvedValue({ email: 'a@b.com', report_token: 'rt1', scan_id: 'scan1' });
+    uvQueries.upsertLead.mockResolvedValue({
+      id: '152605c9-cf42-449a-9b71-f9d731ff1856',
+      email: 'a@b.com',
+      report_token: 'rt1',
+      scan_id: 'scan1',
+      created_at: '2026-07-21T12:00:00.000Z',
+    });
     uvQueries.claimScan.mockResolvedValue({ id: 'scan1', claimed: true });
     loops.sendEvent.mockResolvedValue({ skipped: true });
 
@@ -159,7 +185,13 @@ describe('B1 — /api/uv/lead enforces the claim_token binding', () => {
   test('legacy scan (null claim_token) stays claimable → 200', async () => {
     uvQueries.getScan.mockResolvedValue({ ...baseScan, claim_token: null, claimed: false });
     uvQueries.getLeadByEmail.mockResolvedValue(null);
-    uvQueries.upsertLead.mockResolvedValue({ email: 'a@b.com', report_token: 'rtLegacy', scan_id: 'scan1' });
+    uvQueries.upsertLead.mockResolvedValue({
+      id: '152605c9-cf42-449a-9b71-f9d731ff1856',
+      email: 'a@b.com',
+      report_token: 'rtLegacy',
+      scan_id: 'scan1',
+      created_at: '2026-07-21T12:00:00.000Z',
+    });
     uvQueries.claimScan.mockResolvedValue({ id: 'scan1', claimed: true });
     loops.sendEvent.mockResolvedValue({ skipped: true });
 
@@ -282,5 +314,61 @@ describe('B6 — oversized image_base64 rejected with 413', () => {
 
     expect(res.status).toBe(200);
     expect(uvScan.screenImage).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ==================== Waitlist rate limiting (public, DB-writing) ==========
+
+describe('waitlist endpoints are rate-limited per IP', () => {
+  beforeEach(() => {
+    app._resetRateLimiters();
+    mockQuery.mockImplementation(async (sql) => (
+      /INSERT INTO waitlist/.test(sql)
+        ? {
+            rows: [{
+              id: '66fd1965-6388-4071-9e50-382223698678',
+              source: 'landing',
+              created_at: '2026-07-21T12:00:00.000Z',
+            }],
+            rowCount: 1,
+          }
+        : { rows: [{ count: '0' }] }
+    ));
+  });
+  afterEach(() => {
+    app._resetRateLimiters(); // don't leak a hot limiter into other describes
+  });
+
+  test('POST /api/waitlist bursts past the per-IP window → 429 without hitting the DB', async () => {
+    // detectRateLimit allows 10 requests / 10s / IP; the 11th must 429.
+    for (let i = 0; i < 10; i++) {
+      const ok = await request(app).post('/api/waitlist').send({ email: `w${i}@example.com` });
+      expect(ok.status).toBe(200);
+    }
+    const queriesBefore = mockQuery.mock.calls.length;
+    const blocked = await request(app).post('/api/waitlist').send({ email: 'w11@example.com' });
+    expect(blocked.status).toBe(429);
+    expect(blocked.body.error).toMatch(/rate limit/i);
+    expect(mockQuery.mock.calls.length).toBe(queriesBefore); // limiter fired before the handler
+  });
+
+  test('GET /api/waitlist/count shares the same per-IP limiter', async () => {
+    for (let i = 0; i < 10; i++) {
+      await request(app).get('/api/waitlist/count').expect(200);
+    }
+    await request(app).get('/api/waitlist/count').expect(429);
+  });
+});
+
+// ==================== /health model visibility =============================
+
+describe('GET /health reports loaded models without gating on them', () => {
+  test('200 with a models array even when no ONNX session is loaded', async () => {
+    // signal-models is the REAL module here (unmocked); no initModels() has
+    // run, so every session is null — /health must still be 200 (degraded,
+    // not dead: Railway's healthcheck depends on it) and list zero models.
+    const res = await request(app).get('/health').expect(200);
+    expect(res.body.status).toBe('ok');
+    expect(res.body.models).toEqual([]);
   });
 });

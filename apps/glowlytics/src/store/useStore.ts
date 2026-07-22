@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID as uuidv4 } from 'expo-crypto';
 import type {
   UserProfile, ScanProtocol, ProductEntry, DailyRecord,
   ModelOutput, PrimaryGoal, ScanRegion, HealthConnectionState,
@@ -16,10 +16,19 @@ import * as api from '../services/api';
 import { enqueueSync, resetSyncOutbox } from '../services/syncOutbox';
 import { buildOnboardingFlow } from '../services/onboardingFlow';
 import { localDateStr } from '../utils/localDate';
+import { activeProducts } from '../services/ritual';
 import { detectPatterns } from '../services/patternEngine';
 import { trackEvent, resetAnalytics } from '../services/analytics';
 import { encryptJson, decryptJson } from '../services/secureStorage';
 import { pullLastNDays } from '../services/healthSync';
+import {
+  cancelAllAppNotifications,
+  cancelDailyReminder,
+  cancelRitualReminder,
+  migrateLegacyNotifications,
+  scheduleDailyReminder,
+  scheduleRitualReminder,
+} from '../services/notifications';
 import {
   getLevelForXP,
   getXPForScan,
@@ -98,18 +107,30 @@ interface AppState {
   // this against today's local date and shows /quote when stale.
   dailyQuoteSeenDate: string | null;
 
+  // Preferred first name from onboarding. Client-side only — used for reveal
+  // copy and notification previews, never synced to the backend profile.
+  preferredName: string | null;
+
+  // Explicit permission for sending personal scan data to third-party AI.
+  aiProcessingConsentGranted: boolean;
+
   // Actions
   setOnboardingStep: (step: number) => void;
   setOnboardingFlow: (flow: OnboardingScreenName[]) => void;
   setOnboardingFlowIndex: (index: number) => void;
+  setPreferredName: (name: string | null) => void;
   reconcileAuthUserId: (authUserId: string) => Promise<void>;
   hydrateForUser: (authUserId: string) => Promise<void>;
   createUser: (data: Partial<UserProfile>) => void;
   updateUser: (data: Partial<UserProfile>) => void;
   updateHealthConnection: (data: Partial<HealthConnectionState>) => void;
   setProtocol: (goal: PrimaryGoal, region: ScanRegion) => void;
-  addProduct: (product: Omit<ProductEntry, 'user_product_id' | 'user_id'>) => void;
+  addProduct: (
+    product: Omit<ProductEntry, 'user_product_id' | 'user_id'>,
+    options?: { allowDuplicate?: boolean },
+  ) => { status: 'added'; product: ProductEntry } | { status: 'duplicate'; duplicate: ProductEntry } | { status: 'ignored' };
   removeProduct: (id: string) => void;
+  setProductImage: (id: string, imageUrl: string) => void;
   addDailyRecord: (record: Omit<DailyRecord, 'daily_id' | 'user_id'>) => DailyRecord;
   addModelOutput: (output: Omit<ModelOutput, 'output_id'>) => void;
   attachBoneStructure: (dailyId: string, bone: NonNullable<ModelOutput['bone_structure']>) => void;
@@ -134,6 +155,8 @@ interface AppState {
   startTrial: () => void;
   setNotificationTime: (time: string | null) => void;
   setNotificationsEnabled: (enabled: boolean) => void;
+  setDailyReminder: (enabled: boolean, time?: string) => Promise<void>;
+  setRitualReminder: (section: 'am' | 'pm', enabled: boolean, time?: string) => Promise<void>;
   addHealthDailyRecord: (record: HealthDailyRecord) => void;
   upsertHealthDailyRecord: (date: string, record: HealthDailyRecord) => void;
   syncHealthData: () => Promise<{ added: number; errors: string[] }>;
@@ -148,6 +171,7 @@ interface AppState {
   setAppearance: (patch: Partial<AppearancePreferences>) => Promise<void>;
   resetAppearance: () => Promise<void>;
   requestAddProduct: () => void;
+  setAiProcessingConsentGranted: (granted: boolean) => void;
   markDailyQuoteSeen: () => void;
 }
 
@@ -232,6 +256,151 @@ const normalizeUser = (user?: Partial<UserProfile> | null): UserProfile | null =
 const isApiStatus = (err: unknown, status: number) =>
   err instanceof Error && err.message.startsWith(`API ${status}:`);
 
+const messageFromUnknown = (err: unknown): string =>
+  err instanceof Error ? err.message : String(err);
+
+type BackendTrialPatch = Partial<UserProfile> & {
+  trial_start_date?: string | null;
+  trial_end_date?: string | null;
+};
+
+type PersistedAppState = Partial<
+  Pick<
+    AppState,
+    | 'user'
+    | 'authedUserId'
+    | 'protocol'
+    | 'products'
+    | 'dailyRecords'
+    | 'modelOutputs'
+    | 'gamification'
+    | 'subscription'
+    | 'notificationSettings'
+    | 'onboardingFlow'
+    | 'onboardingFlowIndex'
+    | 'healthDailyRecords'
+    | 'healthSyncStatus'
+    | 'patterns'
+    | 'firstLookInsight'
+    | 'patternNotifications'
+    | 'ritualCompletions'
+    | 'consideringList'
+    | 'appearance'
+    | 'dailyQuoteSeenDate'
+    | 'preferredName'
+    | 'aiProcessingConsentGranted'
+  >
+> & {
+  // Version stamp of the persisted snapshot; absent on legacy (v1) blobs.
+  schemaVersion?: number;
+};
+
+const asPersistedAppState = (value: unknown): PersistedAppState | null => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return value as PersistedAppState;
+};
+
+// Version of the persisted-snapshot schema. v1 is the implicit legacy shape
+// (blobs written before versioning carry no schemaVersion field). Bump this
+// and add a step in migratePersisted whenever the persisted shape changes.
+// v3: notificationSettings gained AM/PM ritual reminder fields AND scheduling
+// moved to per-identifier cancels — loadPersistedData runs a one-time
+// cancel-all + reschedule for blobs older than v3 (side effect lives there
+// because migratePersisted is pure/sync).
+// v4: rose became the default brand; persisted appearance.palette 'dusk' →
+// 'rose' and appearance.icon 'og-dusk' → 'og-rose' (old values were the
+// implicit defaults everyone carried; without this, updated installs would
+// auto-swap to the new OgDusk alternate icon and fire the iOS icon-change
+// alert at launch).
+const SCHEMA_VERSION = 4;
+
+const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
+  notifications_enabled: false,
+  notification_time: null,
+  ritual_am_enabled: false,
+  ritual_am_time: null,
+  ritual_pm_enabled: false,
+  ritual_pm_time: null,
+};
+
+const normalizeNotificationSettings = (
+  settings?: Partial<NotificationSettings> | null,
+): NotificationSettings => ({
+  ...DEFAULT_NOTIFICATION_SETTINGS,
+  ...(settings ?? {}),
+});
+
+const parseReminderTime = (time: string): { hour: number; minute: number } => {
+  const [hourRaw, minuteRaw] = time.split(':');
+  const hour = Number(hourRaw);
+  const minute = Number(minuteRaw);
+  if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    throw new Error(`Invalid reminder time: ${time}`);
+  }
+  return { hour, minute };
+};
+
+const normalizeProductText = (value?: string | null) =>
+  (value ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+const productDuplicateKey = (product: Pick<ProductEntry, 'product_name' | 'brand'>) =>
+  `${normalizeProductText(product.brand)}::${normalizeProductText(product.product_name)}`;
+
+// removeProduct soft-deletes locally (sets end_date) while the backend hard-
+// deletes, so a wholesale hydrate would erase ended products and degrade every
+// historical ritual to a "Previously used product" placeholder. Keep local
+// ended rows the server no longer knows about, carry a local end_date onto rows
+// the server still returns, and reattach a local image_url when the server row
+// lacks one: product_catalog historically had no image_url column, so a signed-
+// in round-trip strips it and the shelf thumbnails vanish on the next launch.
+// Belt-and-suspenders alongside the backend column fix — always map over the
+// server rows (even with no ended rows) so active products keep their image.
+const mergeEndedProducts = (server: ProductEntry[], local: ProductEntry[]): ProductEntry[] => {
+  const localById = new Map(local.map((p) => [p.user_product_id, p]));
+  const serverIds = new Set(server.map((p) => p.user_product_id));
+  const merged = server.map((p) => {
+    const localMatch = localById.get(p.user_product_id);
+    if (!localMatch) return p;
+    const carriedEndDate = localMatch.end_date ?? p.end_date;
+    const carriedImageUrl = p.image_url ?? localMatch.image_url;
+    if (carriedEndDate === p.end_date && carriedImageUrl === p.image_url) return p;
+    return { ...p, end_date: carriedEndDate, image_url: carriedImageUrl };
+  });
+  const localEnded = local.filter((p) => p.end_date);
+  return [...merged, ...localEnded.filter((p) => !serverIds.has(p.user_product_id))];
+};
+
+// Migration seam for persisted snapshots: every load routes through here with
+// the version the blob was written at (legacy blobs count as v1). Stepwise
+// upgrades slot in as the shape evolves, e.g.:
+//   if (fromVersion < 3) parsed = reshapeV2toV3(parsed);
+// All shapes through v2 are identical (v2 only introduced the version stamp),
+// and unknown/future versions pass through untouched -- loadPersistedData's
+// per-field defaults keep rehydration tolerant either way.
+export const migratePersisted = (
+  parsed: PersistedAppState,
+  fromVersion: number,
+): PersistedAppState => {
+  if (fromVersion >= SCHEMA_VERSION) return parsed;
+
+  if (fromVersion < 4 && parsed.appearance) {
+    const palette = parsed.appearance.palette === 'dusk' ? 'rose' : parsed.appearance.palette;
+    const icon = parsed.appearance.icon === 'og-dusk' ? 'og-rose' : parsed.appearance.icon;
+    if (palette !== parsed.appearance.palette || icon !== parsed.appearance.icon) {
+      return {
+        ...parsed,
+        appearance: {
+          ...parsed.appearance,
+          palette,
+          icon,
+        },
+      };
+    }
+  }
+
+  return parsed;
+};
+
 const toBackendUserProfilePayload = (user: UserProfile): Partial<UserProfile> => ({
   ...user,
   age_range: user.age_range && user.age_range.trim().length > 0 ? user.age_range : '25-34',
@@ -291,7 +460,7 @@ export const useStore = create<AppState>((set, get) => ({
   pendingLesions: null,
   gamification: defaultGamification(),
   subscription: defaultSubscription(),
-  notificationSettings: { notifications_enabled: false, notification_time: null },
+  notificationSettings: { ...DEFAULT_NOTIFICATION_SETTINGS },
   healthDailyRecords: [],
   healthSyncStatus: {
     last_sync_at: null,
@@ -308,10 +477,17 @@ export const useStore = create<AppState>((set, get) => ({
   appearance: { ...DEFAULT_APPEARANCE },
   openAddProductTrigger: 0,
   dailyQuoteSeenDate: null,
+  preferredName: null,
+  aiProcessingConsentGranted: false,
+
 
   setOnboardingStep: (step) => set({ onboardingStep: step }),
   setOnboardingFlow: (flow) => set({ onboardingFlow: flow }),
   setOnboardingFlowIndex: (index) => set({ onboardingFlowIndex: index }),
+  setPreferredName: (name) => {
+    set({ preferredName: name });
+    debouncedPersist(() => get().persistData());
+  },
   reconcileAuthUserId: async (authUserId) => {
     if (!authUserId) return;
     const state = get();
@@ -400,7 +576,7 @@ export const useStore = create<AppState>((set, get) => ({
         authedUserId: authUserId,
         user: profile ? normalizeUser(profile) : get().user,
         protocol: protocol !== undefined ? protocol : get().protocol,
-        products: Array.isArray(products) ? products : get().products,
+        products: Array.isArray(products) ? mergeEndedProducts(products, get().products) : get().products,
         dailyRecords: Array.isArray(dailyRecords) ? dailyRecords : get().dailyRecords,
         // #14: GET /api/model-outputs returns newest-FIRST (ORDER BY date DESC),
         // but the store + UI treat modelOutputs[last] as the latest scan (matching
@@ -533,9 +709,18 @@ export const useStore = create<AppState>((set, get) => ({
     }));
   },
 
-  addProduct: (product) => {
+  addProduct: (product, options) => {
     const user = get().user;
-    if (!user) return;
+    if (!user) return { status: 'ignored' };
+    if (!options?.allowDuplicate) {
+      const key = productDuplicateKey(product);
+      // Only the CURRENT shelf counts for duplicates — re-adding something the
+      // user removed (even earlier today) is a legitimate add, not a duplicate.
+      const duplicate = activeProducts(get().products).find(
+        (p) => productDuplicateKey(p) === key,
+      );
+      if (duplicate) return { status: 'duplicate', duplicate };
+    }
     const entry: ProductEntry = {
       ...product,
       user_product_id: generateId(),
@@ -544,12 +729,30 @@ export const useStore = create<AppState>((set, get) => ({
     set((s) => ({ products: [...s.products, entry] }));
     debouncedPersist(() => get().persistData());
     syncToBackend('add product', () => api.addProduct(entry));
+    return { status: 'added', product: entry };
   },
 
   removeProduct: (id) => {
-    set((s) => ({ products: s.products.filter((p) => p.user_product_id !== id) }));
+    const endDate = localDateStr();
+    set((s) => ({
+      products: s.products.map((p) =>
+        p.user_product_id === id ? { ...p, end_date: p.end_date ?? endDate } : p,
+      ),
+    }));
     debouncedPersist(() => get().persistData());
     syncToBackend('remove product', () => api.deleteProduct(id));
+  },
+
+  setProductImage: (id, imageUrl) => {
+    const product = get().products.find((p) => p.user_product_id === id);
+    if (!product || product.image_url === imageUrl) return;
+
+    set((s) => ({
+      products: s.products.map((p) =>
+        p.user_product_id === id ? { ...p, image_url: imageUrl } : p,
+      ),
+    }));
+    debouncedPersist(() => get().persistData());
   },
 
   addDailyRecord: (record) => {
@@ -698,16 +901,17 @@ export const useStore = create<AppState>((set, get) => ({
       // Trigger pattern re-detection after a successful sync
       get().runPatternDetection();
       return { added: records.length, errors };
-    } catch (e: any) {
+    } catch (e: unknown) {
+      const message = messageFromUnknown(e);
       set((s) => ({
         healthSyncStatus: {
           ...s.healthSyncStatus,
           in_progress: false,
           last_sync_at: new Date().toISOString(),
-          last_error: e?.message ?? String(e),
+          last_error: message,
         },
       }));
-      return { added: 0, errors: [e?.message ?? String(e)] };
+      return { added: 0, errors: [message] };
     }
   },
 
@@ -732,16 +936,17 @@ export const useStore = create<AppState>((set, get) => ({
       }));
       get().runPatternDetection();
       return { added: records.length, errors };
-    } catch (e: any) {
+    } catch (e: unknown) {
+      const message = messageFromUnknown(e);
       set((s) => ({
         healthSyncStatus: {
           ...s.healthSyncStatus,
           in_progress: false,
           last_sync_at: new Date().toISOString(),
-          last_error: e?.message ?? String(e),
+          last_error: message,
         },
       }));
-      return { added: 0, errors: [e?.message ?? String(e)] };
+      return { added: 0, errors: [message] };
     }
   },
 
@@ -842,6 +1047,11 @@ export const useStore = create<AppState>((set, get) => ({
     set((s) => ({ openAddProductTrigger: s.openAddProductTrigger + 1 }));
   },
 
+  setAiProcessingConsentGranted: (granted) => {
+    set({ aiProcessingConsentGranted: granted });
+    debouncedPersist(() => get().persistData());
+  },
+
   markDailyQuoteSeen: () => {
     set({ dailyQuoteSeenDate: localDateStr(new Date()) });
     debouncedPersist(() => get().persistData());
@@ -886,8 +1096,8 @@ export const useStore = create<AppState>((set, get) => ({
       } catch {
         // patternNotifications module failed to load — non-fatal
       }
-    } catch (e: any) {
-      console.warn('[patternEngine] detection failed:', e?.message ?? e);
+    } catch (e: unknown) {
+      console.warn('[patternEngine] detection failed:', messageFromUnknown(e));
     }
   },
 
@@ -1048,10 +1258,10 @@ export const useStore = create<AppState>((set, get) => ({
     const user = get().user;
     if (user) {
       syncToBackend('update trial dates', async () => {
-        const patch = {
+        const patch: BackendTrialPatch = {
           trial_start_date: trialFields.trial_start_date,
           trial_end_date: trialFields.trial_end_date,
-        } as any;
+        };
         try {
           await api.updateUser(user.user_id, patch);
         } catch (err) {
@@ -1068,13 +1278,70 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   setNotificationTime: (time) => {
-    set({ notificationSettings: { notifications_enabled: time !== null, notification_time: time } });
+    set((s) => ({
+      notificationSettings: {
+        ...normalizeNotificationSettings(s.notificationSettings),
+        notifications_enabled: time !== null,
+        notification_time: time,
+      },
+    }));
     debouncedPersist(() => get().persistData());
   },
 
   setNotificationsEnabled: (enabled) => {
     set((s) => ({
-      notificationSettings: { ...s.notificationSettings, notifications_enabled: enabled },
+      notificationSettings: {
+        ...normalizeNotificationSettings(s.notificationSettings),
+        notifications_enabled: enabled,
+      },
+    }));
+    debouncedPersist(() => get().persistData());
+  },
+
+  setDailyReminder: async (enabled, time) => {
+    if (enabled) {
+      const nextTime = time ?? get().notificationSettings.notification_time ?? '08:00';
+      const { hour, minute } = parseReminderTime(nextTime);
+      await scheduleDailyReminder(hour, minute);
+      get().setNotificationTime(nextTime);
+      return;
+    }
+    await cancelDailyReminder();
+    // Keep notification_time so re-enabling restores the user's chosen time
+    // instead of snapping back to the 08:00 default.
+    set((s) => ({
+      notificationSettings: {
+        ...normalizeNotificationSettings(s.notificationSettings),
+        notifications_enabled: false,
+      },
+    }));
+    debouncedPersist(() => get().persistData());
+  },
+
+  setRitualReminder: async (section, enabled, time) => {
+    const timeKey = section === 'am' ? 'ritual_am_time' : 'ritual_pm_time';
+    const enabledKey = section === 'am' ? 'ritual_am_enabled' : 'ritual_pm_enabled';
+    if (enabled) {
+      const nextTime = time ?? get().notificationSettings[timeKey] ?? (section === 'am' ? '07:00' : '21:30');
+      const parsed = parseReminderTime(nextTime);
+      await scheduleRitualReminder(section, parsed);
+      set((s) => ({
+        notificationSettings: {
+          ...normalizeNotificationSettings(s.notificationSettings),
+          [enabledKey]: true,
+          [timeKey]: nextTime,
+        },
+      }));
+      debouncedPersist(() => get().persistData());
+      return;
+    }
+    await cancelRitualReminder(section);
+    // Keep the stored time (same rationale as setDailyReminder's off-path).
+    set((s) => ({
+      notificationSettings: {
+        ...normalizeNotificationSettings(s.notificationSettings),
+        [enabledKey]: false,
+      },
     }));
     debouncedPersist(() => get().persistData());
   },
@@ -1082,22 +1349,28 @@ export const useStore = create<AppState>((set, get) => ({
   loadPersistedData: async () => {
     try {
       const raw = await AsyncStorage.getItem('glowlytics_data');
-      let parsed: any = null;
+      let parsed: PersistedAppState | null = null;
       let needsReencrypt = false;
       if (raw) {
         try {
           // MOB-01: the persisted blob is AES-encrypted at rest.
-          parsed = await decryptJson(raw);
+          parsed = asPersistedAppState(await decryptJson(raw));
         } catch {
           // Legacy plaintext blob written before encryption: parse it and flag
           // for one-time transparent re-encryption once state is restored.
           try {
-            parsed = JSON.parse(raw);
-            needsReencrypt = true;
+            parsed = asPersistedAppState(JSON.parse(raw));
+            if (parsed) needsReencrypt = true;
           } catch {
             parsed = null;
           }
         }
+      }
+      const fromVersion = parsed?.schemaVersion ?? 1;
+      if (parsed) {
+        // Schema-version seam: blobs written before versioning carry no
+        // schemaVersion field and are treated as v1.
+        parsed = migratePersisted(parsed, fromVersion);
       }
       const hasPersistedSession = Boolean(
         parsed?.user ||
@@ -1106,14 +1379,14 @@ export const useStore = create<AppState>((set, get) => ({
         (parsed?.modelOutputs && parsed.modelOutputs.length > 0)
       );
 
-      if (hasPersistedSession) {
+      if (parsed && hasPersistedSession) {
         // Restore the persisted onboarding flow as-is when it's valid: it already
         // encodes the healthSyncedCycleDetected decision (manual menstrual screens
         // skipped when HealthKit supplied cycle data). Rebuilding here dropped that
         // 3rd arg and re-inserted those screens, lengthening the flow and desyncing
         // the persisted index so resume landed on the wrong screen (#34). Only
         // rebuild when the persisted flow is missing/empty.
-        let restoredFlow: OnboardingScreenName[] = parsed.onboardingFlow;
+        let restoredFlow: OnboardingScreenName[] = parsed.onboardingFlow ?? [];
         if (!Array.isArray(restoredFlow) || restoredFlow.length === 0) {
           restoredFlow = buildOnboardingFlow(parsed.user?.sex, parsed.user?.menstrual_status);
         }
@@ -1133,7 +1406,7 @@ export const useStore = create<AppState>((set, get) => ({
             trial_start_date: parsed.subscription?.trial_start_date ?? null,
             trial_end_date: parsed.subscription?.trial_end_date ?? null,
           },
-          notificationSettings: parsed.notificationSettings || { notifications_enabled: false, notification_time: null },
+          notificationSettings: normalizeNotificationSettings(parsed.notificationSettings),
           onboardingFlow: restoredFlow,
           onboardingFlowIndex: restoredIndex,
           healthDailyRecords: parsed.healthDailyRecords || [],
@@ -1161,6 +1434,8 @@ export const useStore = create<AppState>((set, get) => ({
             ...(parsed.appearance ?? {}),
           },
           dailyQuoteSeenDate: typeof parsed.dailyQuoteSeenDate === 'string' ? parsed.dailyQuoteSeenDate : null,
+          preferredName: typeof parsed.preferredName === 'string' ? parsed.preferredName : null,
+          aiProcessingConsentGranted: parsed.aiProcessingConsentGranted === true,
         });
 
         // Backfill: upgraded users from pre-paywall builds may have no trial dates.
@@ -1173,6 +1448,30 @@ export const useStore = create<AppState>((set, get) => ({
           restoredSub.trial_end_date === null
         ) {
           get().startTrial();
+        }
+        // v3 migration: pre-identifier builds scheduled notifications without
+        // identifiers, unreachable by the per-identifier cancels — nuke every
+        // OS-scheduled notification once, then reschedule what's enabled.
+        // Best-effort: a failure here must never block state restore.
+        if (fromVersion < 3) {
+          void (async () => {
+            try {
+              await migrateLegacyNotifications();
+              const ns = get().notificationSettings;
+              if (ns.notifications_enabled && ns.notification_time) {
+                const t = parseReminderTime(ns.notification_time);
+                await scheduleDailyReminder(t.hour, t.minute);
+              }
+              if (ns.ritual_am_enabled && ns.ritual_am_time) {
+                await scheduleRitualReminder('am', parseReminderTime(ns.ritual_am_time));
+              }
+              if (ns.ritual_pm_enabled && ns.ritual_pm_time) {
+                await scheduleRitualReminder('pm', parseReminderTime(ns.ritual_pm_time));
+              }
+              // Stamp v3 so the migration never re-runs.
+              await get().persistData();
+            } catch { /* best-effort */ }
+          })();
         }
         // MOB-01: upgrade a migrated legacy plaintext blob to the encrypted format.
         if (needsReencrypt) {
@@ -1194,7 +1493,7 @@ export const useStore = create<AppState>((set, get) => ({
         subscription, notificationSettings, onboardingFlow, onboardingFlowIndex,
         healthDailyRecords, healthSyncStatus, patterns, firstLookInsight,
         patternNotifications, ritualCompletions, appearance, dailyQuoteSeenDate,
-        consideringList,
+        preferredName, aiProcessingConsentGranted, consideringList,
       } = get();
       // Cap stored records to last 365 days to prevent AsyncStorage bloat
       const cutoff = new Date();
@@ -1209,6 +1508,7 @@ export const useStore = create<AppState>((set, get) => ({
       );
       // MOB-01: encrypt the blob at rest before writing to AsyncStorage.
       const snapshot = {
+        schemaVersion: SCHEMA_VERSION,
         user, authedUserId, protocol, products,
         dailyRecords: cappedDailyRecords,
         modelOutputs: cappedModelOutputs,
@@ -1217,7 +1517,7 @@ export const useStore = create<AppState>((set, get) => ({
         healthDailyRecords: cappedHealthRecords,
         healthSyncStatus, patterns, firstLookInsight, patternNotifications,
         ritualCompletions: cappedRitualCompletions,
-        appearance, dailyQuoteSeenDate, consideringList,
+        appearance, dailyQuoteSeenDate, preferredName, aiProcessingConsentGranted, consideringList,
       };
       await AsyncStorage.setItem('glowlytics_data', await encryptJson(snapshot));
     } catch (e) {
@@ -1244,7 +1544,7 @@ export const useStore = create<AppState>((set, get) => ({
       pendingLesions: null,
       gamification: defaultGamification(),
       subscription: defaultSubscription(),
-      notificationSettings: { notifications_enabled: false, notification_time: null },
+      notificationSettings: { ...DEFAULT_NOTIFICATION_SETTINGS },
       healthDailyRecords: [],
       healthSyncStatus: {
         last_sync_at: null,
@@ -1258,8 +1558,11 @@ export const useStore = create<AppState>((set, get) => ({
       ritualCompletions: {},
       appearance: { ...DEFAULT_APPEARANCE },
       dailyQuoteSeenDate: null,
+      preferredName: null,
+      aiProcessingConsentGranted: false,
       consideringList: [],
     });
+    try { await cancelAllAppNotifications(); } catch { /* best-effort */ }
     // Cross-account bleed guard: sign-out is the single cleanup chokepoint, so it
     // must also drop the previous user's cached JWT, queued mutations, analytics
     // identity, and RevenueCat entitlement. Each is isolated so one failure can't

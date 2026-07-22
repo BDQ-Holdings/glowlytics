@@ -75,6 +75,7 @@ export default function ProductDetailScreen() {
   const protocol = useStore((s) => s.protocol);
   const dailyRecords = useStore((s) => s.dailyRecords);
   const modelOutputs = useStore((s) => s.modelOutputs);
+  const ritualCompletions = useStore((s) => s.ritualCompletions);
 
   const product = products.find((p) => p.user_product_id === id);
 
@@ -167,14 +168,15 @@ export default function ProductDetailScreen() {
     return `${diffWeeks} weeks`;
   }, [product]);
 
-  // Approx times used = days since start clamped by usage frequency.
+  // Real use count from checked ritual product steps.
   const timesUsed = useMemo(() => {
-    if (!product?.start_date) return 0;
-    const start = new Date(product.start_date);
-    const days = Math.max(0, Math.round((Date.now() - start.getTime()) / (1000 * 60 * 60 * 24)));
-    if (product.usage_schedule === 'both') return days * 2;
-    return days;
-  }, [product]);
+    if (!product) return 0;
+    const amId = `product:${product.user_product_id}:am`;
+    const pmId = `product:${product.user_product_id}:pm`;
+    return Object.values(ritualCompletions).reduce((count, day) => {
+      return count + (day[amId] || day[pmId] ? 1 : 0);
+    }, 0);
+  }, [product, ritualCompletions]);
 
   if (!product) {
     return (

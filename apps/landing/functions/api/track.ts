@@ -13,18 +13,18 @@
  * which rotates daily and is one-way. Country comes from Cloudflare's
  * geo header at edge resolution (no precise location).
  *
- * Salt: when TRACK_SALT is unset we use a random per-request salt (fail closed)
- * rather than a public default — counts are preserved but cross-day visitor
- * correlation is intentionally lost. Abuse: per-IP/day cap via Cloudflare KV
- * (binding `RATE_LIMIT_KV`); fails open until provisioned (see wrangler.toml).
+ * Salt: TRACK_SALT is required for public writes because both the daily visitor
+ * hash and the abuse counter need a stable keyed hash. Missing configuration or
+ * storage failures reject requests.
  */
+
+import { rateLimited } from "./_rate-limit";
+
+export { rateLimited };
 
 export interface Env {
   WAITLIST_DB: D1Database;
   TRACK_SALT?: string;
-  // Optional so the site builds/runs before the namespace is provisioned;
-  // rateLimited() fails open when this binding is absent.
-  RATE_LIMIT_KV?: KVNamespace;
 }
 
 const ALLOWED_TYPES = new Set(["blog", "faq", "guide", "glossary"]);
@@ -69,12 +69,10 @@ function utcDay(now = new Date()): string {
 }
 
 /**
- * Resolve the visitor-hash salt. When TRACK_SALT is provisioned we use it so a
- * visitor gets a stable daily hash (cross-day de-dup works). When it is unset we
- * fail CLOSED with a random per-request salt: the pageview row (and so the
- * count) is still recorded, but the resulting visitor_hash is non-correlatable —
- * it can no longer be brute-forced back to an IP+UA. Trade-off: counts
- * preserved, repeat-visitor de-duplication lost while the salt is missing.
+ * Resolve the pageview visitor-hash salt. A configured secret produces a stable
+ * daily hash for within-day de-duplication. The random fallback protects direct
+ * helper callers from a public or brute-forceable default; the public handler's
+ * atomic limiter rejects missing configuration before reaching this helper.
  */
 export function resolveTrackSalt(env: Env): string {
   if (env.TRACK_SALT) return env.TRACK_SALT;
@@ -85,40 +83,6 @@ export function resolveTrackSalt(env: Env): string {
   return hex;
 }
 
-let rateLimitWarned = false;
-
-/**
- * Per-IP/day abuse cap backed by Cloudflare KV, keyed on cf-connecting-ip + UTC
- * day. Increments a counter and returns true once the day's count exceeds
- * `maxPerDay`. Fails OPEN (returns false) when RATE_LIMIT_KV is unbound so the
- * beacon keeps working before the namespace is provisioned.
- */
-export async function rateLimited(
-  env: Env,
-  request: Request,
-  bucket: string,
-  maxPerDay: number,
-): Promise<boolean> {
-  const kv = env.RATE_LIMIT_KV;
-  if (!kv) {
-    if (!rateLimitWarned) {
-      rateLimitWarned = true;
-      console.warn(
-        "RATE_LIMIT_KV unbound — rate limiting disabled (failing open). Provision with " +
-          "`wrangler kv:namespace create RATE_LIMIT_KV` and set the id in wrangler.toml.",
-      );
-    }
-    return false;
-  }
-  const ip = request.headers.get("cf-connecting-ip") || "0.0.0.0";
-  const day = utcDay();
-  const key = `rl:${bucket}:${day}:${ip}`;
-  const current = parseInt((await kv.get(key)) || "0", 10) || 0;
-  if (current >= maxPerDay) return true;
-  // ~25h TTL so the counter outlives the UTC day boundary, then self-expires.
-  await kv.put(key, String(current + 1), { expirationTtl: 90000 });
-  return false;
-}
 
 export const onRequestOptions: PagesFunction<Env> = async () =>
   new Response(null, {

@@ -39,10 +39,34 @@ jest.mock('expo-linear-gradient', () => {
   return { LinearGradient: (props: { children?: unknown }) => ReactLib.createElement(View, props, props.children) };
 });
 
+jest.mock('react-native-svg', () => {
+  const ReactLib = require('react');
+  const { Text, View } = require('react-native');
+  const Stub = ({ children }: { children?: unknown }) => ReactLib.createElement(View, null, children);
+  const SvgText = ({ children }: { children?: unknown }) => ReactLib.createElement(Text, null, children);
+  return {
+    __esModule: true,
+    default: Stub,
+    G: Stub,
+    Line: Stub,
+    Path: Stub,
+    Text: SvgText,
+  };
+});
+
+
 jest.mock('expo-haptics', () => ({
   notificationAsync: jest.fn(() => Promise.resolve()),
   NotificationFeedbackType: { Success: 'success' },
 }));
+
+jest.mock('@expo/vector-icons', () => {
+  const ReactLib = require('react');
+  const { Text } = require('react-native');
+  return {
+    Feather: ({ name }: { name: string }) => ReactLib.createElement(Text, null, name),
+  };
+});
 
 jest.mock('react-native-reanimated', () => {
   const ReactLib = require('react');
@@ -65,6 +89,7 @@ jest.mock('react-native-reanimated', () => {
     withSequence: (v: unknown) => v,
     withTiming: (v: unknown) => v,
     withDelay: (_d: unknown, v: unknown) => v,
+    cancelAnimation: jest.fn(),
     runOnJS: (fn: unknown) => fn,
   };
 });
@@ -86,10 +111,15 @@ jest.mock('../../src/components/HarmonyScoreReveal', () => ({ HarmonyScoreReveal
 jest.mock('../../src/components/InterventionDrawer', () => ({ InterventionDrawer: mockStub('InterventionDrawer') }));
 jest.mock('../../src/components/AnimatedFillBar', () => ({ AnimatedFillBar: mockStub('AnimatedFillBar') }));
 jest.mock('../../src/store/useStore', () => ({ useStore: jest.fn() }));
+// The greeting reads Clerk's useUser via a lazy optional require; outside a
+// ClerkProvider the real hook throws, so stub it (signed-out shape).
+jest.mock('@clerk/clerk-expo', () => ({ useUser: () => ({ user: null }) }));
 
 // Loaded via require so the component jest.mock factories (which reference the
 // mock-prefixed mockStub) resolve it only after mockStub is initialized.
-const Results = require('../scan/results').default as React.ComponentType;
+const resultsModule = require('../scan/results');
+const Results = resultsModule.default as React.ComponentType;
+const buildTypicalRangeComparison = resultsModule.buildTypicalRangeComparison as (score: number) => string;
 import { useStore } from '../../src/store/useStore';
 
 interface SkinOutput {
@@ -109,18 +139,41 @@ const skinOutput = (id = 'o1'): SkinOutput => ({
 interface MockState {
   modelOutputs: SkinOutput[];
   dailyRecords: unknown[];
+  protocol: null;
+  getStreak: () => number;
+  appearance: { reduceMotion: boolean };
 }
 
 // Single boundary cast: the real useStore is a zustand selector hook; we only
 // drive its modelOutputs / dailyRecords selectors here. (rule: no `any`.)
 const mockedUseStore = useStore as unknown as jest.Mock;
 
-let mockState: MockState = { modelOutputs: [], dailyRecords: [] };
+let mockState: MockState = {
+  modelOutputs: [],
+  dailyRecords: [],
+  protocol: null,
+  getStreak: () => 0,
+  appearance: { reduceMotion: true },
+};
 
 beforeEach(() => {
-  mockState = { modelOutputs: [], dailyRecords: [] };
+  mockState = {
+    modelOutputs: [],
+    dailyRecords: [],
+    protocol: null,
+    getStreak: () => 0,
+    appearance: { reduceMotion: true },
+  };
   mockedUseStore.mockReset();
   mockedUseStore.mockImplementation((selector: (s: MockState) => unknown) => selector(mockState));
+});
+
+describe('buildTypicalRangeComparison', () => {
+  it('describes scores below, at, and above the typical Glowlytics range', () => {
+    expect(buildTypicalRangeComparison(58)).toBe('4 points below the typical Glowlytics range (62–76)');
+    expect(buildTypicalRangeComparison(69)).toBe('Right at the typical Glowlytics range (62–76)');
+    expect(buildTypicalRangeComparison(82)).toBe('6 points above the typical Glowlytics range (62–76)');
+  });
 });
 
 describe('Results — rules of hooks across empty → populated', () => {
@@ -134,7 +187,7 @@ describe('Results — rules of hooks across empty → populated', () => {
     expect(getByText('Results appear after your first scan')).toBeTruthy();
 
     // A scan result hydrates into the store while the screen is mounted.
-    mockState = { modelOutputs: [skinOutput()], dailyRecords: [] };
+    mockState = { modelOutputs: [skinOutput()], dailyRecords: [], protocol: null, getStreak: () => 0, appearance: { reduceMotion: true } };
     expect(() => rerender(<Results />)).not.toThrow();
 
     // Empty state gone; the populated carousel (with its disclaimer bar) shows.

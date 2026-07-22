@@ -22,6 +22,8 @@ import {
   type SkinMetricKey,
 } from '../../src/services/skinInsights';
 import { useStore } from '../../src/store/useStore';
+import { resolveScanEntryRoute } from '../../src/utils/scanConsentRoute';
+import { activeProducts } from '../../src/services/ritual';
 
 const validMetrics: SkinMetricKey[] = ['acne', 'sun_damage', 'skin_age'];
 
@@ -97,7 +99,9 @@ export default function MetricAssessmentDetail() {
   const params = useLocalSearchParams<{ metric?: string | string[] }>();
   const modelOutputs = useStore((s) => s.modelOutputs);
   const dailyRecords = useStore((s) => s.dailyRecords);
-  const products = useStore((s) => s.products);
+  const allProducts = useStore((s) => s.products);
+  const products = useMemo(() => activeProducts(allProducts), [allProducts]);
+  const aiProcessingConsentGranted = useStore((s) => s.aiProcessingConsentGranted);
 
   const resolvedMetricParam = Array.isArray(params.metric) ? params.metric[0] : params.metric;
   const metric = validMetrics.includes(resolvedMetricParam as SkinMetricKey)
@@ -135,8 +139,8 @@ export default function MetricAssessmentDetail() {
     return (
       <AtmosphereScreen scroll={false} contentContainerStyle={styles.invalidLayout}>
         <View style={styles.invalidState}>
-          <Text style={styles.invalidTitle}>Unknown metric</Text>
-          <Text style={styles.invalidCopy}>This assessment route is invalid.</Text>
+          <Text style={styles.invalidTitle}>Not a metric we measure</Text>
+          <Text style={styles.invalidCopy}>That link points somewhere we don{'\u2019'}t track. Head back and pick a real one.</Text>
         </View>
         <Button title="Back" onPress={() => router.replace('/skin-metrics')} />
       </AtmosphereScreen>
@@ -152,7 +156,7 @@ export default function MetricAssessmentDetail() {
             Run at least one scan to unlock this detailed assessment.
           </Text>
         </View>
-        <Button title="Start scan" onPress={() => router.push('/scan/camera')} />
+        <Button title="Start scan" onPress={() => router.push(resolveScanEntryRoute(aiProcessingConsentGranted))} />
       </AtmosphereScreen>
     );
   }

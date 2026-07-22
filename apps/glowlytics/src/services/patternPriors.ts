@@ -53,7 +53,7 @@ export const PATTERN_PRIORS: PredictedPatternTemplate[] = [
       if (typeof freq !== 'string') return false;
       return freq !== 'never' && freq !== '';
     },
-    headline: 'Alcohol affects inflammation in most users — usually within 14 days',
+    headline: 'Alcohol affects inflammation in most users, usually within 14 days',
     detail:
       'Your baseline says you drink semi-regularly. If alcohol is moving your skin, we will see it.',
     signal: 'inflammation',

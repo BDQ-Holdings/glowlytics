@@ -10,6 +10,15 @@ Notifications.setNotificationHandler({
   }),
 });
 
+const DAILY_SCAN_IDENTIFIER = 'daily-scan';
+const RITUAL_IDENTIFIERS = {
+  am: 'ritual-am',
+  pm: 'ritual-pm',
+} as const;
+
+type ReminderTime = { hour: number; minute: number };
+type RitualReminderSection = keyof typeof RITUAL_IDENTIFIERS;
+
 export async function requestNotificationPermissions(): Promise<boolean> {
   const { status: existing } = await Notifications.getPermissionsAsync();
   if (existing === 'granted') return true;
@@ -17,26 +26,78 @@ export async function requestNotificationPermissions(): Promise<boolean> {
   return status === 'granted';
 }
 
-export async function scheduleDailyReminder(hour: number, minute: number): Promise<void> {
-  await Notifications.cancelAllScheduledNotificationsAsync();
+async function scheduleDailyNotification(
+  identifier: string,
+  time: ReminderTime,
+  title: string,
+  body: string,
+): Promise<void> {
+  await Notifications.cancelScheduledNotificationAsync(identifier);
 
   const granted = await requestNotificationPermissions();
   if (!granted) return;
 
   await Notifications.scheduleNotificationAsync({
+    identifier,
     content: {
-      title: 'Time for your skin scan',
-      body: 'Take 30 seconds to track your progress.',
+      title,
+      body,
       sound: true,
     },
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.DAILY,
-      hour,
-      minute,
+      hour: time.hour,
+      minute: time.minute,
     },
   });
 }
 
+export async function scheduleDailyReminder(hour: number, minute: number): Promise<void> {
+  await scheduleDailyNotification(
+    DAILY_SCAN_IDENTIFIER,
+    { hour, minute },
+    'Time for your skin scan',
+    'Thirty seconds. Your streak is watching, politely.',
+  );
+}
+
 export async function cancelDailyReminder(): Promise<void> {
+  await Notifications.cancelScheduledNotificationAsync(DAILY_SCAN_IDENTIFIER);
+}
+
+export async function scheduleRitualReminder(
+  section: RitualReminderSection,
+  time: ReminderTime,
+): Promise<void> {
+  await scheduleDailyNotification(
+    RITUAL_IDENTIFIERS[section],
+    time,
+    section === 'am' ? 'Morning ritual' : 'Evening ritual',
+    section === 'am'
+      ? 'A few small steps are waiting for your morning routine.'
+      : 'The day can end now. The retinol goes first.',
+  );
+}
+
+export async function cancelRitualReminder(section: RitualReminderSection): Promise<void> {
+  await Notifications.cancelScheduledNotificationAsync(RITUAL_IDENTIFIERS[section]);
+}
+
+export async function cancelAllAppNotifications(): Promise<void> {
+  await Promise.all([
+    cancelDailyReminder(),
+    cancelRitualReminder('am'),
+    cancelRitualReminder('pm'),
+  ]);
+}
+
+/**
+ * One-time upgrade path: builds before the identifier-based scheduler used
+ * cancelAllScheduledNotificationsAsync + identifier-less scheduling, so the
+ * per-identifier cancels above can never reach a pre-upgrade reminder — it
+ * would keep firing forever and re-enabling would stack a second one.
+ * Nukes everything; the caller reschedules enabled reminders afterwards.
+ */
+export async function migrateLegacyNotifications(): Promise<void> {
   await Notifications.cancelAllScheduledNotificationsAsync();
 }

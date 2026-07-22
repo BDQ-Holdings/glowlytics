@@ -26,6 +26,7 @@ import {
   detectConflicts,
   generateAdjustments,
 } from '../src/services/routineBuilder';
+import { activeProducts } from '../src/services/ritual';
 
 // ---------------------------------------------------------------------------
 // Score ring
@@ -138,7 +139,7 @@ function groupBySchedule(data: ProductDatum[]): Map<ScheduleGroup, ProductDatum[
 function buildInsight(data: ProductDatum[], routineScore: number): string | null {
   if (data.length === 0) return null;
   if (routineScore >= 75) return 'This routine is doing real work for your goal.';
-  if (routineScore >= 55) return 'Mostly on point — a swap or two could lift the rest.';
+  if (routineScore >= 55) return 'Mostly on point. A swap or two could lift the rest.';
   if (routineScore >= 35) return 'A few products are along for the ride. See if they earn their slot.';
   return 'Most of this stack isn\u2019t helping the goal you set. Time to edit.';
 }
@@ -149,7 +150,10 @@ function buildInsight(data: ProductDatum[], routineScore: number): string | null
 export default function RoutineScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const products = useStore((s) => s.products);
+  const allProducts = useStore((s) => s.products);
+  // Soft-removed products (end_date set) stay in the store for ritual history —
+  // forward-looking scoring/conflicts must only see the active shelf.
+  const products = useMemo(() => activeProducts(allProducts), [allProducts]);
   const protocol = useStore((s) => s.protocol);
   const modelOutputs = useStore((s) => s.modelOutputs);
   const dailyRecords = useStore((s) => s.dailyRecords);

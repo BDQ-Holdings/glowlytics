@@ -1,5 +1,6 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Linking, StyleSheet, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import Constants from 'expo-constants';
 import { FontFamily, Glow } from '../../src/constants/theme';
@@ -10,15 +11,17 @@ import {
   SettingsHeader,
   SettingsPage,
 } from '../../src/components/settings/SettingsPrimitives';
+import { APPLE_STANDARD_EULA_URL } from '../../src/constants/externalLinks';
 
 const P = Glow.palette;
 
 export default function AboutScreen() {
-  const version = (Constants.expoConfig?.version as string | undefined) ?? '1.1.6';
+  const router = useRouter();
+  const version = (Constants.expoConfig?.version as string | undefined) ?? '1.2.0';
   const build =
-    ((Constants.expoConfig?.ios as any)?.buildNumber as string | undefined) ??
-    ((Constants.expoConfig?.android as any)?.versionCode as number | undefined)?.toString() ??
-    '118';
+    (Constants.expoConfig?.ios?.buildNumber as string | undefined) ??
+    Constants.expoConfig?.android?.versionCode?.toString() ??
+    '19';
 
   return (
     <SettingsPage>
@@ -54,11 +57,11 @@ export default function AboutScreen() {
 
       <SectionLabel>Legal</SectionLabel>
       <ListGroup>
-        <Row label="Terms of service" onPress={() => undefined} />
-        <Row label="Privacy policy" onPress={() => undefined} />
-        <Row label="Data processing addendum" onPress={() => undefined} />
-        <Row label="Open-source acknowledgements" onPress={() => undefined} />
-        <Row label="Licenses" onPress={() => undefined} />
+        <Row
+          label="Terms of service"
+          onPress={() => Linking.openURL(APPLE_STANDARD_EULA_URL).catch(() => {})}
+        />
+        <Row label="Privacy policy" onPress={() => router.push('/privacy-policy')} />
       </ListGroup>
 
       <SectionLabel>Credits</SectionLabel>

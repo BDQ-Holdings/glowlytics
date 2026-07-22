@@ -130,6 +130,10 @@ export function subscriptionFromCustomerInfo(
   info: CustomerInfo,
   current: SubscriptionState,
 ): SubscriptionState {
+  // Defensive: RevenueCat mocks and edge-case responses can hand back a
+  // CustomerInfo with no entitlements (or no info at all). Treat that as
+  // "no change" instead of crashing the subscription refresh.
+  if (!info?.entitlements) return current;
   const entitlement = info.entitlements.active[ENTITLEMENT_ID];
   if (entitlement) {
     return {

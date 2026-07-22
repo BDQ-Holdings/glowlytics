@@ -3,20 +3,32 @@ import assert from "node:assert/strict";
 import { bucketCount, rateLimited as waitlistRateLimited } from "../waitlist.js";
 import { resolveTrackSalt, rateLimited as trackRateLimited } from "../track.js";
 
-// Minimal in-memory stand-in for a Cloudflare KVNamespace: records puts so we
-// can assert the TTL and that a blocked request performs no write.
-function fakeKV() {
-  const store = new Map<string, string>();
-  const puts: Array<{ key: string; value: string; ttl?: number }> = [];
+// Minimal D1 stand-in that models the single-statement upsert atomically: the
+// count changes before first() resolves, as it does inside SQLite.
+function fakeD1(options: { fail?: boolean } = {}) {
+  const counts = new Map<string, number>();
+  const statements: string[] = [];
   return {
-    store,
-    puts,
-    async get(key: string): Promise<string | null> {
-      return store.has(key) ? (store.get(key) as string) : null;
-    },
-    async put(key: string, value: string, opts?: { expirationTtl?: number }): Promise<void> {
-      store.set(key, value);
-      puts.push({ key, value, ttl: opts?.expirationTtl });
+    counts,
+    statements,
+    prepare(sql: string) {
+      statements.push(sql);
+      return {
+        bind(bucket: string, day: string, visitorHash: string, maxPerDay: number) {
+          return {
+            async first(): Promise<{ request_count: number } | null> {
+              if (options.fail) throw new Error("D1 unavailable");
+              assert.match(visitorHash, /^[0-9a-f]{64}$/);
+              const key = `${bucket}:${day}:${visitorHash}`;
+              const current = counts.get(key) ?? 0;
+              if (current >= maxPerDay) return null;
+              const requestCount = current + 1;
+              counts.set(key, requestCount);
+              return { request_count: requestCount };
+            },
+          };
+        },
+      };
     },
   };
 }
@@ -59,59 +71,65 @@ describe("resolveTrackSalt (LND-08 fail-closed salt)", () => {
   });
 });
 
-describe("rateLimited (LND-03) — waitlist copy", () => {
-  it("fails open (returns false) when RATE_LIMIT_KV is unbound", async () => {
-    const env = { WAITLIST_DB: {} } as never;
-    assert.equal(await waitlistRateLimited(env, reqFrom("1.2.3.4"), "waitlist", 1), false);
-    assert.equal(await waitlistRateLimited(env, reqFrom("1.2.3.4"), "waitlist", 1), false);
+describe("rateLimited (LND-03) — waitlist export", () => {
+  it("fails closed without the stable hashing secret", async () => {
+    const env = { WAITLIST_DB: fakeD1() } as never;
+    assert.equal(await waitlistRateLimited(env, reqFrom("1.2.3.4"), "waitlist", 1), true);
   });
 
-  it("allows up to the cap, then blocks; writes carry a ~25h TTL", async () => {
-    const kv = fakeKV();
-    const env = { WAITLIST_DB: {}, RATE_LIMIT_KV: kv } as never;
-    assert.equal(await waitlistRateLimited(env, reqFrom("1.2.3.4"), "waitlist", 2), false); // 0 -> 1
-    assert.equal(await waitlistRateLimited(env, reqFrom("1.2.3.4"), "waitlist", 2), false); // 1 -> 2
-    assert.equal(await waitlistRateLimited(env, reqFrom("1.2.3.4"), "waitlist", 2), true); // 2 >= 2
-    assert.equal(kv.puts.length, 2); // the blocked request performs no write
-    assert.equal(kv.puts.at(-1)?.ttl, 90000);
+  it("allows up to the cap, then blocks with one atomic upsert per request", async () => {
+    const db = fakeD1();
+    const env = { WAITLIST_DB: db, TRACK_SALT: "secret-salt" } as never;
+    assert.equal(await waitlistRateLimited(env, reqFrom("1.2.3.4"), "waitlist", 2), false);
+    assert.equal(await waitlistRateLimited(env, reqFrom("1.2.3.4"), "waitlist", 2), false);
+    assert.equal(await waitlistRateLimited(env, reqFrom("1.2.3.4"), "waitlist", 2), true);
+    assert.equal([...db.counts.values()][0], 2);
+    assert.match(db.statements[0], /ON CONFLICT[\s\S]+WHERE[\s\S]+RETURNING/);
   });
 
-  it("keys counters per IP independently", async () => {
-    const kv = fakeKV();
-    const env = { WAITLIST_DB: {}, RATE_LIMIT_KV: kv } as never;
+  it("enforces the cap across concurrent requests", async () => {
+    const db = fakeD1();
+    const env = { WAITLIST_DB: db, TRACK_SALT: "secret-salt" } as never;
+    const results = await Promise.all(
+      Array.from({ length: 8 }, () =>
+        waitlistRateLimited(env, reqFrom("1.2.3.4"), "waitlist", 2),
+      ),
+    );
+
+    assert.equal(results.filter((limited) => !limited).length, 2);
+    assert.equal(results.filter(Boolean).length, 6);
+    assert.equal([...db.counts.values()][0], 2);
+  });
+
+  it("keys counters per IP and bucket without storing the raw IP", async () => {
+    const db = fakeD1();
+    const env = { WAITLIST_DB: db, TRACK_SALT: "secret-salt" } as never;
     assert.equal(await waitlistRateLimited(env, reqFrom("9.9.9.9"), "waitlist", 1), false);
     assert.equal(await waitlistRateLimited(env, reqFrom("9.9.9.9"), "waitlist", 1), true);
     assert.equal(await waitlistRateLimited(env, reqFrom("8.8.8.8"), "waitlist", 1), false);
+    assert.equal(await waitlistRateLimited(env, reqFrom("9.9.9.9"), "track", 1), false);
+    assert.equal(db.counts.size, 3);
+    assert.equal([...db.counts.keys()].some((key) => key.includes("9.9.9.9")), false);
   });
 
-  it("keys counters per bucket independently", async () => {
-    const kv = fakeKV();
-    const env = { WAITLIST_DB: {}, RATE_LIMIT_KV: kv } as never;
-    assert.equal(await waitlistRateLimited(env, reqFrom("1.2.3.4"), "waitlist", 1), false);
-    assert.equal(await waitlistRateLimited(env, reqFrom("1.2.3.4"), "waitlist", 1), true);
-    // Same IP, different bucket -> fresh counter.
-    assert.equal(await waitlistRateLimited(env, reqFrom("1.2.3.4"), "track", 1), false);
-  });
-
-  it("treats a corrupt counter value as zero rather than hard-failing", async () => {
-    const kv = fakeKV();
-    const day = new Date().toISOString().slice(0, 10);
-    kv.store.set(`rl:waitlist:${day}:1.2.3.4`, "not-a-number");
-    const env = { WAITLIST_DB: {}, RATE_LIMIT_KV: kv } as never;
-    assert.equal(await waitlistRateLimited(env, reqFrom("1.2.3.4"), "waitlist", 5), false);
+  it("fails closed when D1 cannot consume the allowance", async () => {
+    const env = {
+      WAITLIST_DB: fakeD1({ fail: true }),
+      TRACK_SALT: "secret-salt",
+    } as never;
+    assert.equal(await waitlistRateLimited(env, reqFrom("1.2.3.4"), "waitlist", 5), true);
   });
 });
 
-describe("rateLimited (LND-03) — track copy", () => {
-  it("fails open when RATE_LIMIT_KV is unbound", async () => {
-    const env = { WAITLIST_DB: {} } as never;
-    assert.equal(await trackRateLimited(env, reqFrom("5.5.5.5"), "track", 1), false);
-  });
+describe("rateLimited (LND-03) — track export", () => {
+  it("enforces the cap across concurrent requests", async () => {
+    const db = fakeD1();
+    const env = { WAITLIST_DB: db, TRACK_SALT: "secret-salt" } as never;
+    const results = await Promise.all(
+      Array.from({ length: 8 }, () => trackRateLimited(env, reqFrom("5.5.5.5"), "track", 2)),
+    );
 
-  it("blocks once the cap is exceeded", async () => {
-    const kv = fakeKV();
-    const env = { WAITLIST_DB: {}, RATE_LIMIT_KV: kv } as never;
-    assert.equal(await trackRateLimited(env, reqFrom("5.5.5.5"), "track", 1), false);
-    assert.equal(await trackRateLimited(env, reqFrom("5.5.5.5"), "track", 1), true);
+    assert.equal(results.filter((limited) => !limited).length, 2);
+    assert.equal(results.filter(Boolean).length, 6);
   });
 });

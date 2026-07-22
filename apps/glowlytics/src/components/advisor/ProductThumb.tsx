@@ -1,5 +1,5 @@
-import React from 'react';
-import { Image, StyleSheet, View } from 'react-native';
+import React, { useState } from 'react';
+import { Image, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import type { GlowPalette } from '../../constants/theme';
 
@@ -26,6 +26,10 @@ export const ProductThumb: React.FC<ProductThumbProps> = ({
   r = 10,
   palette,
 }) => {
+  // A truthy imageUrl can still 404 / expire; without this the <Image> renders
+  // a blank box. On the native onError we flip to the gradient placeholder.
+  const [errored, setErrored] = useState(false);
+
   const base = {
     width: w,
     height: h,
@@ -34,18 +38,21 @@ export const ProductThumb: React.FC<ProductThumbProps> = ({
     borderColor: palette.glow,
   } as const;
 
-  if (imageUrl) {
+  if (imageUrl && !errored) {
     return (
       <Image
+        testID="product-thumb-image"
         source={{ uri: imageUrl }}
         style={[base, { backgroundColor: palette.glow }]}
         resizeMode="cover"
+        onError={() => setErrored(true)}
       />
     );
   }
 
   return (
     <LinearGradient
+      testID="product-thumb-fallback"
       colors={[tone ?? palette.glow, palette.surface]}
       start={{ x: 0.15, y: 0 }}
       end={{ x: 0.85, y: 1 }}

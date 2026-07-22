@@ -40,7 +40,7 @@ const CARDS: Card[] = [
   {
     eyebrow: 'What is Harmony?',
     title: 'A single read on your facial architecture',
-    body: 'Harmony is a 0–100 composite that weighs six aspects of your face: symmetry, the eye region, the jaw, midface, nose, and brow. It’s built from 16 anatomic measurements we sample from a 3D mesh of your face — not a beauty rating, just a snapshot of structure.',
+    body: 'Harmony is a 0–100 composite that weighs six aspects of your face: symmetry, the eye region, the jaw, midface, nose, and brow. It’s built from 16 anatomic measurements we sample from a 3D mesh of your face. Not a beauty rating, just a snapshot of structure.',
     icon: 'hexagon',
   },
   {
